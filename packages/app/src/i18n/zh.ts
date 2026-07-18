@@ -26,6 +26,18 @@ export const dict = {
   "theme.scheme.dark": "深色",
 
   "command.sidebar.toggle": "切换侧边栏",
+  "novelx.sidebar.label": "NovelX 工作区",
+  "novelx.sidebar.expand": "展开 NovelX 工作区",
+  "novelx.sidebar.collapse": "收起 NovelX 工作区",
+  "novelx.sidebar.newTask": "新建任务",
+  "novelx.sidebar.agents": "Agent",
+  "novelx.sidebar.sessions": "项目会话",
+  "novelx.sidebar.noSessions": "还没有项目会话",
+  "novelx.sidebar.running": "运行中",
+  "novelx.resources.files": "文件",
+  "novelx.resources.world": "世界",
+  "novelx.world.empty": "还没有 World 文件",
+  "novelx.world.error": "无法加载 World 文件",
 
   "command.project.open": "打开项目",
   "command.project.previous": "上一个项目",

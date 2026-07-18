@@ -34,6 +34,7 @@ import { Persist, persisted } from "@/utils/persist"
 import createPresence from "solid-presence"
 import { useLocal } from "@/context/local"
 import { createPromptModelSelection } from "@/pages/session/composer/prompt-model-selection"
+import { NovelXWorkspaceSidebar } from "@/pages/session/novelx-workspace-sidebar"
 
 const workspaceBarEnabled = import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"
 const providerTipDismissalDuration = 30 * 24 * 60 * 60 * 1000
@@ -149,75 +150,81 @@ export default function NewSessionPage() {
           </Portal>
         )}
       </Show>
-      <div class="flex-1 min-h-0 flex flex-col gap-2 p-2">
-        <div class="@container relative flex flex-col min-h-0 h-full flex-1">
-          <div class="flex-1 min-h-0 overflow-hidden rounded-[10px]">
-            <NewSessionDesignView>
-              <div class={NEW_SESSION_CONTENT_WIDTH}>
-                <Show
-                  when={prompt.ready() || promptReady()}
-                  fallback={
-                    <div class="w-full min-h-32 md:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak pointer-events-none">
-                      {language.t("prompt.loading")}
-                    </div>
-                  }
-                >
-                  <div class="flex flex-col" classList={{ "gap-8": showWorkspaceBar(), "gap-3": !showWorkspaceBar() }}>
-                    <PromptInput
-                      controls={inputController()}
-                      variant="new-session"
-                      ref={(el) => {
-                        inputRef = el
-                      }}
-                      newSessionWorktree={newSessionWorktree()}
-                      onNewSessionWorktreeReset={() => setStore("worktree", undefined)}
-                      onSubmit={() => comments.clear()}
-                      toolbar={
-                        <Show when={!projectController.selected()}>
-                          <PromptProjectAddButton controller={projectController} />
-                        </Show>
-                      }
-                    />
-                    <Show when={projectController.selected()}>
-                      <div
-                        class="flex min-h-7 min-w-0 items-center gap-0 text-v2-text-text-faint"
-                        classList={{
-                          "flex-col justify-center sm:flex-row": showWorkspaceBar(),
-                          "justify-start": !showWorkspaceBar(),
-                        }}
-                      >
-                        <PromptProjectSelector
-                          controller={projectController}
-                          placement={showWorkspaceBar() ? "bottom" : "bottom-start"}
-                        />
-                        <Show when={showWorkspaceBar()}>
-                          <PromptWorkspaceSelector
-                            value={newSessionWorktree()}
-                            projectRoot={projectRoot()}
-                            workspaces={sync().project?.sandboxes ?? []}
-                            branch={selectedBranch()}
-                            onChange={(value) =>
-                              setStore(
-                                "worktree",
-                                value === "main" && sync().project?.worktree !== sdk().directory
-                                  ? sync().project?.worktree
-                                  : value,
-                              )
-                            }
-                            onDone={() => inputRef?.focus()}
-                          />
-                        </Show>
+      <div class="flex-1 min-h-0 flex">
+        <NovelXWorkspaceSidebar />
+        <div class="flex-1 min-w-0 min-h-0 flex flex-col gap-2 p-2">
+          <div class="@container relative flex flex-col min-h-0 h-full flex-1">
+            <div class="flex-1 min-h-0 overflow-hidden rounded-[10px]">
+              <NewSessionDesignView>
+                <div class={NEW_SESSION_CONTENT_WIDTH}>
+                  <Show
+                    when={prompt.ready() || promptReady()}
+                    fallback={
+                      <div class="w-full min-h-32 md:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak pointer-events-none">
+                        {language.t("prompt.loading")}
                       </div>
-                    </Show>
-                  </div>
-                </Show>
-              </div>
-            </NewSessionDesignView>
-            <ProviderTip
-              ready={() => serverSync().child(sdk().directory)[0].provider_ready}
-              connected={() => providers.paid().length > 0}
-              openProviders={openProviderSettings}
-            />
+                    }
+                  >
+                    <div
+                      class="flex flex-col"
+                      classList={{ "gap-8": showWorkspaceBar(), "gap-3": !showWorkspaceBar() }}
+                    >
+                      <PromptInput
+                        controls={inputController()}
+                        variant="new-session"
+                        ref={(el) => {
+                          inputRef = el
+                        }}
+                        newSessionWorktree={newSessionWorktree()}
+                        onNewSessionWorktreeReset={() => setStore("worktree", undefined)}
+                        onSubmit={() => comments.clear()}
+                        toolbar={
+                          <Show when={!projectController.selected()}>
+                            <PromptProjectAddButton controller={projectController} />
+                          </Show>
+                        }
+                      />
+                      <Show when={projectController.selected()}>
+                        <div
+                          class="flex min-h-7 min-w-0 items-center gap-0 text-v2-text-text-faint"
+                          classList={{
+                            "flex-col justify-center sm:flex-row": showWorkspaceBar(),
+                            "justify-start": !showWorkspaceBar(),
+                          }}
+                        >
+                          <PromptProjectSelector
+                            controller={projectController}
+                            placement={showWorkspaceBar() ? "bottom" : "bottom-start"}
+                          />
+                          <Show when={showWorkspaceBar()}>
+                            <PromptWorkspaceSelector
+                              value={newSessionWorktree()}
+                              projectRoot={projectRoot()}
+                              workspaces={sync().project?.sandboxes ?? []}
+                              branch={selectedBranch()}
+                              onChange={(value) =>
+                                setStore(
+                                  "worktree",
+                                  value === "main" && sync().project?.worktree !== sdk().directory
+                                    ? sync().project?.worktree
+                                    : value,
+                                )
+                              }
+                              onDone={() => inputRef?.focus()}
+                            />
+                          </Show>
+                        </div>
+                      </Show>
+                    </div>
+                  </Show>
+                </div>
+              </NewSessionDesignView>
+              <ProviderTip
+                ready={() => serverSync().child(sdk().directory)[0].provider_ready}
+                connected={() => providers.paid().length > 0}
+                openProviders={openProviderSettings}
+              />
+            </div>
           </div>
         </div>
       </div>

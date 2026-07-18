@@ -1,4 +1,17 @@
 export const dict = {
+  "novelx.sidebar.label": "NovelX workspace",
+  "novelx.sidebar.expand": "Expand NovelX workspace",
+  "novelx.sidebar.collapse": "Collapse NovelX workspace",
+  "novelx.sidebar.newTask": "New task",
+  "novelx.sidebar.agents": "Agents",
+  "novelx.sidebar.sessions": "Project sessions",
+  "novelx.sidebar.noSessions": "No project sessions yet",
+  "novelx.sidebar.running": "Running",
+  "novelx.resources.files": "Files",
+  "novelx.resources.world": "World",
+  "novelx.world.empty": "No World files yet",
+  "novelx.world.error": "World files could not be loaded",
+
   "command.category.suggested": "Predloženo",
   "command.category.view": "Prikaz",
   "command.category.project": "Projekat",

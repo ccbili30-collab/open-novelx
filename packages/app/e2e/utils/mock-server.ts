@@ -5,6 +5,7 @@ const emptyObject = new Set(["/global/config", "/config", "/provider/auth", "/mc
 
 export interface MockServerConfig {
   provider: unknown
+  agents?: unknown[]
   directory: string
   project: unknown
   sessions: ({ id: string } & Record<string, unknown>)[]
@@ -40,7 +41,7 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     },
     "/project": [config.project],
     "/project/current": config.project,
-    "/agent": [{ name: "build", mode: "primary" }],
+    "/agent": config.agents ?? [{ name: "build", mode: "primary" }],
     "/vcs": { branch: "main", default_branch: "main" },
     "/session": config.sessions,
   }
