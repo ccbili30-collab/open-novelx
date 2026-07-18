@@ -151,8 +151,21 @@ export function SessionSidePanel(props: {
     if (!state?.loaded) return false
     return file.tree.children("").length === 0
   })
+  const rootState = createMemo(() => file.tree.state(""))
   const worldState = createMemo(() => file.tree.state("World"))
-  const worldStatus = createMemo(() => worldTreeStatus(worldState(), file.tree.children("World").length))
+  const hasWorldDirectory = createMemo(() =>
+    file.tree
+      .children("")
+      .some((node) => node.type === "directory" && file.normalize(node.path) === file.normalize("World")),
+  )
+  const worldStatus = createMemo(() =>
+    worldTreeStatus({
+      root: rootState(),
+      world: worldState(),
+      hasWorldDirectory: hasWorldDirectory(),
+      childCount: file.tree.children("World").length,
+    }),
+  )
 
   const normalizeTab = (tab: string) => {
     if (!tab.startsWith("file://")) return tab
@@ -293,7 +306,7 @@ export function SessionSidePanel(props: {
         aria-label={language.t("session.panel.reviewAndFiles")}
         aria-hidden={!open()}
         inert={!open()}
-        class="relative min-w-0 flex overflow-hidden"
+        class="novelx-resource-panel relative min-w-0 flex overflow-hidden"
         classList={{
           "bg-v2-background-bg-base": settings.general.newLayoutDesigns(),
           "bg-background-base": !settings.general.newLayoutDesigns(),
@@ -746,7 +759,7 @@ export function SessionSidePanel(props: {
             <Show when={fileOpen()}>
               <div
                 id="file-tree-panel"
-                class="relative min-w-0 h-full shrink-0 overflow-hidden"
+                class="novelx-file-tree-panel relative min-w-0 h-full shrink-0 overflow-hidden"
                 classList={{
                   "transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
                     !props.size.active(),
@@ -758,33 +771,35 @@ export function SessionSidePanel(props: {
                   classList={{ "border-l border-border-weaker-base": reviewOpen() }}
                 >
                   <div
-                    class="shrink-0 flex gap-1 border-b border-border-weaker-base bg-background-stronger p-1"
+                    class="novelx-resource-switch shrink-0 flex gap-1 border-b border-border-weaker-base bg-background-stronger p-1"
                     role="tablist"
                   >
                     <button
                       type="button"
                       role="tab"
                       aria-selected={store.resourceView === "files"}
-                      class="flex-1 rounded-md px-2 py-1 text-12-medium transition-colors"
+                      class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-12-medium transition-colors"
                       classList={{
                         "bg-surface-base-active text-text-strong": store.resourceView === "files",
                         "text-text-weak hover:bg-surface-raised-base-hover": store.resourceView !== "files",
                       }}
                       onClick={() => setStore("resourceView", "files")}
                     >
+                      <Icon name="file-tree" size="small" />
                       {language.t("novelx.resources.files")}
                     </button>
                     <button
                       type="button"
                       role="tab"
                       aria-selected={store.resourceView === "world"}
-                      class="flex-1 rounded-md px-2 py-1 text-12-medium transition-colors"
+                      class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-12-medium transition-colors"
                       classList={{
                         "bg-surface-base-active text-text-strong": store.resourceView === "world",
                         "text-text-weak hover:bg-surface-raised-base-hover": store.resourceView !== "world",
                       }}
                       onClick={() => setStore("resourceView", "world")}
                     >
+                      <Icon name="branch" size="small" />
                       {language.t("novelx.resources.world")}
                     </button>
                   </div>
@@ -864,11 +879,31 @@ export function SessionSidePanel(props: {
                     </Tabs>
                   </Show>
                   <Show when={store.resourceView === "world"}>
-                    <div role="tabpanel" class="min-h-0 flex-1 overflow-y-auto bg-background-stronger px-3 py-0">
+                    <div
+                      role="tabpanel"
+                      class="novelx-world-panel min-h-0 flex-1 overflow-y-auto bg-background-stronger px-3 py-0"
+                    >
+                      <div class="novelx-world-summary">
+                        <span class="novelx-world-symbol" aria-hidden="true">
+                          <Icon name="branch" size="small" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                          <div class="truncate text-12-medium text-text-strong">
+                            {language.t("novelx.resources.world")}
+                          </div>
+                          <div class="text-10-regular text-text-weaker">× {file.tree.children("World").length}</div>
+                        </div>
+                      </div>
                       <Switch>
                         <Match when={worldStatus() === "error"}>
                           <div class="px-2 py-3 text-12-regular text-text-weak">
-                            {language.t("novelx.world.error")}: {worldState()?.error}
+                            {language.t("novelx.world.error")}: {worldState()?.error ?? rootState()?.error}
+                          </div>
+                        </Match>
+                        <Match when={worldStatus() === "loading"}>
+                          <div class="px-2 py-3 text-12-regular text-text-weak">
+                            {language.t("common.loading")}
+                            {language.t("common.loading.ellipsis")}
                           </div>
                         </Match>
                         <Match when={worldStatus() === "empty"}>{empty(language.t("novelx.world.empty"))}</Match>

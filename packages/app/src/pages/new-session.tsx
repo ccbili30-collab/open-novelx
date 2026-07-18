@@ -35,6 +35,7 @@ import createPresence from "solid-presence"
 import { useLocal } from "@/context/local"
 import { createPromptModelSelection } from "@/pages/session/composer/prompt-model-selection"
 import { NovelXWorkspaceSidebar } from "@/pages/session/novelx-workspace-sidebar"
+import "@/pages/session/novelx-workspace.css"
 
 const workspaceBarEnabled = import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"
 const providerTipDismissalDuration = 30 * 24 * 60 * 60 * 1000
@@ -138,7 +139,7 @@ export default function NewSessionPage() {
   )
 
   return (
-    <div class="relative size-full overflow-hidden flex flex-col">
+    <div data-component="novelx-workspace" class="relative size-full overflow-hidden flex flex-col">
       <Show when={rightMount()}>
         {(mount) => (
           <Portal mount={mount()}>

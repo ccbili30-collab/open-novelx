@@ -34,6 +34,8 @@ export const dict = {
   "novelx.resources.world": "World",
   "novelx.world.empty": "No World files yet",
   "novelx.world.error": "World files could not be loaded",
+  "novelx.workspace.tagline": "A studio for worlds, stories, and original characters",
+  "novelx.prompt.placeholder": "Discuss a world, story, or original character with the steward...",
   "command.project.open": "Open project",
   "command.project.previous": "Previous project",
   "command.project.next": "Next project",

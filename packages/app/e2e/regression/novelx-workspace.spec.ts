@@ -90,7 +90,10 @@ test("首次启动以中文连接 NovelX 工作区、智能体、会话与世界
 
   await page.goto(`/server/${base64Encode(server)}/session/${currentID}`)
   await expect(page.locator("html")).toHaveAttribute("lang", "zh")
-  await expect(page.locator('[data-component="prompt-input"]')).toHaveAttribute("aria-label", /随便问点什么/)
+  await expect(page.locator('[data-component="prompt-input"]')).toHaveAttribute(
+    "aria-label",
+    /和大管家讨论世界、故事或原创角色/,
+  )
   await expectSessionTitle(page, "构建地理")
 
   const workspace = page.getByRole("complementary", { name: "NovelX 工作区" })

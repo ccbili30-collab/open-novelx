@@ -38,6 +38,8 @@ export const dict = {
   "novelx.resources.world": "世界",
   "novelx.world.empty": "世界目录中还没有文件",
   "novelx.world.error": "无法加载世界文件",
+  "novelx.workspace.tagline": "世界、故事与原创角色的创作工作台",
+  "novelx.prompt.placeholder": "和大管家讨论世界、故事或原创角色…",
 
   "command.project.open": "打开项目",
   "command.project.previous": "上一个项目",

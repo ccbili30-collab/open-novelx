@@ -102,6 +102,7 @@ import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/sessio
 import { useUsageExceededDialogs } from "./session/usage-exceeded-dialogs"
 import { createSessionOwnership } from "./session/session-ownership"
 import { createSessionLineage } from "./session/session-lineage"
+import "./session/novelx-workspace.css"
 
 type FollowupItem = FollowupDraft & { id: string }
 type FollowupEdit = Pick<FollowupItem, "id" | "prompt" | "context">
@@ -327,7 +328,11 @@ function SessionProviders(props: ParentProps) {
 
 function SessionRouteFrame(props: ParentProps<{ padded?: boolean }>) {
   return (
-    <div class="relative size-full overflow-hidden flex flex-col" classList={{ "p-2": props.padded }}>
+    <div
+      data-component="novelx-workspace"
+      class="relative size-full overflow-hidden flex flex-col"
+      classList={{ "p-2": props.padded }}
+    >
       {props.children}
     </div>
   )

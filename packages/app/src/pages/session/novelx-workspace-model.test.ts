@@ -25,13 +25,37 @@ describe("selectProjectSessions", () => {
 })
 
 describe("worldTreeStatus", () => {
-  test("distinguishes an honest load failure from an empty World directory", () => {
-    expect(worldTreeStatus({ error: "offline" }, 0)).toBe("error")
-    expect(worldTreeStatus({ loaded: true }, 0)).toBe("empty")
+  test("distinguishes load failures from missing or empty World directories", () => {
+    expect(
+      worldTreeStatus({ root: { error: "offline" }, world: undefined, hasWorldDirectory: false, childCount: 0 }),
+    ).toBe("error")
+    expect(worldTreeStatus({ root: { loaded: true }, world: undefined, hasWorldDirectory: false, childCount: 0 })).toBe(
+      "empty",
+    )
+    expect(
+      worldTreeStatus({
+        root: { loaded: true },
+        world: { loaded: true },
+        hasWorldDirectory: true,
+        childCount: 0,
+      }),
+    ).toBe("empty")
   })
 
-  test("keeps the real tree visible while loading or when content exists", () => {
-    expect(worldTreeStatus(undefined, 0)).toBe("tree")
-    expect(worldTreeStatus({ loaded: true }, 2)).toBe("tree")
+  test("waits for the root before mounting a real World tree", () => {
+    expect(worldTreeStatus({ root: undefined, world: undefined, hasWorldDirectory: false, childCount: 0 })).toBe(
+      "loading",
+    )
+    expect(worldTreeStatus({ root: { loaded: true }, world: undefined, hasWorldDirectory: true, childCount: 0 })).toBe(
+      "tree",
+    )
+    expect(
+      worldTreeStatus({
+        root: { loaded: true },
+        world: { loaded: true },
+        hasWorldDirectory: true,
+        childCount: 2,
+      }),
+    ).toBe("tree")
   })
 })

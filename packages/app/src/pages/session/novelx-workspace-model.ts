@@ -19,8 +19,15 @@ export type WorldTreeState = {
   error?: string
 }
 
-export function worldTreeStatus(state: WorldTreeState | undefined, childCount: number) {
-  if (state?.error) return "error" as const
-  if (state?.loaded && childCount === 0) return "empty" as const
+export function worldTreeStatus(input: {
+  root: WorldTreeState | undefined
+  world: WorldTreeState | undefined
+  hasWorldDirectory: boolean
+  childCount: number
+}) {
+  if (input.root?.error || input.world?.error) return "error" as const
+  if (!input.root?.loaded) return "loading" as const
+  if (!input.hasWorldDirectory) return "empty" as const
+  if (input.world?.loaded && input.childCount === 0) return "empty" as const
   return "tree" as const
 }

@@ -1,4 +1,5 @@
 import { getFilename } from "@opencode-ai/core/util/path"
+import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { For, Show, createEffect, createMemo } from "solid-js"
@@ -46,13 +47,16 @@ export function NovelXWorkspaceSidebar() {
   return (
     <aside
       aria-label={language.t("novelx.sidebar.label")}
-      class="hidden md:flex shrink-0 min-h-0 border-r border-border-weaker-base bg-background-base transition-[width] duration-200 motion-reduce:transition-none"
-      classList={{ "w-56": state.expanded, "w-12": !state.expanded }}
+      class="novelx-project-rail hidden md:flex shrink-0 min-h-0 border-r border-border-weaker-base transition-[width] duration-200 motion-reduce:transition-none"
+      classList={{ "w-64": state.expanded, "w-14": !state.expanded }}
     >
       <Show
         when={state.expanded}
         fallback={
           <div class="flex size-full flex-col items-center py-2">
+            <div class="novelx-collapsed-mark" aria-hidden="true">
+              <Icon name="models" size="small" />
+            </div>
             <IconButton
               icon="layout-left-partial"
               variant="ghost"
@@ -64,8 +68,16 @@ export function NovelXWorkspaceSidebar() {
         }
       >
         <div class="flex size-full min-w-0 flex-col">
-          <div class="flex h-11 shrink-0 items-center gap-2 px-3">
-            <div class="min-w-0 flex-1 truncate text-14-medium text-text-strong">NovelX</div>
+          <div class="novelx-sidebar-brand flex h-14 shrink-0 items-center gap-2 px-3">
+            <div class="novelx-brand-symbol" aria-hidden="true">
+              <Icon name="models" size="small" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="novelx-brand-name truncate text-text-strong">NovelX</div>
+              <div class="truncate text-10-regular text-text-weaker" title={projectName()}>
+                {projectName()}
+              </div>
+            </div>
             <IconButton
               icon="chevron-left"
               variant="ghost"
@@ -75,15 +87,15 @@ export function NovelXWorkspaceSidebar() {
             />
           </div>
 
-          <div class="px-2 pb-3">
-            <ButtonV2 class="w-full justify-center" variant="contrast" icon="plus" onClick={newTask}>
+          <div class="px-2 pb-4">
+            <ButtonV2 class="novelx-new-task w-full justify-center" variant="contrast" icon="plus" onClick={newTask}>
               {language.t("novelx.sidebar.newTask")}
             </ButtonV2>
           </div>
 
           <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
             <section aria-labelledby="novelx-agents-heading" class="mb-4">
-              <h2 id="novelx-agents-heading" class="px-2 pb-1 text-11-medium uppercase tracking-wide text-text-weaker">
+              <h2 id="novelx-agents-heading" class="novelx-section-heading px-2 pb-1 text-11-medium text-text-weaker">
                 {language.t("novelx.sidebar.agents")}
               </h2>
               <div class="flex flex-col gap-0.5">
@@ -94,15 +106,20 @@ export function NovelXWorkspaceSidebar() {
                       <button
                         type="button"
                         aria-pressed={selected()}
-                        class="flex h-8 min-w-0 items-center gap-2 rounded-md px-2 text-left text-12-medium transition-colors hover:bg-surface-raised-base-hover"
+                        class="novelx-agent-row flex h-9 min-w-0 items-center gap-2 rounded-lg px-2 text-left text-12-medium transition-colors hover:bg-surface-raised-base-hover"
                         classList={{
                           "bg-surface-base-active text-text-strong": selected(),
                           "text-text-weak": !selected(),
                         }}
                         onClick={() => local.agent.set(agent.name)}
                       >
-                        <span class="size-1.5 shrink-0 rounded-full bg-icon-base" aria-hidden="true" />
+                        <span class="novelx-agent-symbol" aria-hidden="true">
+                          <Icon name="brain" size="small" />
+                        </span>
                         <span class="min-w-0 flex-1 truncate">{agent.name}</span>
+                        <Show when={selected()}>
+                          <span class="novelx-selected-mark" aria-hidden="true" />
+                        </Show>
                       </button>
                     )
                   }}
@@ -114,7 +131,7 @@ export function NovelXWorkspaceSidebar() {
               <div class="flex items-center gap-2 px-2 pb-1">
                 <h2
                   id="novelx-sessions-heading"
-                  class="min-w-0 flex-1 truncate text-11-medium uppercase tracking-wide text-text-weaker"
+                  class="novelx-section-heading min-w-0 flex-1 truncate text-11-medium text-text-weaker"
                 >
                   {language.t("novelx.sidebar.sessions")}
                 </h2>
@@ -139,13 +156,14 @@ export function NovelXWorkspaceSidebar() {
                         <button
                           type="button"
                           aria-current={selected() ? "page" : undefined}
-                          class="flex min-h-8 min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover"
+                          class="novelx-session-row flex min-h-9 min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover"
                           classList={{
                             "bg-surface-base-active text-text-strong": selected(),
                             "text-text-weak": !selected(),
                           }}
                           onClick={() => openSession(session.id)}
                         >
+                          <Icon name="speech-bubble" size="small" class="shrink-0 text-icon-weak" />
                           <span class="min-w-0 flex-1 truncate text-12-medium">
                             {sessionTitle(session.title) || language.t("command.session.new")}
                           </span>

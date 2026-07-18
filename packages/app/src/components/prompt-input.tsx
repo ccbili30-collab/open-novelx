@@ -1540,6 +1540,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
 
   const designPlaceholder = () => {
+    if (store.mode === "normal" && commentCount() === 0) return language.t("novelx.prompt.placeholder")
     return placeholder()
   }
 
