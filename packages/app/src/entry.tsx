@@ -14,13 +14,23 @@ import { ServerConnection } from "./context/server"
 const DEFAULT_SERVER_URL_KEY = "opencode.settings.dat:defaultServerUrl"
 
 const getLocale = () => {
-  if (typeof navigator !== "object") return "en" as const
-  const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
-  for (const language of languages) {
-    if (!language) continue
-    if (language.toLowerCase().startsWith("zh")) return "zh" as const
+  if (typeof localStorage === "object") {
+    try {
+      const raw = localStorage.getItem("opencode.global.dat:language")
+      const stored: unknown = raw ? JSON.parse(raw) : undefined
+      if (
+        stored &&
+        typeof stored === "object" &&
+        !Array.isArray(stored) &&
+        "locale" in stored &&
+        stored.locale === "en"
+      )
+        return "en" as const
+    } catch {
+      // Invalid persisted language falls back to the product default.
+    }
   }
-  return "en" as const
+  return "zh" as const
 }
 
 const getRootNotFoundError = () => {

@@ -74,39 +74,7 @@ const LOCALES: readonly Locale[] = [
   "br",
 ]
 
-function detectLocale(): Locale {
-  if (typeof navigator !== "object") return "en"
-
-  const languages = navigator.languages?.length ? navigator.languages : [navigator.language]
-  for (const language of languages) {
-    if (!language) continue
-    if (language.toLowerCase().startsWith("en")) return "en"
-    if (language.toLowerCase().startsWith("zh")) {
-      if (language.toLowerCase().includes("hant")) return "zht"
-      return "zh"
-    }
-    if (language.toLowerCase().startsWith("ko")) return "ko"
-    if (language.toLowerCase().startsWith("de")) return "de"
-    if (language.toLowerCase().startsWith("es")) return "es"
-    if (language.toLowerCase().startsWith("fr")) return "fr"
-    if (language.toLowerCase().startsWith("da")) return "da"
-    if (language.toLowerCase().startsWith("ja")) return "ja"
-    if (language.toLowerCase().startsWith("pl")) return "pl"
-    if (language.toLowerCase().startsWith("ru")) return "ru"
-    if (language.toLowerCase().startsWith("uk")) return "uk"
-    if (language.toLowerCase().startsWith("ar")) return "ar"
-    if (
-      language.toLowerCase().startsWith("no") ||
-      language.toLowerCase().startsWith("nb") ||
-      language.toLowerCase().startsWith("nn")
-    )
-      return "no"
-    if (language.toLowerCase().startsWith("pt")) return "br"
-    if (language.toLowerCase().startsWith("bs")) return "bs"
-  }
-
-  return "en"
-}
+export const DEFAULT_LOCALE: Locale = "zh"
 
 function parseLocale(value: unknown): Locale | null {
   if (!value) return null
@@ -162,7 +130,7 @@ function build(locale: Locale): Dictionary {
 }
 
 const state = {
-  locale: detectLocale(),
+  locale: DEFAULT_LOCALE as Locale,
   dict: base as Dictionary,
   init: undefined as Promise<Locale> | undefined,
 }
@@ -182,7 +150,7 @@ export function initI18n(): Promise<Locale> {
   const promise = (async () => {
     const raw = await window.api.storeGet("opencode.global.dat", "language").catch(() => null)
     const value = parseStored(raw)
-    const next = pickLocale(value) ?? state.locale
+    const next = pickLocale(value) ?? DEFAULT_LOCALE
 
     state.locale = next
     state.dict = build(next)

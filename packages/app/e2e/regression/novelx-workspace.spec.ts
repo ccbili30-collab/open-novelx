@@ -11,21 +11,21 @@ const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${pr
 
 test.use({ viewport: { width: 1600, height: 960 }, deviceScaleFactor: 1 })
 
-test("connects the NovelX workspace panes to real session, Agent, and World file state", async ({ page }, testInfo) => {
+test("首次启动以中文连接 NovelX 工作区、智能体、会话与世界文件", async ({ page }, testInfo) => {
   await mockOpenCodeServer(page, {
     directory,
     project: {
       id: projectID,
       worktree: directory,
       vcs: "git",
-      name: "Middle Earth",
+      name: "中土世界",
       time: { created: 1700000000000, updated: 1700000000000 },
       sandboxes: [],
     },
     agents: [
-      { name: "World Director", mode: "primary", native: false },
-      { name: "Geography", mode: "primary", native: false },
-      { name: "Hidden Worker", mode: "subagent" },
+      { name: "世界总编", mode: "primary", native: false },
+      { name: "地理构建师", mode: "primary", native: false },
+      { name: "隐藏工作者", mode: "subagent" },
     ],
     provider: {
       all: [
@@ -39,10 +39,10 @@ test("connects the NovelX workspace panes to real session, Agent, and World file
       default: { providerID: "opencode", modelID: "test" },
     },
     sessions: [
-      session(currentID, "Build the geography", 4),
-      session(olderID, "Found the first kingdoms", 2),
-      { ...session("ses_child", "Internal geography worker", 5), parentID: currentID },
-      { ...session("ses_archived", "Archived draft", 6), time: { created: 6, updated: 6, archived: 7 } },
+      session(currentID, "构建地理", 4),
+      session(olderID, "建立第一批王国", 2),
+      { ...session("ses_child", "内部地理工作者", 5), parentID: currentID },
+      { ...session("ses_archived", "已归档草稿", 6), time: { created: 6, updated: 6, archived: 7 } },
     ],
     vcsDiff: [],
     fileList: (path) => {
@@ -57,7 +57,7 @@ test("connects the NovelX workspace panes to real session, Agent, and World file
       if (path === "World/characters") return [node("World/characters/arin.md", "file")]
       return []
     },
-    fileContent: (path) => ({ type: "text", content: `contents:${path}` }),
+    fileContent: (path) => ({ type: "text", content: `内容：${path}` }),
     pageMessages: () => ({ items: [] }),
   })
 
@@ -89,41 +89,43 @@ test("connects the NovelX workspace panes to real session, Agent, and World file
   )
 
   await page.goto(`/server/${base64Encode(server)}/session/${currentID}`)
-  await expectSessionTitle(page, "Build the geography")
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh")
+  await expect(page.locator('[data-component="prompt-input"]')).toHaveAttribute("aria-label", /随便问点什么/)
+  await expectSessionTitle(page, "构建地理")
 
-  const workspace = page.getByRole("complementary", { name: "NovelX workspace" })
-  await expect(workspace.getByRole("button", { name: "New task" })).toBeVisible()
-  await expect(workspace.getByText("World Director", { exact: true })).toBeVisible()
-  await expect(workspace.getByText("Geography", { exact: true })).toBeVisible()
-  await expect(workspace.getByText("Hidden Worker", { exact: true })).toHaveCount(0)
-  await expect(workspace.getByText("Build the geography", { exact: true })).toBeVisible()
-  await expect(workspace.getByText("Found the first kingdoms", { exact: true })).toBeVisible()
-  await expect(workspace.getByText("Internal geography worker", { exact: true })).toHaveCount(0)
-  await expect(workspace.getByText("Archived draft", { exact: true })).toHaveCount(0)
+  const workspace = page.getByRole("complementary", { name: "NovelX 工作区" })
+  await expect(workspace.getByRole("button", { name: "新建任务" })).toBeVisible()
+  await expect(workspace.getByText("世界总编", { exact: true })).toBeVisible()
+  await expect(workspace.getByText("地理构建师", { exact: true })).toBeVisible()
+  await expect(workspace.getByText("隐藏工作者", { exact: true })).toHaveCount(0)
+  await expect(workspace.getByText("构建地理", { exact: true })).toBeVisible()
+  await expect(workspace.getByText("建立第一批王国", { exact: true })).toBeVisible()
+  await expect(workspace.getByText("内部地理工作者", { exact: true })).toHaveCount(0)
+  await expect(workspace.getByText("已归档草稿", { exact: true })).toHaveCount(0)
 
-  await workspace.getByRole("button", { name: "Found the first kingdoms", exact: true }).click()
+  await workspace.getByRole("button", { name: "建立第一批王国", exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/session/${olderID}$`))
-  await workspace.getByRole("button", { name: "Build the geography", exact: true }).click()
+  await workspace.getByRole("button", { name: "构建地理", exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/session/${currentID}$`))
 
-  const geography = workspace.getByRole("button", { name: "Geography", exact: true })
+  const geography = workspace.getByRole("button", { name: "地理构建师", exact: true })
   await geography.click()
   await expect(geography).toHaveAttribute("aria-pressed", "true")
 
   const resources = page.locator("#file-tree-panel")
-  await resources.getByRole("tab", { name: "World" }).click()
+  await resources.getByRole("tab", { name: "世界" }).click()
   await expect(resources.getByRole("button", { name: "geography" })).toBeVisible()
   await resources.getByRole("button", { name: "geography" }).click()
   await resources.getByRole("button", { name: "misty-mountains.md" }).click()
-  await expect(page.getByText("contents:World/geography/misty-mountains.md", { exact: true })).toBeVisible()
+  await expect(page.getByText("内容：World/geography/misty-mountains.md", { exact: true })).toBeVisible()
 
   await page.screenshot({ path: testInfo.outputPath("novelx-workspace.png"), fullPage: true })
 
-  await workspace.getByRole("button", { name: "Collapse NovelX workspace" }).click()
-  const expand = workspace.getByRole("button", { name: "Expand NovelX workspace" })
+  await workspace.getByRole("button", { name: "收起 NovelX 工作区" }).click()
+  const expand = workspace.getByRole("button", { name: "展开 NovelX 工作区" })
   await expect(expand).toBeVisible()
   await expand.click()
-  await workspace.getByRole("button", { name: "New task" }).click()
+  await workspace.getByRole("button", { name: "新建任务" }).click()
   await expect(page).toHaveURL(/\/new-session\?draftId=/)
   await expect(page.locator('[data-component="prompt-input"]')).toBeVisible()
 })
