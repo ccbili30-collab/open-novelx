@@ -1,6 +1,7 @@
 import { Show, type JSX } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
+import { useCommand } from "@/context/command"
 import { SessionPermissionDock } from "@/pages/session/composer/session-permission-dock"
 import { SessionQuestionDock } from "@/pages/session/composer/session-question-dock"
 import { SessionFollowupDock } from "@/pages/session/composer/session-followup-dock"
@@ -13,6 +14,7 @@ export function SessionComposerRegion(props: {
   promptInput: JSX.Element
 }) {
   const language = useLanguage()
+  const command = useCommand()
   const controller = props.controller
   const settings = useSettings()
   const rolled = () => {
@@ -131,6 +133,16 @@ export function SessionComposerRegion(props: {
                 "margin-top": `${-controller.lift()}px`,
               }}
             >
+              <Show when={settings.general.newLayoutDesigns()}>
+                <div class="novelx-composer-modebar" role="group" aria-label={language.t("novelx.composer.modes")}>
+                  <button type="button" aria-pressed="true" onClick={() => command.trigger("input.focus")}>
+                    {language.t("novelx.composer.assist")}
+                  </button>
+                  <button type="button" disabled title={language.t("novelx.composer.freeUnavailable")}>
+                    {language.t("novelx.composer.free")}
+                  </button>
+                </div>
+              </Show>
               <Show when={controller.followup()?.items.length}>
                 <SessionFollowupDock
                   items={controller.followup()!.items}

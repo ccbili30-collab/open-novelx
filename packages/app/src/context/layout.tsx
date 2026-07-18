@@ -27,7 +27,7 @@ export type { ProjectAvatarVariant }
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 const DEFAULT_SIDEBAR_WIDTH = 344
-const DEFAULT_FILE_TREE_WIDTH = 200
+const DEFAULT_FILE_TREE_WIDTH = 388
 const DEFAULT_SESSION_WIDTH = 600
 const DEFAULT_TERMINAL_HEIGHT = 280
 const DEFAULT_REVIEW_PANEL_OPENED = false
@@ -203,7 +203,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         return {
           ...fileTree,
           opened: true,
-          width: width === 260 ? DEFAULT_FILE_TREE_WIDTH : width,
+          width: width === 200 || width === 260 ? DEFAULT_FILE_TREE_WIDTH : width,
           tab: "changes",
         }
       })()

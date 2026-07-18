@@ -81,6 +81,7 @@ import {
 } from "@/pages/session/session-panel-width"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
 import { NovelXWorkspaceSidebar } from "@/pages/session/novelx-workspace-sidebar"
+import { NovelXShellToolbar, NovelXStatusbar } from "@/pages/session/novelx-shell-chrome"
 import { sessionPanelLayout } from "@/pages/session/session-panel-layout"
 import { SessionReviewEmptyChangesV2 } from "@opencode-ai/session-ui/v2/session-review-empty-changes-v2"
 import { SessionReviewEmptyNoGitV2 } from "@opencode-ai/session-ui/v2/session-review-empty-no-git-v2"
@@ -341,12 +342,12 @@ function SessionRouteFrame(props: ParentProps<{ padded?: boolean }>) {
 function SessionPanelFrame(props: ParentProps<{ newLayout: boolean; raised?: boolean }>) {
   return (
     <div
+      data-component="novelx-session-panel"
       classList={{
         "flex-1 min-h-0 flex flex-col": true,
         "bg-v2-background-bg-base": props.newLayout,
         "bg-background-stronger": !props.newLayout,
-        "rounded-[10px] overflow-hidden": props.newLayout,
-        "shadow-[var(--v2-elevation-raised)]": props.newLayout && props.raised,
+        "overflow-hidden": props.newLayout,
       }}
     >
       {props.children}
@@ -2249,16 +2250,11 @@ export default function Page() {
 
   return (
     <SessionRouteFrame>
+      <NovelXShellToolbar />
       <SessionHeader />
       <div class="flex-1 min-h-0 flex">
         <NovelXWorkspaceSidebar />
-        <div
-          ref={panelRow}
-          class="flex-1 min-w-0 min-h-0 flex flex-col md:flex-row"
-          classList={{
-            "gap-2 p-2": settings.general.newLayoutDesigns(),
-          }}
-        >
+        <div ref={panelRow} class="flex-1 min-w-0 min-h-0 flex flex-col md:flex-row">
           <Show when={!isDesktop() && !!params.id && !settings.general.newLayoutDesigns()}>{mobileTabs()}</Show>
 
           <div
@@ -2386,6 +2382,7 @@ export default function Page() {
       <Show when={!newSessionDesign()}>
         <TerminalPanel />
       </Show>
+      <NovelXStatusbar />
     </SessionRouteFrame>
   )
 }

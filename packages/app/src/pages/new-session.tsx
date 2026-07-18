@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createResource, createSignal, onCleanup, untrack } from "solid-js"
+import { Show, createEffect, createMemo, createResource, createSignal, untrack } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Portal } from "solid-js/web"
 import { useSearchParams } from "@solidjs/router"
@@ -9,11 +9,7 @@ import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import { NewSessionDesignView } from "@/components/session"
 import { PromptInput } from "@/components/prompt-input"
 import { StatusPopoverV2 } from "@/components/status-popover"
-import {
-  PromptProjectAddButton,
-  PromptProjectSelector,
-  createPromptProjectController,
-} from "@/components/prompt-project-selector"
+import { PromptProjectAddButton, createPromptProjectController } from "@/components/prompt-project-selector"
 import { useComments } from "@/context/comments"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
@@ -25,7 +21,6 @@ import { createPromptInputController, createPromptProjectControls } from "@/page
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useComposerCommands } from "@/pages/session/use-composer-commands"
 import { NEW_SESSION_CONTENT_WIDTH } from "@/pages/session/new-session-layout"
-import { PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
 import { useTitlebarRightMount } from "@/components/titlebar"
 import { useCommand } from "@/context/command"
 import { useProviders } from "@/hooks/use-providers"
@@ -35,16 +30,18 @@ import createPresence from "solid-presence"
 import { useLocal } from "@/context/local"
 import { createPromptModelSelection } from "@/pages/session/composer/prompt-model-selection"
 import { NovelXWorkspaceSidebar } from "@/pages/session/novelx-workspace-sidebar"
+import { NovelXShellToolbar, NovelXStatusbar } from "@/pages/session/novelx-shell-chrome"
+import { SessionSidePanel } from "@/pages/session/session-side-panel"
+import { createSizing } from "@/pages/session/helpers"
 import "@/pages/session/novelx-workspace.css"
 
 const workspaceBarEnabled = import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"
 const providerTipDismissalDuration = 30 * 24 * 60 * 60 * 1000
-const providerTipExitDuration = 250
 
 /**
- * The `/new-session` draft page. Unlike `session.tsx`, this only renders the prompt
- * composer for a brand-new session — no terminal, review pane, file tree, or message
- * timeline. Submitting promotes the draft into a real session (see prompt-input/submit).
+ * The `/new-session` draft page. It renders the NovelX project shell, real file tree,
+ * and prompt composer without a message timeline or review diff. Submitting promotes
+ * the draft into a real session (see prompt-input/submit).
  */
 export default function NewSessionPage() {
   const prompt = usePrompt()
@@ -63,6 +60,7 @@ export default function NewSessionPage() {
   const [searchParams, setSearchParams] = useSearchParams<{ draftId?: string; prompt?: string }>()
   const local = useLocal()
   const model = createPromptModelSelection({ agent: local.agent.current })
+  const panelSize = createSizing()
 
   useComposerCommands({ model })
 
@@ -110,14 +108,6 @@ export default function NewSessionPage() {
     if (project && sdk().directory !== project.worktree) return sdk().directory
     return "main"
   })
-  const projectRoot = createMemo(() => sync().project?.worktree ?? sdk().directory)
-  const localBranch = createMemo(() => serverSync().child(projectRoot())[0].vcs?.branch)
-  const selectedBranch = createMemo(() => {
-    const worktree = newSessionWorktree()
-    if (worktree === "main" || worktree === "create") return localBranch()
-    return serverSync().child(worktree)[0].vcs?.branch ?? localBranch()
-  })
-
   createEffect(() => {
     if (!prompt.ready()) return
     untrack(() => {
@@ -151,11 +141,12 @@ export default function NewSessionPage() {
           </Portal>
         )}
       </Show>
+      <NovelXShellToolbar />
       <div class="flex-1 min-h-0 flex">
         <NovelXWorkspaceSidebar />
-        <div class="flex-1 min-w-0 min-h-0 flex flex-col gap-2 p-2">
+        <div class="flex-1 min-w-0 min-h-0 flex flex-col">
           <div class="@container relative flex flex-col min-h-0 h-full flex-1">
-            <div class="flex-1 min-h-0 overflow-hidden rounded-[10px]">
+            <div class="flex-1 min-h-0 overflow-hidden">
               <NewSessionDesignView>
                 <div class={NEW_SESSION_CONTENT_WIDTH}>
                   <Show
@@ -185,37 +176,6 @@ export default function NewSessionPage() {
                           </Show>
                         }
                       />
-                      <Show when={projectController.selected()}>
-                        <div
-                          class="flex min-h-7 min-w-0 items-center gap-0 text-v2-text-text-faint"
-                          classList={{
-                            "flex-col justify-center sm:flex-row": showWorkspaceBar(),
-                            "justify-start": !showWorkspaceBar(),
-                          }}
-                        >
-                          <PromptProjectSelector
-                            controller={projectController}
-                            placement={showWorkspaceBar() ? "bottom" : "bottom-start"}
-                          />
-                          <Show when={showWorkspaceBar()}>
-                            <PromptWorkspaceSelector
-                              value={newSessionWorktree()}
-                              projectRoot={projectRoot()}
-                              workspaces={sync().project?.sandboxes ?? []}
-                              branch={selectedBranch()}
-                              onChange={(value) =>
-                                setStore(
-                                  "worktree",
-                                  value === "main" && sync().project?.worktree !== sdk().directory
-                                    ? sync().project?.worktree
-                                    : value,
-                                )
-                              }
-                              onDone={() => inputRef?.focus()}
-                            />
-                          </Show>
-                        </div>
-                      </Show>
                     </div>
                   </Show>
                 </div>
@@ -228,7 +188,21 @@ export default function NewSessionPage() {
             </div>
           </div>
         </div>
+        <SessionSidePanel
+          canReview={() => false}
+          diffs={() => []}
+          diffsReady={() => true}
+          empty={() => language.t("session.review.empty")}
+          hasReview={() => false}
+          reviewHasFocusableContent={() => false}
+          reviewCount={() => 0}
+          reviewPanel={() => null}
+          focusReviewDiff={() => undefined}
+          reviewSnap={false}
+          size={panelSize}
+        />
       </div>
+      <NovelXStatusbar />
     </div>
   )
 }

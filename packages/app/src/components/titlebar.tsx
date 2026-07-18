@@ -52,6 +52,7 @@ const currentDesktopWindow = () => tauriApi()?.window?.getCurrentWindow?.()
 const currentThemeWindow = () => tauriApi()?.webviewWindow?.getCurrentWebviewWindow?.()
 const legacyTitlebarHeight = 40
 const v2TitlebarHeight = 36
+const novelxTitlebarHeight = 28
 const minTitlebarZoom = 0.25
 const windowsControlsBaseWidth = 138 // 3 native Windows caption buttons at 46px each.
 
@@ -79,6 +80,10 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
   const location = useLocation()
   const params = useParams()
   const useV2Titlebar = createMemo(() => settings.general.newLayoutDesigns())
+  const novelxWorkspace = createMemo(() => {
+    const type = layout.route().type
+    return type === "session" || type === "draft" || type === "dir-new-sesssion"
+  })
   const mobile = createMediaQuery("(max-width: 767px)")
   const bottom = createMemo(() => useV2Titlebar() && mobile() && settings.general.mobileTitlebarPosition() === "bottom")
 
@@ -91,7 +96,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
   const titlebarZoom = () => (windows() ? Math.max(zoom(), minTitlebarZoom) : zoom())
   const counterZoom = () => (windows() && titlebarZoom() < 1 ? 1 / titlebarZoom() : 1)
   const minHeight = () => {
-    const height = useV2Titlebar() ? v2TitlebarHeight : legacyTitlebarHeight
+    const height = novelxWorkspace() ? novelxTitlebarHeight : useV2Titlebar() ? v2TitlebarHeight : legacyTitlebarHeight
     if (mac()) return `${height / zoom()}px`
     if (windows()) return `${height / Math.min(titlebarZoom(), 1)}px`
     return undefined
@@ -228,9 +233,11 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
   return (
     <header
       data-slot={useV2Titlebar() ? "titlebar-v2" : undefined}
+      data-novelx-titlebar={novelxWorkspace() ? "" : undefined}
       classList={{
         "shrink-0 relative flex flex-row": true,
-        "h-9 bg-v2-background-bg-deep overflow-visible": useV2Titlebar(),
+        "h-7 novelx-window-titlebar": novelxWorkspace(),
+        "h-9 bg-v2-background-bg-deep overflow-visible": useV2Titlebar() && !novelxWorkspace(),
         "h-10 bg-background-base overflow-hidden": !useV2Titlebar(),
         "order-last": bottom(),
       }}

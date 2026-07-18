@@ -1,26 +1,29 @@
 import type { JSX } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"
-import { NEW_SESSION_CONTENT_WIDTH } from "@/pages/session/new-session-layout"
+import { useCommand } from "@/context/command"
 
 export function NewSessionDesignView(props: { children: JSX.Element }) {
   const language = useLanguage()
+  const command = useCommand()
 
   return (
-    <div data-component="session-new-design" class="relative size-full overflow-hidden bg-v2-background-bg-deep">
-      <div class="absolute inset-x-0 top-[22%] flex justify-center px-6">
-        <div class={NEW_SESSION_CONTENT_WIDTH}>
-          <div class="novelx-new-session-masthead">
-            <div class="novelx-welcome-symbol" aria-hidden="true">
-              <Icon name="models" size="large" />
-            </div>
-            <div class="min-w-0">
-              <div class="novelx-new-session-brand">NovelX</div>
-              <div class="novelx-new-session-tagline">{language.t("novelx.workspace.tagline")}</div>
-            </div>
-          </div>
-          <div class="mt-8">{props.children}</div>
+    <div data-component="session-new-design" class="novelx-new-session-design">
+      <div class="novelx-conversation-label">
+        <Icon name="branch" size="small" />
+        <span>{language.t("command.session.new")}</span>
+      </div>
+      <div class="novelx-new-session-spacer" />
+      <div class="novelx-new-session-composer">
+        <div class="novelx-composer-modebar" role="group" aria-label={language.t("novelx.composer.modes")}>
+          <button type="button" aria-pressed="true" onClick={() => command.trigger("input.focus")}>
+            {language.t("novelx.composer.assist")}
+          </button>
+          <button type="button" disabled title={language.t("novelx.composer.freeUnavailable")}>
+            {language.t("novelx.composer.free")}
+          </button>
         </div>
+        {props.children}
       </div>
     </div>
   )

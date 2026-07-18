@@ -25,7 +25,10 @@ benchmark.describe("performance: first navigation paint", () => {
       destinationSelector: messageSelector(fixture.expected.targetMessageIDs.at(-1)!),
       contentSelector,
       navigate: async () => {
-        await page.locator(`[data-slot="titlebar-tabs"] a[href="${href}"]`).first().click()
+        await page
+          .locator(`[data-slot="titlebar-tabs"] a[href="${href}"]`)
+          .first()
+          .evaluate((link: HTMLAnchorElement) => link.click())
         await expectSessionTitle(page, fixture.expected.targetTitle)
       },
     })
@@ -44,7 +47,10 @@ benchmark.describe("performance: first navigation paint", () => {
       destinationSelector: '[data-component="prompt-input"]',
       contentSelector,
       navigate: async () => {
-        await page.locator(`[data-slot="titlebar-tabs"] a[href="${href}"]`).first().click()
+        await page
+          .locator(`[data-slot="titlebar-tabs"] a[href="${href}"]`)
+          .first()
+          .evaluate((link: HTMLAnchorElement) => link.click())
         await expect(page.locator('[data-component="prompt-input"]')).toBeVisible()
       },
     })

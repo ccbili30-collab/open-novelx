@@ -87,7 +87,7 @@ export function SessionSidePanel(props: {
   const command = useCommand()
   const dialog = useDialog()
   const sdk = useSDK()
-  const { sessionKey, tabs, view, params } = useSessionLayout()
+  const { sessionKey, tabs, view } = useSessionLayout()
   const projectDirectory = createMemo(() => sdk().directory)
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
@@ -152,6 +152,12 @@ export function SessionSidePanel(props: {
     return file.tree.children("").length === 0
   })
   const rootState = createMemo(() => file.tree.state(""))
+  const rootResourcePaths = createMemo(() =>
+    file.tree
+      .children("")
+      .filter((node) => file.normalize(node.path) !== file.normalize("World"))
+      .map((node) => node.path),
+  )
   const worldState = createMemo(() => file.tree.state("World"))
   const hasWorldDirectory = createMemo(() =>
     file.tree
@@ -256,6 +262,8 @@ export function SessionSidePanel(props: {
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
     resourceView: "files" as "files" | "world",
+    filesExpanded: true,
+    activityExpanded: false,
   })
 
   const handleDragStart = (event: unknown) => {
@@ -300,7 +308,7 @@ export function SessionSidePanel(props: {
   })
 
   return (
-    <Show when={isDesktop() && !(settings.general.newLayoutDesigns() && !params.id)}>
+    <Show when={isDesktop()}>
       <aside
         id="review-panel"
         aria-label={language.t("session.panel.reviewAndFiles")}
@@ -770,154 +778,250 @@ export function SessionSidePanel(props: {
                   class="h-full flex flex-col overflow-hidden group/filetree"
                   classList={{ "border-l border-border-weaker-base": reviewOpen() }}
                 >
-                  <div
-                    class="novelx-resource-switch shrink-0 flex gap-1 border-b border-border-weaker-base bg-background-stronger p-1"
-                    role="tablist"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={store.resourceView === "files"}
-                      class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-12-medium transition-colors"
-                      classList={{
-                        "bg-surface-base-active text-text-strong": store.resourceView === "files",
-                        "text-text-weak hover:bg-surface-raised-base-hover": store.resourceView !== "files",
-                      }}
-                      onClick={() => setStore("resourceView", "files")}
-                    >
-                      <Icon name="file-tree" size="small" />
-                      {language.t("novelx.resources.files")}
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={store.resourceView === "world"}
-                      class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-12-medium transition-colors"
-                      classList={{
-                        "bg-surface-base-active text-text-strong": store.resourceView === "world",
-                        "text-text-weak hover:bg-surface-raised-base-hover": store.resourceView !== "world",
-                      }}
-                      onClick={() => setStore("resourceView", "world")}
-                    >
-                      <Icon name="branch" size="small" />
-                      {language.t("novelx.resources.world")}
-                    </button>
-                  </div>
-                  <Show when={store.resourceView === "files"}>
-                    <Tabs
-                      variant="pill"
-                      value={fileTreeTab()}
-                      onChange={setFileTreeTabValue}
-                      class="min-h-0 flex-1"
-                      data-scope="filetree"
-                    >
-                      <Tabs.List>
-                        <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
-                          <Show
-                            when={settings.general.newLayoutDesigns()}
-                            fallback={
-                              <>
-                                {props.reviewCount()}{" "}
-                                {language.t(
-                                  props.reviewCount() === 1
-                                    ? "session.review.change.one"
-                                    : "session.review.change.other",
-                                )}
-                              </>
-                            }
-                          >
-                            {language.t("session.review.filesChanged", { count: props.reviewCount() })}
+                  <Show
+                    when={!settings.general.newLayoutDesigns()}
+                    fallback={
+                      <div class="novelx-resource-sections">
+                        <section class="novelx-resource-section">
+                          <div class="novelx-resource-heading">
+                            <button
+                              type="button"
+                              class="novelx-resource-heading-button"
+                              aria-expanded={store.filesExpanded}
+                              onClick={() => setStore("filesExpanded", (value) => !value)}
+                            >
+                              <Icon
+                                name="chevron-down"
+                                size="small"
+                                classList={{ "-rotate-90": !store.filesExpanded }}
+                              />
+                              <strong>{language.t("novelx.resources.fileContents")}</strong>
+                            </button>
+                          </div>
+                          <Show when={store.filesExpanded}>
+                            <div class="novelx-resource-file-list">
+                              <Switch>
+                                <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>
+                                <Match when={true}>
+                                  <FileTree
+                                    path=""
+                                    allowed={rootResourcePaths()}
+                                    nodeClass="!h-8"
+                                    modified={diffFiles()}
+                                    kinds={kinds()}
+                                    onFileClick={(node) => openTab(file.tab(node.path))}
+                                  />
+                                </Match>
+                              </Switch>
+                            </div>
                           </Show>
-                        </Tabs.Trigger>
-                        <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
-                          {language.t("session.files.all")}
-                        </Tabs.Trigger>
-                      </Tabs.List>
-                      <Show when={fileTreeTab() === "changes"}>
-                        <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
-                          <Switch>
-                            <Match when={props.hasReview() || !props.diffsReady()}>
-                              <Show
-                                when={props.diffsReady()}
-                                fallback={
-                                  <div class="px-2 py-2 text-12-regular text-text-weak">
+                        </section>
+
+                        <section class="novelx-resource-section novelx-activity-section">
+                          <div class="novelx-resource-heading">
+                            <button
+                              type="button"
+                              class="novelx-resource-heading-button"
+                              aria-expanded={store.activityExpanded}
+                              onClick={() => setStore("activityExpanded", (value) => !value)}
+                            >
+                              <Icon
+                                name="chevron-down"
+                                size="small"
+                                classList={{ "-rotate-90": !store.activityExpanded }}
+                              />
+                              <strong>{language.t("novelx.resources.activity")}</strong>
+                            </button>
+                            <div class="novelx-resource-heading-actions">
+                              <button type="button" onClick={() => command.trigger("input.focus")}>
+                                {language.t("novelx.resources.discuss")}
+                              </button>
+                              <button type="button" onClick={() => setStore("activityExpanded", true)}>
+                                {language.t("novelx.resources.viewAll")}
+                              </button>
+                            </div>
+                          </div>
+                          <Show when={store.activityExpanded}>
+                            <div class="novelx-world-panel">
+                              <Switch>
+                                <Match when={worldStatus() === "error"}>
+                                  <div class="novelx-resource-message">
+                                    {language.t("novelx.world.error")}: {worldState()?.error ?? rootState()?.error}
+                                  </div>
+                                </Match>
+                                <Match when={worldStatus() === "loading"}>
+                                  <div class="novelx-resource-message">
                                     {language.t("common.loading")}
                                     {language.t("common.loading.ellipsis")}
                                   </div>
-                                }
-                              >
+                                </Match>
+                                <Match when={worldStatus() === "empty"}>
+                                  <div class="novelx-resource-message">{language.t("novelx.world.empty")}</div>
+                                </Match>
+                                <Match when={true}>
+                                  <FileTree
+                                    path="World"
+                                    modified={diffFiles()}
+                                    kinds={kinds()}
+                                    onFileClick={(node) => openTab(file.tab(node.path))}
+                                  />
+                                </Match>
+                              </Switch>
+                            </div>
+                          </Show>
+                        </section>
+                      </div>
+                    }
+                  >
+                    <div
+                      class="novelx-resource-switch shrink-0 flex gap-1 border-b border-border-weaker-base bg-background-stronger p-1"
+                      role="tablist"
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={store.resourceView === "files"}
+                        class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-12-medium transition-colors"
+                        classList={{
+                          "bg-surface-base-active text-text-strong": store.resourceView === "files",
+                          "text-text-weak hover:bg-surface-raised-base-hover": store.resourceView !== "files",
+                        }}
+                        onClick={() => setStore("resourceView", "files")}
+                      >
+                        <Icon name="file-tree" size="small" />
+                        {language.t("novelx.resources.files")}
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={store.resourceView === "world"}
+                        class="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-12-medium transition-colors"
+                        classList={{
+                          "bg-surface-base-active text-text-strong": store.resourceView === "world",
+                          "text-text-weak hover:bg-surface-raised-base-hover": store.resourceView !== "world",
+                        }}
+                        onClick={() => setStore("resourceView", "world")}
+                      >
+                        <Icon name="branch" size="small" />
+                        {language.t("novelx.resources.world")}
+                      </button>
+                    </div>
+                    <Show when={store.resourceView === "files"}>
+                      <Tabs
+                        variant="pill"
+                        value={fileTreeTab()}
+                        onChange={setFileTreeTabValue}
+                        class="min-h-0 flex-1"
+                        data-scope="filetree"
+                      >
+                        <Tabs.List>
+                          <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
+                            <Show
+                              when={settings.general.newLayoutDesigns()}
+                              fallback={
+                                <>
+                                  {props.reviewCount()}{" "}
+                                  {language.t(
+                                    props.reviewCount() === 1
+                                      ? "session.review.change.one"
+                                      : "session.review.change.other",
+                                  )}
+                                </>
+                              }
+                            >
+                              {language.t("session.review.filesChanged", { count: props.reviewCount() })}
+                            </Show>
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
+                            {language.t("session.files.all")}
+                          </Tabs.Trigger>
+                        </Tabs.List>
+                        <Show when={fileTreeTab() === "changes"}>
+                          <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
+                            <Switch>
+                              <Match when={props.hasReview() || !props.diffsReady()}>
+                                <Show
+                                  when={props.diffsReady()}
+                                  fallback={
+                                    <div class="px-2 py-2 text-12-regular text-text-weak">
+                                      {language.t("common.loading")}
+                                      {language.t("common.loading.ellipsis")}
+                                    </div>
+                                  }
+                                >
+                                  <FileTree
+                                    path=""
+                                    class="pt-3"
+                                    allowed={diffFiles()}
+                                    kinds={kinds()}
+                                    draggable={false}
+                                    active={props.activeDiff}
+                                    onFileClick={(node) => props.focusReviewDiff(node.path)}
+                                  />
+                                </Show>
+                              </Match>
+                            </Switch>
+                          </Tabs.Content>
+                        </Show>
+                        <Show when={fileTreeTab() === "all"}>
+                          <Tabs.Content value="all" class="bg-background-stronger px-3 py-0">
+                            <Switch>
+                              <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>
+                              <Match when={true}>
                                 <FileTree
                                   path=""
                                   class="pt-3"
-                                  allowed={diffFiles()}
+                                  modified={diffFiles()}
                                   kinds={kinds()}
-                                  draggable={false}
-                                  active={props.activeDiff}
-                                  onFileClick={(node) => props.focusReviewDiff(node.path)}
+                                  onFileClick={(node) => openTab(file.tab(node.path))}
                                 />
-                              </Show>
-                            </Match>
-                          </Switch>
-                        </Tabs.Content>
-                      </Show>
-                      <Show when={fileTreeTab() === "all"}>
-                        <Tabs.Content value="all" class="bg-background-stronger px-3 py-0">
-                          <Switch>
-                            <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>
-                            <Match when={true}>
-                              <FileTree
-                                path=""
-                                class="pt-3"
-                                modified={diffFiles()}
-                                kinds={kinds()}
-                                onFileClick={(node) => openTab(file.tab(node.path))}
-                              />
-                            </Match>
-                          </Switch>
-                        </Tabs.Content>
-                      </Show>
-                    </Tabs>
-                  </Show>
-                  <Show when={store.resourceView === "world"}>
-                    <div
-                      role="tabpanel"
-                      class="novelx-world-panel min-h-0 flex-1 overflow-y-auto bg-background-stronger px-3 py-0"
-                    >
-                      <div class="novelx-world-summary">
-                        <span class="novelx-world-symbol" aria-hidden="true">
-                          <Icon name="branch" size="small" />
-                        </span>
-                        <div class="min-w-0 flex-1">
-                          <div class="truncate text-12-medium text-text-strong">
-                            {language.t("novelx.resources.world")}
+                              </Match>
+                            </Switch>
+                          </Tabs.Content>
+                        </Show>
+                      </Tabs>
+                    </Show>
+                    <Show when={store.resourceView === "world"}>
+                      <div
+                        role="tabpanel"
+                        class="novelx-world-panel min-h-0 flex-1 overflow-y-auto bg-background-stronger px-3 py-0"
+                      >
+                        <div class="novelx-world-summary">
+                          <span class="novelx-world-symbol" aria-hidden="true">
+                            <Icon name="branch" size="small" />
+                          </span>
+                          <div class="min-w-0 flex-1">
+                            <div class="truncate text-12-medium text-text-strong">
+                              {language.t("novelx.resources.world")}
+                            </div>
+                            <div class="text-10-regular text-text-weaker">× {file.tree.children("World").length}</div>
                           </div>
-                          <div class="text-10-regular text-text-weaker">× {file.tree.children("World").length}</div>
                         </div>
+                        <Switch>
+                          <Match when={worldStatus() === "error"}>
+                            <div class="px-2 py-3 text-12-regular text-text-weak">
+                              {language.t("novelx.world.error")}: {worldState()?.error ?? rootState()?.error}
+                            </div>
+                          </Match>
+                          <Match when={worldStatus() === "loading"}>
+                            <div class="px-2 py-3 text-12-regular text-text-weak">
+                              {language.t("common.loading")}
+                              {language.t("common.loading.ellipsis")}
+                            </div>
+                          </Match>
+                          <Match when={worldStatus() === "empty"}>{empty(language.t("novelx.world.empty"))}</Match>
+                          <Match when={true}>
+                            <FileTree
+                              path="World"
+                              class="pt-3"
+                              modified={diffFiles()}
+                              kinds={kinds()}
+                              onFileClick={(node) => openTab(file.tab(node.path))}
+                            />
+                          </Match>
+                        </Switch>
                       </div>
-                      <Switch>
-                        <Match when={worldStatus() === "error"}>
-                          <div class="px-2 py-3 text-12-regular text-text-weak">
-                            {language.t("novelx.world.error")}: {worldState()?.error ?? rootState()?.error}
-                          </div>
-                        </Match>
-                        <Match when={worldStatus() === "loading"}>
-                          <div class="px-2 py-3 text-12-regular text-text-weak">
-                            {language.t("common.loading")}
-                            {language.t("common.loading.ellipsis")}
-                          </div>
-                        </Match>
-                        <Match when={worldStatus() === "empty"}>{empty(language.t("novelx.world.empty"))}</Match>
-                        <Match when={true}>
-                          <FileTree
-                            path="World"
-                            class="pt-3"
-                            modified={diffFiles()}
-                            kinds={kinds()}
-                            onFileClick={(node) => openTab(file.tab(node.path))}
-                          />
-                        </Match>
-                      </Switch>
-                    </div>
+                    </Show>
                   </Show>
                 </div>
                 <Show when={fileOpen()}>
@@ -926,7 +1030,7 @@ export function SessionSidePanel(props: {
                       direction="horizontal"
                       edge="start"
                       size={layout.fileTree.width()}
-                      min={200}
+                      min={300}
                       max={480}
                       onResize={(width) => {
                         props.size.touch()
