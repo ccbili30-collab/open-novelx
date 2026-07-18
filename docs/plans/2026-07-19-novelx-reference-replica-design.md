@@ -123,6 +123,8 @@ run id: 2026-07-18T18-59-03-398Z-34388
 
 ## 最终验收证据
 
+- 实现提交：`c00075b feat(app): replicate NovelX reference workspace`，分支 `novelx-ui`。
+- 关键命令：`bun run typecheck`、`bun run typecheck:e2e`、`bun run build`（应用和桌面各一次）、两条定向 Playwright 回归、`first-navigation-benchmark.spec.ts`、仓库 `bun run lint`。
 - 目标视口的浏览器回归固定了三栏与输入区边界，允许 2px 的渲染取整误差：左栏 `286px`、右栏 `388px`、右栏起点 `x=1231`、输入区约 `x=299, y=848, w=919, h=86`。
 - 参考图比较完成四轮截图修正。第四轮相对第一轮的全图 MAD（平均绝对差）从 `6.627` 降至 `3.642`，全图 RMS（均方根差）从 `15.324` 降至 `13.792`。
 - Electron（桌面运行壳）使用隔离的临时用户数据目录启动当前生产构建，连接构建内真实 sidecar，加载真实仓库文件树并成功渲染 `1619 × 972` 中文工作区。没有调用真实 Provider（模型服务），也没有用 Mock 数据冒充模型运行。
