@@ -5,8 +5,11 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { NOVELX_RESOURCES, type NovelXResource } from "@/context/novelx-workspace"
 import { useSDK } from "@/context/sdk"
+import { createNovelXDocumentController } from "@/context/novelx-document"
+import { showToast } from "@/utils/toast"
+import { NovelXDocumentEditor } from "./novelx-document-editor"
+import "./novelx-document-editor.css"
 import { For, Match, Show, Switch, createMemo } from "solid-js"
-import { createStore } from "solid-js/store"
 
 const resourceIcon: Record<NovelXResource, IconProps["name"]> = {
   files: "file-tree",
@@ -107,20 +110,18 @@ const resourceScaffold = (resource: NovelXResource) => (
 )
 
 export function NovelXResourceWorkspace(props: {
-  rootPaths: () => string[]
   modified: () => string[]
   kinds: () => Map<string, "add" | "del" | "mix">
   rootEmpty: () => boolean
   worldStatus: () => "error" | "loading" | "empty" | "tree"
   worldError: () => string | undefined
-  onOpenFile: (path: string) => void
 }) {
   const file = useFile()
   const language = useLanguage()
   const layout = useLayout()
   const sdk = useSDK()
   const view = layout.novelx.project(() => sdk().directory)
-  const [store, setStore] = createStore({ selectedPath: undefined as string | undefined })
+  const document = createNovelXDocumentController({ path: view.activeFile })
 
   const active = view.activeResource
   const title = createMemo(() => {
@@ -129,8 +130,17 @@ export function NovelXResourceWorkspace(props: {
   })
 
   const select = (path: string) => {
-    setStore("selectedPath", path)
-    props.onOpenFile(path)
+    const normalized = file.normalize(path)
+    if (normalized === file.normalize(view.activeFile())) return
+    if (!document.canLeave()) {
+      showToast({
+        variant: "default",
+        title: language.t("novelx.document.unsaved.title"),
+        description: language.t("novelx.document.unsaved.description"),
+      })
+      return
+    }
+    view.setActiveFile(normalized)
   }
 
   const resourcePath = (resource: NovelXResource) => {
@@ -142,7 +152,8 @@ export function NovelXResourceWorkspace(props: {
       return "World/characters"
     }
     if (resource === "story") {
-      if (file.tree.children("").some((node) => file.normalize(node.path) === file.normalize("Stories"))) return "Stories"
+      if (file.tree.children("").some((node) => file.normalize(node.path) === file.normalize("Stories")))
+        return "Stories"
       return "Story"
     }
     return ""
@@ -156,11 +167,13 @@ export function NovelXResourceWorkspace(props: {
     return (
       <FileTree
         path={path}
-        allowed={path ? undefined : props.rootPaths()}
         modified={props.modified()}
         kinds={props.kinds()}
-        active={store.selectedPath}
-        onFileClick={(node) => select(node.path)}
+        active={view.activeFile()}
+        onFileClick={(node) => {
+          if (node.type !== "file") return
+          select(node.path)
+        }}
       />
     )
   }
@@ -198,7 +211,7 @@ export function NovelXResourceWorkspace(props: {
           <span>{language.t(resourceLabel(resource))}</span>
           <small>{language.t(resourceCopy[resource].summary)}</small>
         </div>
-        <Show when={store.selectedPath && !view.inspectorOpen()}>
+        <Show when={view.activeFile() && !view.inspectorOpen()}>
           <button
             type="button"
             class="novelx-symbol-button"
@@ -211,7 +224,7 @@ export function NovelXResourceWorkspace(props: {
       </div>
       <div class="novelx-resource-primary-body">
         <Show
-          when={store.selectedPath}
+          when={document.state()}
           fallback={
             <div class="novelx-resource-blank">
               {resourceScaffold(resource)}
@@ -221,12 +234,15 @@ export function NovelXResourceWorkspace(props: {
             </div>
           }
         >
-          {(path) => (
-            <div class="novelx-resource-selection">
-              <Icon name={resourceIcon[resource]} size="large" />
-              <strong>{path()}</strong>
-              <span>{language.t("novelx.resource.openedInEditor")}</span>
-            </div>
+          {(state) => (
+            <NovelXDocumentEditor
+              state={state()}
+              locked={document.locked()}
+              lockedAgents={document.lockedAgents()}
+              onInput={document.edit}
+              onSave={() => void document.save()}
+              onReload={document.reload}
+            />
           )}
         </Show>
       </div>
@@ -255,11 +271,11 @@ export function NovelXResourceWorkspace(props: {
                 >
                   <FileTree
                     path=""
-                    allowed={props.rootPaths()}
                     modified={props.modified()}
                     kinds={props.kinds()}
-                    active={store.selectedPath}
+                    active={view.activeFile()}
                     onFileClick={(node) => {
+                      if (node.type !== "file") return
                       view.activateResource("files")
                       select(node.path)
                     }}
@@ -282,7 +298,7 @@ export function NovelXResourceWorkspace(props: {
                 </div>
               </nav>
               {primary(resource())}
-              <Show when={view.inspectorOpen() && store.selectedPath}>
+              <Show when={view.inspectorOpen() && view.activeFile()}>
                 <aside class="novelx-resource-inspector">
                   <div class="novelx-resource-inspector-heading">
                     <strong>{language.t("novelx.resource.details")}</strong>
@@ -297,7 +313,7 @@ export function NovelXResourceWorkspace(props: {
                   </div>
                   <dl>
                     <dt>{language.t("novelx.resource.path")}</dt>
-                    <dd>{store.selectedPath}</dd>
+                    <dd>{view.activeFile()}</dd>
                     <dt>{language.t("novelx.resource.state")}</dt>
                     <dd>{language.t("novelx.resource.realFile")}</dd>
                   </dl>

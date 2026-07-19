@@ -23,6 +23,11 @@ export interface MockServerConfig {
   questions?: unknown[] | (() => unknown[])
   fileList?: (path: string) => unknown | Promise<unknown>
   fileContent?: (path: string) => unknown | Promise<unknown>
+  fileEditable?: (path: string) => unknown | Promise<unknown>
+  fileWrite?: (input: {
+    path: string
+    body: unknown
+  }) => { body: unknown; status?: number } | Promise<{ body: unknown; status?: number }>
   findFiles?: (input: { query: string; dirs?: string; limit?: number }) => unknown
   sessionStatus?: unknown
 }
@@ -73,6 +78,15 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
       return json(route, await config.fileList(url.searchParams.get("path") ?? ""))
     if (path === "/file/content" && config.fileContent)
       return json(route, await config.fileContent(url.searchParams.get("path") ?? ""))
+    if (path === "/file/edit" && route.request().method() === "GET" && config.fileEditable)
+      return json(route, await config.fileEditable(url.searchParams.get("path") ?? ""))
+    if (path === "/file/edit" && route.request().method() === "PUT" && config.fileWrite) {
+      const result = await config.fileWrite({
+        path: url.searchParams.get("path") ?? "",
+        body: route.request().postDataJSON(),
+      })
+      return json(route, result.body, undefined, result.status ?? 200)
+    }
     if (path === "/find/file" && config.findFiles)
       return json(
         route,

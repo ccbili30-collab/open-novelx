@@ -7,11 +7,18 @@ const directory = "C:/NovelX/MiddleEarth"
 const projectID = "proj_novelx_middle_earth"
 const currentID = "ses_novelx_current"
 const olderID = "ses_novelx_older"
+const assistantID = "msg_novelx_geography_agent"
+const userMessageID = "msg_novelx_user"
+const toolPartID = "prt_novelx_write_readme"
 const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"}`
 
 test.use({ viewport: { width: 1672, height: 941 }, deviceScaleFactor: 1 })
 
 test("真实会话保留导航、置顶、资源文件与覆盖式项目面板", async ({ page }, testInfo) => {
+  let editable = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n"
+  let saved: { content: string; expectedContent: string; expectedBom: boolean } | undefined
+  let conflictNext = false
+  const events: unknown[] = []
   await mockOpenCodeServer(page, {
     directory,
     project: {
@@ -41,13 +48,36 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     ],
     vcsDiff: [],
     fileList: (path) => {
-      if (!path) return [node("World", "directory"), node("README.md", "file")]
+      if (!path) return [node("World\\", "directory"), node("README.md", "file")]
       if (path === "World") return [node("World/geography", "directory"), node("World/world.md", "file")]
       if (path === "World/geography") return [node("World/geography/misty-mountains.md", "file")]
       return []
     },
     fileContent: (path) => ({ type: "text", content: `真实内容：${path}` }),
-    pageMessages: () => ({ items: [] }),
+    fileEditable: (path) =>
+      path === "README.md"
+        ? { type: "text", content: editable, bom: true }
+        : { type: "text", content: `# ${path}\n`, bom: false },
+    fileWrite: ({ path, body }) => {
+      const write = body as { content: string; expectedContent: string; expectedBom: boolean }
+      if (conflictNext) {
+        conflictNext = false
+        return {
+          status: 409,
+          body: { _tag: "FileEditConflictError", path, message: "The file changed on disk" },
+        }
+      }
+      if (path === "README.md") {
+        saved = write
+        editable = write.content
+      }
+      return { body: { type: "text", content: write.content, bom: write.expectedBom } }
+    },
+    pageMessages: (sessionID) => ({ items: sessionID === currentID ? agentMessages() : [] }),
+    message: (sessionID, messageID) =>
+      sessionID === currentID ? agentMessages().find((message) => message.info.id === messageID) : undefined,
+    events: () => events.splice(0, 1),
+    eventRetry: 16,
   })
 
   await page.addInitScript(
@@ -102,9 +132,45 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const dock = page.getByRole("navigation", { name: "项目资源" })
   await dock.getByRole("button", { name: "文件", exact: true }).click()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
+  await resources.getByRole("button", { name: "World\\", exact: true }).click()
+  await expect(resources.locator(".novelx-document-editor")).toHaveCount(0)
   await resources.getByRole("button", { name: "README.md", exact: true }).click()
-  await expect(resources.locator(".novelx-resource-selection strong")).toHaveText("README.md")
+  const editor = resources.locator(".novelx-document-editor")
+  await expect(editor).toBeVisible()
+  await expect(editor.getByRole("heading", { name: "世界总览" })).toBeVisible()
+  await editor.getByRole("button", { name: "源码", exact: true }).click()
+  const source = editor.locator("textarea")
+  const changed = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国与精灵森林。\r\n"
+  await source.fill(changed)
+  await source.press("Control+s")
+  await expect.poll(() => saved?.content).toBe(changed)
+  expect(saved?.expectedContent).toBe("---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n")
+  expect(saved?.expectedBom).toBe(true)
+  await expect(editor.getByText("已保存", { exact: true })).toBeVisible()
+  await editor.getByRole("button", { name: "排版", exact: true }).click()
+  await expect(editor.getByText("群山环绕着古老王国与精灵森林。", { exact: true })).toBeVisible()
+
+  await editor.getByRole("button", { name: "源码", exact: true }).click()
+  await source.fill(changed.replace("精灵森林", "矮人矿城"))
+  conflictNext = true
+  await editor.getByRole("button", { name: "保存", exact: true }).click()
+  await expect(editor.getByText("保存冲突", { exact: true })).toBeVisible()
+  await expect(source).toHaveValue(changed.replace("精灵森林", "矮人矿城").replaceAll("\r\n", "\n"))
+  await editor.getByRole("button", { name: "放弃修改并重新载入", exact: true }).click()
+  await expect(source).toHaveValue(changed.replaceAll("\r\n", "\n"))
+
+  editable = "# 表格档案\n\n| 王国 | 地形 |\n|---|---|\n| 刚铎 | 平原 |\n"
+  await editor.getByRole("button", { name: "重新载入", exact: true }).click()
+  await expect(editor.getByText("为了完整保留表格语法，此文件必须使用源码模式。", { exact: true })).toBeVisible()
+  await expect(editor.getByRole("button", { name: "排版", exact: true })).toHaveCount(0)
+  await expect(source).toHaveValue(editable)
   await expect(resources.getByText("真实项目文件", { exact: true })).toBeVisible()
+
+  events.push(toolEvent("running"))
+  await expect(editor.getByText("地理 Agent 正在编辑这个文件；该操作停止前，此处只读。", { exact: true })).toBeVisible()
+  await expect(source).toBeDisabled()
+  events.push(toolEvent("completed"))
+  await expect(source).toBeEnabled()
 
   const inspector = resources.locator(".novelx-resource-inspector")
   await expect(inspector).toBeVisible()
@@ -127,12 +193,15 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const persistedResource = await page.evaluate(() => {
     const raw = localStorage.getItem("opencode.global.dat:layout")
     if (!raw) return
-    const layout = JSON.parse(raw) as { novelx?: { projects?: Record<string, { activeResource?: string }> } }
-    return layout.novelx?.projects?.["C:/NovelX/MiddleEarth"]?.activeResource
+    const layout = JSON.parse(raw) as {
+      novelx?: { projects?: Record<string, { activeResource?: string; activeFile?: string }> }
+    }
+    return layout.novelx?.projects?.["C:/NovelX/MiddleEarth"]
   })
-  expect(persistedResource).toBe("files")
+  expect(persistedResource).toMatchObject({ activeResource: "files", activeFile: "README.md" })
   await page.reload()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
+  await expect(resources.locator(".novelx-document-editor")).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("novelx-session-files.png") })
 })
 
@@ -151,4 +220,68 @@ function session(id: string, title: string, updated: number) {
 function node(path: string, type: "file" | "directory") {
   const name = path.split("/").at(-1)!
   return { name, path, absolute: `${directory}/${path}`, type, ignored: false }
+}
+
+function agentMessages() {
+  return [
+    {
+      info: {
+        id: userMessageID,
+        sessionID: currentID,
+        role: "user",
+        time: { created: 1700000000000 },
+        summary: { diffs: [] },
+        agent: "build",
+        model: { providerID: "opencode", modelID: "test" },
+      },
+      parts: [],
+    },
+    {
+      info: {
+        id: assistantID,
+        sessionID: currentID,
+        role: "assistant",
+        time: { created: 1700000001000 },
+        parentID: userMessageID,
+        modelID: "test",
+        providerID: "opencode",
+        mode: "build",
+        agent: "地理 Agent",
+        path: { cwd: directory, root: directory },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+      parts: [],
+    },
+  ]
+}
+
+function toolEvent(status: "running" | "completed") {
+  return {
+    directory,
+    payload: {
+      type: "message.part.updated",
+      properties: {
+        part: {
+          id: toolPartID,
+          sessionID: currentID,
+          messageID: assistantID,
+          type: "tool",
+          callID: "call_novelx_write_readme",
+          tool: "write",
+          state:
+            status === "running"
+              ? { status, input: { filePath: "README.md" }, time: { start: 1700000002000 } }
+              : {
+                  status,
+                  input: { filePath: "README.md" },
+                  output: "saved",
+                  title: "README.md",
+                  metadata: {},
+                  time: { start: 1700000002000, end: 1700000003000 },
+                },
+        },
+      },
+    },
+  }
 }

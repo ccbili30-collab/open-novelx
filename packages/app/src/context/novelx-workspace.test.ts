@@ -40,6 +40,13 @@ describe("NovelX workspace layout", () => {
       homeLeftExpanded: false,
     })
   })
+
+  test("persists the active NovelX document without coupling it to resource expansion", () => {
+    const normalized = normalizeNovelXProjectLayout({ activeFile: "World/北境.md" })
+    expect(normalized.activeFile).toBe("World/北境.md")
+    expect(activateNovelXResource(normalized, "graph").activeFile).toBe("World/北境.md")
+    expect(normalizeNovelXProjectLayout({ activeFile: 12 as unknown as string }).activeFile).toBe("")
+  })
 })
 
 describe("NovelX project navigation", () => {

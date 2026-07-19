@@ -159,7 +159,6 @@ export function SessionSidePanel(props: {
       .filter((node) => file.normalize(node.path) !== file.normalize("World"))
       .map((node) => node.path),
   )
-  const allRootResourcePaths = createMemo(() => file.tree.children("").map((node) => node.path))
   const worldState = createMemo(() => file.tree.state("World"))
   const hasWorldDirectory = createMemo(() =>
     file.tree
@@ -315,13 +314,11 @@ export function SessionSidePanel(props: {
         when={!settings.general.newLayoutDesigns()}
         fallback={
           <NovelXResourceWorkspace
-            rootPaths={allRootResourcePaths}
             modified={diffFiles}
             kinds={kinds}
             rootEmpty={nofiles}
             worldStatus={worldStatus}
             worldError={() => worldState()?.error ?? rootState()?.error}
-            onOpenFile={(path) => openTab(file.tab(path))}
           />
         }
       >

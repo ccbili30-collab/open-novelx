@@ -9,6 +9,7 @@ export type NovelXProjectLayout = {
   activeResource?: NovelXResource
   conversationCollapsed: boolean
   inspectorOpen: boolean
+  activeFile: string
 }
 
 export type NovelXShortcut =
@@ -22,6 +23,7 @@ export const DEFAULT_NOVELX_PROJECT_LAYOUT: NovelXProjectLayout = {
   activeResource: undefined,
   conversationCollapsed: false,
   inspectorOpen: true,
+  activeFile: "",
 }
 
 export function normalizeNovelXProjectLayout(value: Partial<NovelXProjectLayout> | undefined): NovelXProjectLayout {
@@ -34,6 +36,7 @@ export function normalizeNovelXProjectLayout(value: Partial<NovelXProjectLayout>
       : undefined,
     conversationCollapsed: value?.conversationCollapsed ?? DEFAULT_NOVELX_PROJECT_LAYOUT.conversationCollapsed,
     inspectorOpen: value?.inspectorOpen ?? DEFAULT_NOVELX_PROJECT_LAYOUT.inspectorOpen,
+    activeFile: typeof value?.activeFile === "string" ? value.activeFile : DEFAULT_NOVELX_PROJECT_LAYOUT.activeFile,
   }
 }
 

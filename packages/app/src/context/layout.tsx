@@ -681,6 +681,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             activeResource: createMemo(() => snapshot().activeResource),
             conversationCollapsed: createMemo(() => snapshot().conversationCollapsed),
             inspectorOpen: createMemo(() => snapshot().inspectorOpen),
+            activeFile: createMemo(() => snapshot().activeFile),
             toggleLeft() {
               const leftExpanded = !snapshot().leftExpanded
               update({
@@ -716,6 +717,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             setInspectorOpen(value: boolean) {
               update({ ...snapshot(), inspectorOpen: value })
+            },
+            setActiveFile(path: string) {
+              update({ ...snapshot(), activeFile: path })
             },
           }
         },
