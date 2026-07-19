@@ -66,14 +66,14 @@ function defer<T>() {
   return { promise, resolve }
 }
 
-const seed = Effect.fn("TaskToolTest.seed")(function* (title = "Pinned") {
+const seed = Effect.fn("TaskToolTest.seed")(function* (title = "Pinned", agentName = "build") {
   const session = yield* Session.Service
-  const chat = yield* session.create({ title })
+  const chat = yield* session.create({ title, agent: agentName })
   const user = yield* session.updateMessage({
     id: MessageID.ascending(),
     role: "user",
     sessionID: chat.id,
-    agent: "build",
+    agent: agentName,
     model: ref,
     time: { created: Date.now() },
   })
@@ -82,8 +82,8 @@ const seed = Effect.fn("TaskToolTest.seed")(function* (title = "Pinned") {
     role: "assistant",
     parentID: user.id,
     sessionID: chat.id,
-    mode: "build",
-    agent: "build",
+    mode: agentName,
+    agent: agentName,
     cost: 0,
     path: { cwd: "/tmp", root: "/tmp" },
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -252,6 +252,78 @@ describe("tool.task", () => {
       expect(result.output).toContain(`<task id="${child.id}" state="completed">`)
       expect(seen?.sessionID).toBe(child.id)
       expect(seen?.variant).toBe("xhigh")
+    }),
+  )
+
+  it.instance("NovelX geography dispatch rejects a duplicate child and preserves the first session", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      const promptOps = stubOps({ text: "# 阿尔缇斯大陆" })
+      const input = {
+        description: "地理：阿尔缇斯大陆",
+        prompt: "Context Pack",
+        subagent_type: "novelx-geography",
+      }
+      const ctx = {
+        sessionID: chat.id,
+        messageID: assistant.id,
+        agent: "growth",
+        abort: new AbortController().signal,
+        extra: { promptOps },
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+
+      const first = yield* def.execute(input, ctx)
+      const duplicate = yield* def.execute(input, ctx).pipe(Effect.exit)
+      const children = yield* sessions.children(chat.id)
+      const revisionInput = { ...input, task_id: first.metadata.sessionId }
+      const revision = yield* def.execute(revisionInput, ctx)
+      const duplicateRevision = yield* def.execute(revisionInput, ctx).pipe(Effect.exit)
+
+      expect(first.metadata.sessionId).toBe(children[0]?.id)
+      expect(children).toHaveLength(1)
+      expect(duplicate._tag).toBe("Failure")
+      expect(revision.metadata.sessionId).toBe(first.metadata.sessionId)
+      expect(duplicateRevision._tag).toBe("Failure")
+    }),
+  )
+
+  it.instance("NovelX geography replays the same call ID without running the child twice", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const def = yield* (yield* TaskTool).init()
+      let prompts = 0
+      const promptOps = stubOps({ onPrompt: () => prompts++ })
+      const ctx = {
+        sessionID: chat.id,
+        messageID: assistant.id,
+        callID: "call-geography-once",
+        agent: "growth",
+        abort: new AbortController().signal,
+        extra: { promptOps },
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const input = {
+        description: "地理：阿尔缇斯大陆",
+        prompt: "Context Pack",
+        subagent_type: "novelx-geography",
+      }
+
+      const [first, replay] = yield* Effect.all([def.execute(input, ctx), def.execute(input, ctx)], {
+        concurrency: "unbounded",
+      })
+
+      expect(first.metadata.sessionId).toBe(replay.metadata.sessionId)
+      expect(yield* sessions.children(chat.id)).toHaveLength(1)
+      expect(prompts).toBe(1)
     }),
   )
 

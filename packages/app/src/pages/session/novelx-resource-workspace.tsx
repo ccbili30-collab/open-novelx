@@ -7,7 +7,12 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { NOVELX_RESOURCES, type NovelXResource } from "@/context/novelx-workspace"
 import { useSDK } from "@/context/sdk"
+import { useSync } from "@/context/sync"
 import { createNovelXDocumentController } from "@/context/novelx-document"
+import {
+  createNovelXGeographyMaterializationController,
+  novelXGeographyStatusLabel,
+} from "@/context/novelx-geography-materialization"
 import {
   createNovelXGrowthSkeletonController,
   novelXGrowthNavigationItems,
@@ -16,7 +21,8 @@ import {
 import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
 import "./novelx-document-editor.css"
-import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js"
+import { useParams } from "@solidjs/router"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
 
 const resourceLabel = (resource: NovelXResource) =>
   ({
@@ -135,28 +141,6 @@ const terrainRelationLabel = (kind: NovelXGrowth.TerrainRelationKind) =>
     opens_to: "通向",
   })[kind]
 
-const terrainAreaPath = (map: NovelXGrowth.RegisteredTerrainNode["map"]) => {
-  const left = map.x
-  const top = map.y
-  const right = map.x + map.width
-  const bottom = map.y + map.height
-  return [
-    `M ${left + map.width * 0.12} ${top + map.height * 0.08}`,
-    `C ${left + map.width * 0.32} ${top - map.height * 0.03}, ${right - map.width * 0.24} ${top + map.height * 0.02}, ${right - map.width * 0.08} ${top + map.height * 0.2}`,
-    `C ${right + map.width * 0.03} ${top + map.height * 0.4}, ${right - map.width * 0.02} ${bottom - map.height * 0.2}, ${right - map.width * 0.16} ${bottom - map.height * 0.06}`,
-    `C ${right - map.width * 0.38} ${bottom + map.height * 0.03}, ${left + map.width * 0.26} ${bottom - map.height * 0.02}, ${left + map.width * 0.08} ${bottom - map.height * 0.18}`,
-    `C ${left - map.width * 0.03} ${bottom - map.height * 0.42}, ${left + map.width * 0.01} ${top + map.height * 0.28}, ${left + map.width * 0.12} ${top + map.height * 0.08} Z`,
-  ].join(" ")
-}
-
-const terrainLinePath = (node: NovelXGrowth.RegisteredTerrainNode) => {
-  const map = node.map
-  if (map.width >= map.height) {
-    return `M ${map.x} ${map.y + map.height * 0.62} C ${map.x + map.width * 0.25} ${map.y + map.height * 0.18}, ${map.x + map.width * 0.65} ${map.y + map.height * 0.82}, ${map.x + map.width} ${map.y + map.height * 0.38}`
-  }
-  return `M ${map.x + map.width * 0.42} ${map.y} C ${map.x + map.width * 0.82} ${map.y + map.height * 0.26}, ${map.x + map.width * 0.18} ${map.y + map.height * 0.64}, ${map.x + map.width * 0.56} ${map.y + map.height}`
-}
-
 export function NovelXResourceWorkspace(props: {
   modified: () => string[]
   kinds: () => Map<string, "add" | "del" | "mix">
@@ -168,9 +152,15 @@ export function NovelXResourceWorkspace(props: {
   const language = useLanguage()
   const layout = useLayout()
   const sdk = useSDK()
+  const params = useParams<{ id?: string }>()
+  const sync = useSync()
   const view = layout.novelx.project(() => sdk().directory)
   const document = createNovelXDocumentController({ path: view.activeFile })
   const growth = createNovelXGrowthSkeletonController()
+  const geography = createNovelXGeographyMaterializationController(() => {
+    const state = growth.state()
+    return state.status === "ready" ? state.manifest.integritySha256 : undefined
+  })
   const [plannedSelection, setPlannedSelection] = createSignal<Partial<Record<NovelXResource, string>>>({})
   const [terrainQuery, setTerrainQuery] = createSignal("")
 
@@ -199,6 +189,18 @@ export function NovelXResourceWorkspace(props: {
     const state = growth.state()
     return state.status === "error" ? state.message : "未知错误"
   })
+  const geographyManifest = createMemo(() => {
+    const state = geography.state()
+    return state.status === "ready" ? state.manifest : undefined
+  })
+  const geographyRecords = createMemo(
+    () => new Map(geographyManifest()?.records.map((record) => [record.terrainId, record]) ?? []),
+  )
+  const geographyProgress = createMemo(() => {
+    const records = geographyManifest()?.records
+    if (!records) return { committed: 0, total: growthManifest()?.terrain.nodes.length ?? 0 }
+    return { committed: records.filter((record) => record.status === "committed").length, total: records.length }
+  })
   const plannedItems = createMemo(() => {
     const resource = active()
     const manifest = growthManifest()
@@ -212,7 +214,7 @@ export function NovelXResourceWorkspace(props: {
     return plannedItems().find((item) => item.id === selected)
   })
   const selectedTerrain = createMemo(() => {
-    if (active() !== "world" || view.activeFile()) return
+    if (active() !== "world") return
     const manifest = growthManifest()
     if (!manifest) return
     const selected = selectedPlanned()?.id
@@ -221,6 +223,57 @@ export function NovelXResourceWorkspace(props: {
       manifest.terrain.nodes.find((node) => node.prominence === "core") ??
       manifest.terrain.nodes[0]
     )
+  })
+  const selectedGeographyRecord = createMemo(() => {
+    const terrain = selectedTerrain()
+    return terrain ? geographyRecords().get(terrain.id) : undefined
+  })
+  const taskPartForTerrain = (terrainId: string) => {
+    const root = params.id
+    const terrain = growthManifest()?.terrain.nodes.find((item) => item.id === terrainId)
+    if (!root || !terrain) return
+    return (sync().data.message[root] ?? [])
+      .flatMap((message) => sync().data.part[message.id] ?? [])
+      .findLast((part) => {
+        if (part.type !== "tool" || part.tool !== "task") return false
+        const input = "input" in part.state ? part.state.input : undefined
+        return input?.subagent_type === "novelx-geography" && input?.description === `地理：${terrain.name}`
+      })
+  }
+  const projectedGeographyStatus = (terrainId: string) => {
+    const record = geographyRecords().get(terrainId)
+    if (!record || record.status !== "leased") return record?.status ?? "registered"
+    const task = taskPartForTerrain(terrainId)
+    if (!task || task.type !== "tool") return "leased"
+    if (task.state.status === "running" || task.state.status === "pending") return "drafting"
+    if (task.state.status === "completed") return "reviewing"
+    if (task.state.status === "error") return "failed"
+    return "leased"
+  }
+  const selectedChildSessionId = createMemo(() => {
+    const record = selectedGeographyRecord()
+    if (record?.taskSessionId) return record.taskSessionId
+    const terrain = selectedTerrain()
+    if (!terrain) return
+    const task = taskPartForTerrain(terrain.id)
+    if (!task || task.type !== "tool" || !("metadata" in task.state)) return
+    return typeof task.state.metadata?.sessionId === "string" ? task.state.metadata.sessionId : undefined
+  })
+  const selectedChildText = createMemo(() => {
+    const sessionID = selectedChildSessionId()
+    if (!sessionID) return ""
+    return (sync().data.message[sessionID] ?? [])
+      .filter((message) => message.role === "assistant")
+      .flatMap((message) => sync().data.part[message.id] ?? [])
+      .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join("\n")
+      .trim()
+  })
+
+  createEffect(() => {
+    const sessionID = selectedChildSessionId()
+    if (sessionID) void sync().session.sync(sessionID)
   })
   const selectedTerrainRelations = createMemo(() => {
     const manifest = growthManifest()
@@ -264,7 +317,8 @@ export function NovelXResourceWorkspace(props: {
       })
       return
     }
-    view.setActiveFile("")
+    const record = geographyRecords().get(item.id)
+    view.setActiveFile(record?.status === "committed" ? record.targetPath : "")
     setPlannedSelection((current) => ({ ...current, [item.resource]: item.id }))
   }
 
@@ -340,7 +394,9 @@ export function NovelXResourceWorkspace(props: {
             </label>
             <div class="novelx-growth-tree-heading">
               <strong>主大陆及周边海域</strong>
-              <span>已注册</span>
+              <span>
+                {geographyProgress().committed}/{geographyProgress().total} 已提交
+              </span>
             </div>
             <For
               each={novelXGrowthNavigationItems(growthManifest()!, resource).filter((item) =>
@@ -356,15 +412,18 @@ export function NovelXResourceWorkspace(props: {
                   }}
                   style={{ "--novelx-growth-depth": item.depth }}
                   aria-pressed={plannedSelection()[resource] === item.id}
+                  aria-label={item.label}
                   title={item.label}
                   onClick={() => selectPlanned(item)}
                 >
                   <span
                     class="novelx-growth-tree-mark"
                     data-kind={growthManifest()!.terrain.nodes.find((node) => node.id === item.id)?.kind}
+                    data-status={projectedGeographyStatus(item.id)}
                     aria-hidden="true"
                   />
-                  <span>{item.label}</span>
+                  <span class="novelx-growth-tree-label">{item.label}</span>
+                  <small>{novelXGeographyStatusLabel(projectedGeographyStatus(item.id))}</small>
                 </button>
               )}
             </For>
@@ -404,97 +463,57 @@ export function NovelXResourceWorkspace(props: {
   const terrainAtlas = () => {
     const manifest = growthManifest()
     if (!manifest) return
-    const nodes = new Map(manifest.terrain.nodes.map((node) => [node.id, node]))
     return (
-      <div class="novelx-terrain-atlas" aria-label={`${manifest.profile.title}地形总览`}>
-        <div class="novelx-terrain-atlas-wash" aria-hidden="true" />
-        <svg viewBox="0 0 100 100" role="img" aria-label="按已注册空间坐标生成的地形总览">
-          <g class="novelx-terrain-relations" aria-hidden="true">
-            <For each={manifest.terrain.relations}>
-              {(relation) => {
-                const from = nodes.get(relation.fromId)
-                const to = nodes.get(relation.toId)
-                if (!from || !to) return
-                return (
-                  <line
-                    x1={from.map.x + from.map.width / 2}
-                    y1={from.map.y + from.map.height / 2}
-                    x2={to.map.x + to.map.width / 2}
-                    y2={to.map.y + to.map.height / 2}
-                  />
-                )
-              }}
-            </For>
-          </g>
-          <For each={manifest.terrain.nodes}>
-            {(node) => (
-              <g
-                class="novelx-terrain-node"
-                classList={{
-                  "is-selected": selectedTerrain()?.id === node.id,
-                  "is-water": node.kind === "ocean" || node.kind === "sea",
-                  "is-linear": node.kind === "river" || node.kind === "mountain_range" || node.kind === "coast",
-                }}
-                data-kind={node.kind}
-                role="button"
-                tabindex="0"
-                aria-label={`${node.name}，${terrainKindLabel(node.kind)}`}
-                onClick={() =>
-                  selectPlanned({ id: node.id, label: node.name, resource: "world", kind: "terrain", depth: 0 })
-                }
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return
-                  event.preventDefault()
-                  selectPlanned({ id: node.id, label: node.name, resource: "world", kind: "terrain", depth: 0 })
-                }}
-              >
-                <rect
-                  class="novelx-terrain-hit"
-                  x={node.map.x}
-                  y={node.map.y}
-                  width={node.map.width}
-                  height={node.map.height}
-                />
-                <Show
-                  when={node.kind === "river" || node.kind === "mountain_range" || node.kind === "coast"}
-                  fallback={<path class="novelx-terrain-shape" d={terrainAreaPath(node.map)} />}
-                >
-                  <path class="novelx-terrain-line" d={terrainLinePath(node)} />
-                </Show>
-                <Show when={node.kind === "mountain_range"}>
-                  <path
-                    class="novelx-terrain-ridge"
-                    d={`M ${node.map.x + node.map.width * 0.18} ${node.map.y + node.map.height * 0.72} l ${node.map.width * 0.12} ${-node.map.height * 0.42} l ${node.map.width * 0.11} ${node.map.height * 0.38} l ${node.map.width * 0.14} ${-node.map.height * 0.5} l ${node.map.width * 0.13} ${node.map.height * 0.46}`}
-                  />
-                </Show>
-                <Show
-                  when={
-                    selectedTerrain()?.id === node.id ||
-                    node.parentId === null ||
-                    node.prominence === "core" ||
-                    node.map.width * node.map.height >= 180
-                  }
-                >
-                  <text
-                    x={node.kind === "river" ? node.map.x + node.map.width * 0.74 : node.map.x + node.map.width / 2}
-                    y={
-                      node.kind === "mountain_range"
-                        ? node.map.y + node.map.height * 0.16
-                        : node.map.y + node.map.height / 2
-                    }
-                  >
-                    {node.name}
-                  </text>
-                </Show>
-              </g>
-            )}
-          </For>
-        </svg>
-        <div class="novelx-terrain-compass" aria-hidden="true">
-          <span>北</span>
-          <i />
+      <div class="novelx-terrain-atlas is-empty" aria-label={`${manifest.profile.title}地图尚未生成`}>
+        <div class="novelx-terrain-empty-map-mark" aria-hidden="true">
+          <NovelXResourceIcon resource="world" size={30} />
         </div>
+        <strong>地图尚未生成</strong>
+        <span>地理档案正在生长；本阶段不会用注册坐标绘制示意地图。</span>
+        <small>
+          {geographyProgress().committed}/{geographyProgress().total} 份地理档案已提交
+        </small>
       </div>
+    )
+  }
+
+  const terrainDraftPanel = () => {
+    const terrain = selectedTerrain()
+    if (!terrain || !selectedPlanned()) return
+    const status = projectedGeographyStatus(terrain.id)
+    return (
+      <article class="novelx-geography-draft" data-status={status}>
+        <header>
+          <div>
+            <span>{terrainKindLabel(terrain.kind)}</span>
+            <h2>{terrain.name}</h2>
+          </div>
+          <div class="novelx-geography-draft-state">
+            <i aria-hidden="true" />
+            {novelXGeographyStatusLabel(status)}
+          </div>
+        </header>
+        <Show
+          when={selectedChildText()}
+          fallback={
+            <div class="novelx-geography-draft-waiting" role="status">
+              <strong>{status === "registered" ? "等待主编分配" : "正在等待地理 Agent 返回内容"}</strong>
+              <p>{terrain.summary}</p>
+              <span>正式文件尚未提交，当前内容不可编辑。</span>
+            </div>
+          }
+        >
+          {(text) => (
+            <div class="novelx-geography-stream">
+              <div class="novelx-geography-stream-heading">
+                <span>novelx-geography</span>
+                <small>流式草稿 · 只读</small>
+              </div>
+              <pre>{text()}</pre>
+            </div>
+          )}
+        </Show>
+      </article>
     )
   }
 
@@ -505,7 +524,11 @@ export function NovelXResourceWorkspace(props: {
           when={document.state()}
           fallback={
             resource === "world" && growthManifest() ? (
-              terrainAtlas()
+              selectedPlanned() && selectedGeographyRecord()?.status !== "committed" ? (
+                terrainDraftPanel()
+              ) : (
+                terrainAtlas()
+              )
             ) : (
               <div class="novelx-resource-blank">
                 {resourceScaffold(resource)}
@@ -575,7 +598,7 @@ export function NovelXResourceWorkspace(props: {
                   <strong>{title()}</strong>
                   <span>
                     {resource() === "world" && growthManifest()
-                      ? `${growthManifest()!.profile.title}的地理与区域`
+                      ? `${growthManifest()!.profile.title} · ${geographyProgress().committed}/${geographyProgress().total} 份地理档案已提交`
                       : language.t(resourceCopy[resource()].summary)}
                   </span>
                 </div>
@@ -658,7 +681,13 @@ export function NovelXResourceWorkspace(props: {
                                     : "支撑"}
                               </dd>
                               <dt>状态</dt>
-                              <dd>已注册</dd>
+                              <dd>{novelXGeographyStatusLabel(projectedGeographyStatus(terrain().id))}</dd>
+                              <dt>执行 Agent</dt>
+                              <dd>{selectedChildSessionId() ? "novelx-geography" : "尚未分配"}</dd>
+                              <dt>文件锁</dt>
+                              <dd>
+                                {selectedGeographyRecord()?.status === "committed" ? "已释放" : "只读 / 尚未提交"}
+                              </dd>
                             </dl>
                           </section>
                           <section>

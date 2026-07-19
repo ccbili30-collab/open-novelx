@@ -20,7 +20,7 @@ const context = {
   sessionID: SessionID.make("ses_growth"),
   messageID: MessageID.make("msg_growth"),
   callID: "call-growth",
-  agent: "build",
+  agent: "growth",
   abort: new AbortController().signal,
   messages: [],
   metadata: () => Effect.void,
@@ -53,11 +53,13 @@ describe("tool.novelx_register_growth_skeleton", () => {
       expect(manifest.terrain.nodes.some((node) => node.name === "北境冠脉")).toBe(true)
       expect((yield* Effect.promise(() => fs.readdir(test.directory))).includes(".novelx")).toBe(true)
       expect(first.output).toContain("具名地形")
+      expect(first.output).toContain(manifest.terrain.nodes[0].id)
+      expect(first.metadata.terrain).toHaveLength(manifest.terrain.nodes.length)
       expect(first.output).toContain("没有注册国家、文明、角色、故事或图片")
     }),
   )
 
-  it.instance("rejects a second registration call from the same user turn", () =>
+  it.instance("replays the same call ID but rejects a distinct second registration call from the same user turn", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const info = yield* NovelXGrowthSkeletonTool
@@ -65,8 +67,10 @@ describe("tool.novelx_register_growth_skeleton", () => {
       yield* tool.execute(profile, context)
       const target = path.join(test.directory, ...NovelXGrowth.MANIFEST_PATH.split("/"))
       const before = yield* Effect.promise(() => fs.readFile(target, "utf8"))
+      const replay = yield* tool.execute(profile, context)
       const duplicate = yield* tool.execute(profile, { ...context, callID: "call-growth-duplicate" }).pipe(Effect.exit)
 
+      expect(replay.metadata.replayed).toBe(true)
       expect(duplicate._tag).toBe("Failure")
       expect(yield* Effect.promise(() => fs.readFile(target, "utf8"))).toBe(before)
     }),

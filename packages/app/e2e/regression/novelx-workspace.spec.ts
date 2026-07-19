@@ -16,6 +16,7 @@ test.use({ viewport: { width: 1672, height: 941 }, deviceScaleFactor: 1 })
 
 test("真实会话保留导航、置顶、资源文件与覆盖式项目面板", async ({ page }, testInfo) => {
   const growthManifest = await growthManifestFixture()
+  const geographyMaterialization = await geographyMaterializationFixture(growthManifest)
   let editable = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n"
   let saved: { content: string; expectedContent: string; expectedBom: boolean } | undefined
   let conflictNext = false
@@ -44,7 +45,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     sessions: [
       session(currentID, "构建地理", 4),
       session(olderID, "建立第一批王国", 2),
-      { ...session("ses_child", "内部地理工作者", 5), parentID: currentID },
+      { ...session("ses_child", "地理：北境冠脉", 5), parentID: currentID, agent: "novelx-geography" },
       { ...session("ses_archived", "已归档草稿", 6), time: { created: 6, updated: 6, archived: 7 } },
     ],
     vcsDiff: [],
@@ -58,9 +59,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     fileEditable: (path) =>
       path === ".novelx/growth/skeleton.json"
         ? { type: "text", content: JSON.stringify(growthManifest), bom: false }
-        : path === "README.md"
-          ? { type: "text", content: editable, bom: true }
-          : { type: "text", content: `# ${path}\n`, bom: false },
+        : path === ".novelx/growth/geography-materialization.json"
+          ? { type: "text", content: JSON.stringify(geographyMaterialization), bom: false }
+          : path === "README.md"
+            ? { type: "text", content: editable, bom: true }
+            : { type: "text", content: `# ${path}\n`, bom: false },
     fileWrite: ({ path, body }) => {
       const write = body as { content: string; expectedContent: string; expectedBom: boolean }
       if (conflictNext) {
@@ -76,7 +79,9 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       }
       return { body: { type: "text", content: write.content, bom: write.expectedBom } }
     },
-    pageMessages: (sessionID) => ({ items: sessionID === currentID ? agentMessages() : [] }),
+    pageMessages: (sessionID) => ({
+      items: sessionID === currentID ? agentMessages() : sessionID === "ses_child" ? geographyChildMessages() : [],
+    }),
     message: (sessionID, messageID) =>
       sessionID === currentID ? agentMessages().find((message) => message.info.id === messageID) : undefined,
     events: () => events.splice(0, 1),
@@ -134,16 +139,23 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const resources = page.locator("#file-tree-panel")
   const dock = page.getByRole("navigation", { name: "项目资源" })
   await dock.getByRole("button", { name: "世界", exact: true }).click()
-  await expect(resources.getByText("埃兰世界的地理与区域", { exact: true })).toBeVisible()
+  await expect(resources.getByText("埃兰世界 · 0/8 份地理档案已提交", { exact: true })).toBeVisible()
   await expect(resources.locator(".novelx-terrain-atlas")).toBeVisible()
+  await expect(resources.getByText("地图尚未生成", { exact: true })).toBeVisible()
   await resources.getByRole("button", { name: "北境冠脉", exact: true }).click()
+  await expect(resources.getByText("流式草稿 · 只读", { exact: true })).toBeVisible()
+  await expect(resources.locator(".novelx-geography-stream pre")).toContainText(
+    "北境冠脉控制大陆北部的高差与主要水系源头。",
+  )
   await expect(resources.locator(".novelx-resource-inspector-heading")).toContainText("北境冠脉")
   await expect(
     resources.getByText("横贯大陆北部的高大山系，连续雪峰构成最醒目的东西向屏障。", { exact: true }),
   ).toBeVisible()
-  await expect(resources.getByText(/(?:地形|地点|区域|大陆|海域|山脉|平原|河流|湖泊|岛屿|群岛)\s*0*\d+/u)).toHaveCount(
-    0,
-  )
+  await expect(
+    resources.locator(".novelx-growth-tree-label").filter({
+      hasText: /(?:地形|地点|区域|大陆|海域|山脉|平原|河流|湖泊|岛屿|群岛)\s*0*\d+/u,
+    }),
+  ).toHaveCount(0)
   await page.locator('[aria-label="开发性能诊断"]').evaluate((element) => element.remove())
   await page.screenshot({ path: testInfo.outputPath("novelx-world-expanded.png") })
   await dock.getByRole("button", { name: "文件", exact: true }).click()
@@ -270,7 +282,76 @@ function agentMessages() {
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       },
-      parts: [],
+      parts: [
+        {
+          id: "prt_novelx_geography_task",
+          sessionID: currentID,
+          messageID: assistantID,
+          type: "tool",
+          callID: "call_novelx_geography_task",
+          tool: "task",
+          state: {
+            status: "running",
+            input: {
+              description: "地理：北境冠脉",
+              prompt: "Context Pack",
+              subagent_type: "novelx-geography",
+            },
+            metadata: { sessionId: "ses_child", parentSessionId: currentID },
+            time: { start: 1700000002000 },
+          },
+        },
+      ],
+    },
+  ]
+}
+
+function geographyChildMessages() {
+  return [
+    {
+      info: {
+        id: "msg_novelx_geography_child_user",
+        sessionID: "ses_child",
+        role: "user",
+        time: { created: 1700000002200 },
+        summary: { diffs: [] },
+        agent: "novelx-geography",
+        model: { providerID: "opencode", modelID: "test" },
+      },
+      parts: [
+        {
+          id: "prt_novelx_geography_context",
+          sessionID: "ses_child",
+          messageID: "msg_novelx_geography_child_user",
+          type: "text",
+          text: "Context Pack",
+        },
+      ],
+    },
+    {
+      info: {
+        id: "msg_novelx_geography_child",
+        sessionID: "ses_child",
+        role: "assistant",
+        time: { created: 1700000002500 },
+        parentID: "msg_novelx_geography_child_user",
+        modelID: "test",
+        providerID: "opencode",
+        mode: "novelx-geography",
+        agent: "novelx-geography",
+        path: { cwd: directory, root: directory },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+      parts: [
+        {
+          id: "prt_novelx_geography_text",
+          sessionID: "ses_child",
+          messageID: "msg_novelx_geography_child",
+          type: "text",
+          text: "# 北境冠脉\n\n## 事实依据\n\n北境冠脉控制大陆北部的高差与主要水系源头。",
+        },
+      ],
     },
   ]
 }
@@ -465,6 +546,43 @@ async function growthManifestFixture() {
         status: "registered",
       })),
     },
+  }
+  return { ...draft, integritySha256: await sha256(draft) }
+}
+
+async function geographyMaterializationFixture(skeleton: Awaited<ReturnType<typeof growthManifestFixture>>) {
+  const sha256 = async (value: unknown) => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+  const draft = {
+    schemaVersion: 1,
+    stage: "geography_materialization",
+    status: "running",
+    skeletonIntegritySha256: skeleton.integritySha256,
+    growthSessionId: currentID,
+    startedAt: 1700000002000,
+    updatedAt: 1700000002500,
+    records: skeleton.terrain.nodes.map((terrain) => ({
+      terrainId: terrain.id,
+      targetPath: `World/地理/${terrain.name}.md`,
+      draftPath: `.novelx/growth/drafts/${terrain.id}.md`,
+      status: terrain.name === "北境冠脉" ? "leased" : "registered",
+      lease:
+        terrain.name === "北境冠脉"
+          ? {
+              id: "nx-lease-north",
+              ownerSessionId: currentID,
+              ownerMessageId: userMessageID,
+              acquiredAt: 1700000002000,
+            }
+          : null,
+      taskSessionId: null,
+      draftSha256: null,
+      committedSha256: null,
+      updatedAt: 1700000002500,
+      errorCode: null,
+    })),
   }
   return { ...draft, integritySha256: await sha256(draft) }
 }

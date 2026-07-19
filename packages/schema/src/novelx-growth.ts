@@ -120,3 +120,52 @@ export const Manifest = Schema.Struct({
 export interface Manifest extends Schema.Schema.Type<typeof Manifest> {}
 
 export const MANIFEST_PATH = ".novelx/growth/skeleton.json"
+
+export const GeographyDocumentStatus = Schema.Literals([
+  "registered",
+  "leased",
+  "drafting",
+  "submitted",
+  "reviewing",
+  "committed",
+  "failed",
+  "waiting_user",
+])
+export type GeographyDocumentStatus = Schema.Schema.Type<typeof GeographyDocumentStatus>
+
+export const GeographyDocumentRecord = Schema.Struct({
+  terrainId: Schema.String,
+  targetPath: Schema.String,
+  draftPath: Schema.String,
+  status: GeographyDocumentStatus,
+  lease: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      ownerSessionId: Schema.String,
+      ownerMessageId: Schema.String,
+      acquiredAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+  ),
+  taskSessionId: Schema.NullOr(Schema.String),
+  draftSha256: Schema.NullOr(Sha256),
+  committedSha256: Schema.NullOr(Sha256),
+  updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  errorCode: Schema.NullOr(Schema.String),
+})
+export interface GeographyDocumentRecord extends Schema.Schema.Type<typeof GeographyDocumentRecord> {}
+
+export const GeographyMaterialization = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  stage: Schema.Literal("geography_materialization"),
+  status: Schema.Literals(["running", "waiting_user", "completed", "failed"]),
+  skeletonIntegritySha256: Sha256,
+  growthSessionId: Schema.String,
+  startedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  records: Schema.Array(GeographyDocumentRecord),
+  integritySha256: Sha256,
+})
+export interface GeographyMaterialization extends Schema.Schema.Type<typeof GeographyMaterialization> {}
+
+export const MATERIALIZATION_PATH = ".novelx/growth/geography-materialization.json"
+export const GEOGRAPHY_DRAFT_DIRECTORY = ".novelx/growth/drafts"

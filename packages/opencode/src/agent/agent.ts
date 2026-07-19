@@ -15,6 +15,7 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_NOVELX_GROWTH_SKELETON from "./prompt/novelx-growth-skeleton.txt"
+import PROMPT_NOVELX_GEOGRAPHY_WRITER from "./prompt/novelx-geography-writer.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -140,6 +141,22 @@ const layer = Layer.effect(
         const growthRestriction = Permission.fromConfig({
           "*": "deny",
           novelx_register_growth_skeleton: "allow",
+          novelx_prepare_geography: "allow",
+          novelx_commit_geography: "allow",
+          novelx_abort_geography: "allow",
+          novelx_finish_geography: "allow",
+          task: {
+            "*": "deny",
+            "novelx-geography": "allow",
+          },
+        })
+        const geographyRestriction = Permission.fromConfig({
+          "*": "deny",
+          read: "allow",
+          glob: "allow",
+          grep: "allow",
+          list: "allow",
+          external_directory: readonlyExternalDirectory,
         })
 
         const agents: Record<string, Info> = {
@@ -193,8 +210,19 @@ const layer = Layer.effect(
             mode: "primary",
             native: true,
             hidden: true,
-            steps: 3,
+            steps: 120,
             prompt: PROMPT_NOVELX_GROWTH_SKELETON,
+          },
+          "novelx-geography": {
+            name: "novelx-geography",
+            description: "NovelX 地理执行叶节点。只根据已注册的真实地形上下文撰写一份详细地理档案并返回主编。",
+            options: {},
+            permission: Permission.merge(defaults, user, geographyRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 4,
+            prompt: PROMPT_NOVELX_GEOGRAPHY_WRITER,
           },
           general: {
             name: "general",
@@ -282,7 +310,7 @@ const layer = Layer.effect(
         }
 
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
-          if (key === "growth") continue
+          if (key === "growth" || key === "novelx-geography") continue
           if (value.disable) {
             delete agents[key]
             continue

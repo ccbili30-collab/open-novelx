@@ -8,6 +8,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { GrowthSkeletonError, compileNovelXGrowthSkeleton, verifyNovelXGrowthSkeleton } from "@/novelx/growth-skeleton"
 import { Tool } from "@/tool/tool"
+import { assertGrowthEditor } from "./novelx-geography-runtime"
 
 export const Parameters = NovelXGrowth.Profile
 const TOOL_ID = "novelx_register_growth_skeleton"
@@ -22,6 +23,7 @@ type Metadata = {
     coreTerrain: number
     surroundingWaters: number
   }
+  terrain: Array<{ id: string; name: string; kind: NovelXGrowth.TerrainKind }>
 }
 
 export const NovelXGrowthSkeletonTool = Tool.define<
@@ -43,6 +45,7 @@ export const NovelXGrowthSkeletonTool = Tool.define<
       parameters: Parameters,
       execute: (profile, ctx) =>
         Effect.gen(function* () {
+          assertGrowthEditor(ctx)
           const instance = yield* InstanceState.context
           const target = path.join(instance.directory, ...NovelXGrowth.MANIFEST_PATH.split("/"))
           const next = compileNovelXGrowthSkeleton({
@@ -58,13 +61,14 @@ export const NovelXGrowthSkeletonTool = Tool.define<
           const existing = yield* fs.readFileStringSafe(target)
           if (existing !== undefined) {
             const manifest = decodeManifest(existing)
-            assertNotDuplicateTurn(manifest, ctx)
             if (manifest.source.profileSha256 !== next.source.profileSha256) {
               throw new GrowthSkeletonError(
                 "NOVELX_GROWTH_SKELETON_CONFLICT",
                 "A different Growth skeleton is already registered. Revision is not implemented in this stage.",
               )
             }
+            if (manifest.source.toolCallId === ctx.callID) return result(manifest, true)
+            assertNotDuplicateTurn(manifest, ctx)
             return result(manifest, true)
           }
 
@@ -89,13 +93,14 @@ export const NovelXGrowthSkeletonTool = Tool.define<
               )
             }
             const manifest = decodeManifest(raced)
-            assertNotDuplicateTurn(manifest, ctx)
             if (manifest.source.profileSha256 !== next.source.profileSha256) {
               throw new GrowthSkeletonError(
                 "NOVELX_GROWTH_SKELETON_CONFLICT",
                 "A different Growth skeleton won the registration race.",
               )
             }
+            if (manifest.source.toolCallId === ctx.callID) return result(manifest, true)
+            assertNotDuplicateTurn(manifest, ctx)
             return result(manifest, true)
           }
 
@@ -136,11 +141,14 @@ function result(manifest: NovelXGrowth.Manifest, replayed: boolean) {
       replayed,
       profileSha256: manifest.source.profileSha256,
       counts,
+      terrain: manifest.terrain.nodes.map((node) => ({ id: node.id, name: node.name, kind: node.kind })),
     },
     output: [
       replayed ? "相同的世界地形已经注册，本次为幂等重放。" : `已注册“${manifest.profile.title}”的世界地形。`,
       `题材：${manifest.profile.genre.label}；尺度：${manifest.profile.genre.scale}。`,
       `已注册 ${counts.terrainNodes} 个具名地形与 ${counts.terrainRelations} 条空间关系，其中 ${counts.coreTerrain} 个核心地形、${counts.surroundingWaters} 片周边海域。`,
+      "地理物化清单（按此顺序逐项准备、派发、审核和提交）：",
+      ...manifest.terrain.nodes.map((node) => `- ${node.id} | ${node.name} | ${node.kind}`),
       "本阶段没有注册国家、文明、角色、故事或图片。",
     ].join("\n"),
   }

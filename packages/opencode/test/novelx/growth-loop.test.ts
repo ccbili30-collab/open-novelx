@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { novelXGrowthToolCompleted, restrictNovelXGrowthTools } from "@/novelx/growth-loop"
 
 describe("NovelX Growth loop gate", () => {
-  it("removes all tools after registration completed in the current user turn", () => {
+  it("removes all tools only after geography materialization completed in the current user turn", () => {
     const completed = novelXGrowthToolCompleted(
       [
         {
@@ -10,7 +10,7 @@ describe("NovelX Growth loop gate", () => {
           parts: [
             {
               type: "tool",
-              tool: "novelx_register_growth_skeleton",
+              tool: "novelx_finish_geography",
               state: { status: "completed" },
             },
           ],
@@ -21,14 +21,14 @@ describe("NovelX Growth loop gate", () => {
     const tools = restrictNovelXGrowthTools({
       agent: "growth",
       completedThisTurn: completed,
-      tools: { novelx_register_growth_skeleton: {}, read: {} },
+      tools: { novelx_finish_geography: {}, task: {} },
     })
 
     expect(completed).toBe(true)
     expect(tools).toEqual({})
   })
 
-  it("allows a failed registration to be corrected in the same user turn", () => {
+  it("allows a failed finish to be corrected in the same user turn", () => {
     const completed = novelXGrowthToolCompleted(
       [
         {
@@ -36,7 +36,7 @@ describe("NovelX Growth loop gate", () => {
           parts: [
             {
               type: "tool",
-              tool: "novelx_register_growth_skeleton",
+              tool: "novelx_finish_geography",
               state: { status: "error" },
             },
           ],
@@ -44,13 +44,13 @@ describe("NovelX Growth loop gate", () => {
       ],
       "msg-current",
     )
-    const tools = { novelx_register_growth_skeleton: {} }
+    const tools = { novelx_finish_geography: {} }
 
     expect(completed).toBe(false)
     expect(restrictNovelXGrowthTools({ agent: "growth", completedThisTurn: completed, tools })).toBe(tools)
   })
 
-  it("does not consume completed registrations from earlier turns or other agents", () => {
+  it("does not consume completed geography stages from earlier turns or other agents", () => {
     const completed = novelXGrowthToolCompleted(
       [
         {
@@ -58,7 +58,7 @@ describe("NovelX Growth loop gate", () => {
           parts: [
             {
               type: "tool",
-              tool: "novelx_register_growth_skeleton",
+              tool: "novelx_finish_geography",
               state: { status: "completed" },
             },
           ],
@@ -66,7 +66,7 @@ describe("NovelX Growth loop gate", () => {
       ],
       "msg-current",
     )
-    const tools = { novelx_register_growth_skeleton: {} }
+    const tools = { novelx_finish_geography: {} }
 
     expect(completed).toBe(false)
     expect(restrictNovelXGrowthTools({ agent: "growth", completedThisTurn: completed, tools })).toBe(tools)

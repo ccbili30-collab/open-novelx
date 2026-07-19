@@ -109,10 +109,15 @@ describe("tool.registry", () => {
     }),
   )
 
-  it.instance("exposes the NovelX Growth skeleton registration tool", () =>
+  it.instance("exposes the NovelX geography Growth toolchain", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service
-      expect(yield* registry.ids()).toContain("novelx_register_growth_skeleton")
+      const ids = yield* registry.ids()
+      expect(ids).toContain("novelx_register_growth_skeleton")
+      expect(ids).toContain("novelx_prepare_geography")
+      expect(ids).toContain("novelx_commit_geography")
+      expect(ids).toContain("novelx_abort_geography")
+      expect(ids).toContain("novelx_finish_geography")
     }),
   )
 

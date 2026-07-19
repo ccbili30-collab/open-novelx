@@ -25,9 +25,9 @@ const agentLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
 const it = testEffect(agentLayer())
 
 // Helper to evaluate permission for a tool with wildcard pattern
-function evalPerm(agent: Agent.Info | undefined, permission: string): PermissionV1.Action | undefined {
+function evalPerm(agent: Agent.Info | undefined, permission: string, pattern = "*"): PermissionV1.Action | undefined {
   if (!agent) return undefined
-  return Permission.evaluate(permission, "*", agent.permission).action
+  return Permission.evaluate(permission, pattern, agent.permission).action
 }
 
 function load<A>(fn: (svc: Agent.Interface) => Effect.Effect<A>) {
@@ -51,6 +51,7 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("build")
     expect(names).toContain("plan")
     expect(names).toContain("growth")
+    expect(names).toContain("novelx-geography")
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
@@ -59,20 +60,55 @@ it.instance("returns default native agents when no config", () =>
   }),
 )
 
-it.instance("growth agent is hidden and can only register the NovelX skeleton", () =>
+it.instance("growth editor is hidden and can only run the geography materialization chain", () =>
   Effect.gen(function* () {
     const growth = yield* load((svc) => svc.get("growth"))
     expect(growth).toBeDefined()
     expect(growth?.mode).toBe("primary")
     expect(growth?.hidden).toBe(true)
     expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("allow")
+    expect(evalPerm(growth, "novelx_prepare_geography")).toBe("allow")
+    expect(evalPerm(growth, "novelx_commit_geography")).toBe("allow")
+    expect(evalPerm(growth, "novelx_finish_geography")).toBe("allow")
     expect(evalPerm(growth, "read")).toBe("deny")
     expect(evalPerm(growth, "write")).toBe("deny")
     expect(evalPerm(growth, "edit")).toBe("deny")
     expect(evalPerm(growth, "bash")).toBe("deny")
-    expect(evalPerm(growth, "task")).toBe("deny")
+    expect(evalPerm(growth, "task", "novelx-geography")).toBe("allow")
+    expect(evalPerm(growth, "task", "general")).toBe("deny")
     expect(evalPerm(growth, "question")).toBe("deny")
+    for (const section of ["事实依据", "因果推演", "地貌与空间", "气候与生态", "资源与通行", "风险与限制", "关系"]) {
+      expect(growth?.prompt).toContain(section)
+    }
+    expect(growth?.prompt).toContain("do not request, substitute, or prefer another section scheme")
   }),
+)
+
+it.instance(
+  "geography child is a hidden read-only leaf that project config cannot override",
+  () =>
+    Effect.gen(function* () {
+      const child = yield* load((svc) => svc.get("novelx-geography"))
+      expect(child?.mode).toBe("subagent")
+      expect(child?.hidden).toBe(true)
+      expect(evalPerm(child, "read")).toBe("allow")
+      expect(evalPerm(child, "write")).toBe("deny")
+      expect(evalPerm(child, "edit")).toBe("deny")
+      expect(evalPerm(child, "apply_patch")).toBe("deny")
+      expect(evalPerm(child, "task", "general")).toBe("deny")
+      expect(child?.prompt).not.toContain("CONFIG_OVERRIDE_SENTINEL")
+    }),
+  {
+    config: {
+      agent: {
+        "novelx-geography": {
+          prompt: "CONFIG_OVERRIDE_SENTINEL",
+          hidden: false,
+          permission: { write: "allow", task: "allow" },
+        },
+      },
+    },
+  },
 )
 
 it.instance(
