@@ -17,13 +17,10 @@ type Metadata = {
   replayed: boolean
   profileSha256: string
   counts: {
-    files: number
-    worldLayers: number
-    worldSlots: number
-    characterGroups: number
-    characterSlots: number
-    graphViews: number
-    chapters: number
+    terrainNodes: number
+    terrainRelations: number
+    coreTerrain: number
+    surroundingWaters: number
   }
 }
 
@@ -39,9 +36,9 @@ export const NovelXGrowthSkeletonTool = Tool.define<
 
     return {
       description: [
-        "Register the first NovelX Growth skeleton after privately reasoning about genre, scale, layers, and counts.",
-        "This is the only terminal tool for the registration stage. It creates planned roads only: no lore, facts, named characters, relations, chapter prose, images, paths, or IDs may be invented by the model.",
-        "The Harness validates and compiles the six NovelX surfaces. Call exactly once after the profile is complete.",
+        "Register the first NovelX Growth terrain after privately planning one main continent and its surrounding waters.",
+        "Submit specific named terrain, concrete summaries, formation logic, normalized map placement, and explicit spatial relations. Numbered placeholders and empty-content markers are forbidden.",
+        "This stage registers terrain only. Do not create nations, civilizations, organizations, characters, story prose, images, paths, IDs, hashes, or completion claims. Call exactly once after the terrain is coherent.",
       ].join(" "),
       parameters: Parameters,
       execute: (profile, ctx) =>
@@ -125,16 +122,15 @@ function assertNotDuplicateTurn(manifest: NovelXGrowth.Manifest, ctx: Tool.Conte
 
 function result(manifest: NovelXGrowth.Manifest, replayed: boolean) {
   const counts = {
-    files: manifest.surfaces.files.items.length,
-    worldLayers: manifest.surfaces.world.layers.length,
-    worldSlots: manifest.surfaces.world.layers.reduce((total, layer) => total + layer.slots.length, 0),
-    characterGroups: manifest.surfaces.characters.groups.length,
-    characterSlots: manifest.surfaces.characters.groups.reduce((total, group) => total + group.slots.length, 0),
-    graphViews: manifest.surfaces.graph.views.length,
-    chapters: manifest.surfaces.story.chapters.length,
+    terrainNodes: manifest.terrain.nodes.length,
+    terrainRelations: manifest.terrain.relations.length,
+    coreTerrain: manifest.terrain.nodes.filter((node) => node.prominence === "core").length,
+    surroundingWaters: manifest.terrain.nodes.filter(
+      (node) => node.parentId === null && (node.kind === "ocean" || node.kind === "sea"),
+    ).length,
   }
   return {
-    title: replayed ? "生长骨架已存在" : "生长骨架已注册",
+    title: replayed ? "世界地形已存在" : "世界地形已注册",
     metadata: {
       path: NovelXGrowth.MANIFEST_PATH,
       replayed,
@@ -142,10 +138,10 @@ function result(manifest: NovelXGrowth.Manifest, replayed: boolean) {
       counts,
     },
     output: [
-      replayed ? "相同的生长骨架已经注册，本次为幂等重放。" : `已注册“${manifest.profile.title}”的生长骨架。`,
+      replayed ? "相同的世界地形已经注册，本次为幂等重放。" : `已注册“${manifest.profile.title}”的世界地形。`,
       `题材：${manifest.profile.genre.label}；尺度：${manifest.profile.genre.scale}。`,
-      `世界 ${counts.worldLayers} 层 / ${counts.worldSlots} 个待填充槽位；角色 ${counts.characterGroups} 组 / ${counts.characterSlots} 个待填充槽位；图谱 ${counts.graphViews} 个空视图；故事 ${counts.chapters} 个标准空章节。`,
-      `六个工作面共投影 ${counts.files} 个待物化文件路径；尚未生成任何正式内容。`,
+      `已注册 ${counts.terrainNodes} 个具名地形与 ${counts.terrainRelations} 条空间关系，其中 ${counts.coreTerrain} 个核心地形、${counts.surroundingWaters} 片周边海域。`,
+      "本阶段没有注册国家、文明、角色、故事或图片。",
     ].join("\n"),
   }
 }

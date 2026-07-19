@@ -103,9 +103,8 @@ export type NovelXGrowthNavigationItem = {
   id: string
   label: string
   resource: "files" | "world" | "characters" | "graph" | "story" | "package"
-  kind: "group" | "slot" | "view" | "chapter" | "section" | "file"
+  kind: "terrain"
   depth: number
-  path?: string
   parentLabel?: string
 }
 
@@ -113,81 +112,23 @@ export function novelXGrowthNavigationItems(
   manifest: NovelXGrowth.Manifest,
   resource: NovelXGrowthNavigationItem["resource"],
 ): NovelXGrowthNavigationItem[] {
-  if (resource === "files") {
-    const groups = new Map<string, NovelXGrowth.PlannedFile[]>()
-    for (const file of manifest.surfaces.files.items) {
-      const root = file.path.split("/")[0] ?? "项目"
-      groups.set(root, [...(groups.get(root) ?? []), file])
-    }
-    return [...groups].flatMap(([label, files]) => [
-      { id: `files:${label}`, label, resource, kind: "group" as const, depth: 0 },
-      ...files.map((file) => ({
-        id: file.id,
-        label: file.label,
+  if (resource !== "world") return []
+  const children = new Map<string | null, NovelXGrowth.RegisteredTerrainNode[]>()
+  for (const node of manifest.terrain.nodes) {
+    children.set(node.parentId, [...(children.get(node.parentId) ?? []), node])
+  }
+  const byId = new Map(manifest.terrain.nodes.map((node) => [node.id, node]))
+  const visit = (parentId: string | null, depth: number): NovelXGrowthNavigationItem[] =>
+    (children.get(parentId) ?? []).flatMap((node) => [
+      {
+        id: node.id,
+        label: node.name,
         resource,
-        kind: "file" as const,
-        depth: 1,
-        path: file.path,
-        parentLabel: label,
-      })),
+        kind: "terrain" as const,
+        depth,
+        parentLabel: node.parentId ? byId.get(node.parentId)?.name : undefined,
+      },
+      ...visit(node.id, depth + 1),
     ])
-  }
-  if (resource === "world") {
-    const children = new Map<string | null, NovelXGrowth.PlannedWorldLayer[]>()
-    for (const layer of manifest.surfaces.world.layers) {
-      children.set(layer.parentId, [...(children.get(layer.parentId) ?? []), layer])
-    }
-    const visit = (parentId: string | null, depth: number): NovelXGrowthNavigationItem[] =>
-      (children.get(parentId) ?? []).flatMap((layer) => [
-        { id: layer.id, label: layer.label, resource, kind: "group" as const, depth },
-        ...layer.slots.map((slot) => ({
-          id: slot.id,
-          label: slot.label,
-          resource,
-          kind: "slot" as const,
-          depth: depth + 1,
-          parentLabel: layer.label,
-        })),
-        ...visit(layer.id, depth + 1),
-      ])
-    return visit(null, 0)
-  }
-  if (resource === "characters") {
-    return manifest.surfaces.characters.groups.flatMap((group) => [
-      { id: group.id, label: group.label, resource, kind: "group" as const, depth: 0 },
-      ...group.slots.map((slot) => ({
-        id: slot.id,
-        label: slot.label,
-        resource,
-        kind: "slot" as const,
-        depth: 1,
-        parentLabel: group.label,
-      })),
-    ])
-  }
-  if (resource === "graph") {
-    return manifest.surfaces.graph.views.map((view) => ({
-      id: view.id,
-      label: view.label,
-      resource,
-      kind: "view",
-      depth: 0,
-    }))
-  }
-  if (resource === "story") {
-    return manifest.surfaces.story.chapters.map((chapter) => ({
-      id: chapter.id,
-      label: chapter.label,
-      resource,
-      kind: "chapter",
-      depth: 0,
-    }))
-  }
-  return manifest.surfaces.package.sections.map((section) => ({
-    id: section.id,
-    label: section.label,
-    resource,
-    kind: "section",
-    depth: 0,
-  }))
+  return visit(null, 0)
 }

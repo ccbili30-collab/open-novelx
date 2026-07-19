@@ -8,20 +8,54 @@ async function sha256(value: unknown) {
 }
 
 async function manifestFixture(): Promise<NovelXGrowth.Manifest> {
-  const profile = {
-    title: "中土新纪元",
-    genre: { family: "fantasy", label: "中世纪大世界幻想", scale: "大陆" },
-    worldLayers: [
-      { label: "地理", parentLayerIndex: null, slotCount: 1 },
-      { label: "国家", parentLayerIndex: 0, slotCount: 1 },
+  const profileNodes: NovelXGrowth.TerrainNodeProfile[] = [
+    profileNode("埃兰大陆", "continent", null, 8, 10, 72, 76),
+    profileNode("西陲苍海", "ocean", null, 0, 0, 100, 100),
+    profileNode("北境冠脉", "mountain_range", 0, 25, 16, 42, 12),
+    profileNode("中央沃原", "plain", 0, 31, 42, 36, 24),
+    profileNode("白河流域", "river", 0, 46, 29, 8, 42),
+    profileNode("灰烬高原", "plateau", 0, 59, 52, 24, 18),
+    profileNode("晨星群岛", "archipelago", 1, 80, 34, 14, 20),
+    profileNode("南境暖海", "sea", 1, 18, 78, 66, 18),
+  ]
+  const profile: NovelXGrowth.Profile = {
+    title: "埃兰世界",
+    genre: { family: "fantasy", label: "经典中土大世界魔幻", scale: "主大陆及周边海域" },
+    designSummary: "北部高山、中央平原与南部暖海组成主大陆的基本地貌骨架。",
+    nodes: profileNodes,
+    relations: [
+      {
+        fromNodeIndex: 4,
+        toNodeIndex: 7,
+        kind: "flows_into",
+        summary: "白河由中央沃原向南延伸，最终汇入南境暖海。",
+      },
     ],
-    characterGroups: [{ label: "核心角色", slotCount: 1 }],
-    graphViews: ["因果链"],
-    chapterCount: 1,
   }
+  const nodes = profileNodes.map((item, index) =>
+    node(
+      `terrain-${index}`,
+      item.name,
+      item.kind,
+      item.parentNodeIndex === null ? null : `terrain-${item.parentNodeIndex}`,
+      index + 1,
+      item.map,
+    ),
+  )
+  const relations: NovelXGrowth.RegisteredTerrainRelation[] = [
+    {
+      id: "relation-0",
+      fromId: "terrain-4",
+      toId: "terrain-7",
+      kind: "flows_into",
+      summary: "白河由中央沃原向南延伸，最终汇入南境暖海。",
+      status: "registered",
+    },
+  ]
   const draft = {
-    schemaVersion: 1 as const,
-    status: "planned" as const,
+    schemaVersion: 2 as const,
+    stage: "terrain_registration" as const,
+    status: "registered" as const,
     registeredAt: 1,
     source: {
       sessionId: "ses_growth",
@@ -30,90 +64,77 @@ async function manifestFixture(): Promise<NovelXGrowth.Manifest> {
       profileSha256: await sha256(profile),
     },
     profile,
-    surfaces: {
-      files: {
-        items: [
-          {
-            id: "file-1",
-            label: "地理 01",
-            path: "World/01-地理/001-地理-01.md",
-            kind: "document" as const,
-            sourceId: "slot-1",
-            status: "planned" as const,
-          },
-        ],
-      },
-      world: {
-        layers: [
-          {
-            id: "layer-1",
-            label: "地理",
-            ordinal: 1,
-            parentId: null,
-            status: "planned" as const,
-            slots: [{ id: "slot-1", label: "地理 01", ordinal: 1, status: "planned" as const }],
-          },
-          {
-            id: "layer-2",
-            label: "国家",
-            ordinal: 2,
-            parentId: "layer-1",
-            status: "planned" as const,
-            slots: [{ id: "slot-2", label: "国家 01", ordinal: 1, status: "planned" as const }],
-          },
-        ],
-      },
-      characters: {
-        groups: [
-          {
-            id: "group-1",
-            label: "核心角色",
-            ordinal: 1,
-            status: "planned" as const,
-            slots: [{ id: "character-1", label: "核心角色 01", ordinal: 1, status: "planned" as const }],
-          },
-        ],
-      },
-      graph: { views: [{ id: "graph-1", label: "因果链", ordinal: 1, status: "planned" as const }] },
-      story: {
-        id: "story-1",
-        label: "中土新纪元·故事",
-        status: "planned" as const,
-        chapters: [
-          { id: "chapter-1", label: "第001章", ordinal: 1, status: "planned" as const, contentState: "empty" as const },
-        ],
-      },
-      package: {
-        id: "package-1",
-        label: "中土新纪元·世界包",
-        status: "planned" as const,
-        sections: [{ id: "section-1", label: "封面", ordinal: 1, status: "planned" as const }],
-      },
-    },
+    terrain: { nodes, relations },
   }
   return { ...draft, integritySha256: await sha256(draft) }
 }
 
-describe("NovelX Growth skeleton projection", () => {
+describe("NovelX Growth terrain projection", () => {
   it("validates integrity before accepting the manifest", async () => {
     const manifest = await manifestFixture()
-    expect((await parseNovelXGrowthSkeleton(JSON.stringify(manifest))).profile.title).toBe("中土新纪元")
+    expect((await parseNovelXGrowthSkeleton(JSON.stringify(manifest))).profile.title).toBe("埃兰世界")
     await expect(parseNovelXGrowthSkeleton(JSON.stringify({ ...manifest, registeredAt: 2 }))).rejects.toThrow(
       "完整性校验失败",
     )
   })
 
-  it("projects world dependencies and planned file paths without inventing content", async () => {
+  it("projects named terrain hierarchy without empty numbered slots", async () => {
     const manifest = await manifestFixture()
     const world = novelXGrowthNavigationItems(manifest, "world")
-    const files = novelXGrowthNavigationItems(manifest, "files")
 
     expect(world.map((item) => [item.label, item.depth])).toEqual([
-      ["地理", 0],
-      ["地理 01", 1],
-      ["国家", 1],
-      ["国家 01", 2],
+      ["埃兰大陆", 0],
+      ["北境冠脉", 1],
+      ["中央沃原", 1],
+      ["白河流域", 1],
+      ["灰烬高原", 1],
+      ["西陲苍海", 0],
+      ["晨星群岛", 1],
+      ["南境暖海", 1],
     ])
-    expect(files[1]?.path).toBe("World/01-地理/001-地理-01.md")
+    expect(world.some((item) => /\d+$/u.test(item.label))).toBe(false)
+    expect(novelXGrowthNavigationItems(manifest, "characters")).toEqual([])
   })
 })
+
+function node(
+  id: string,
+  name: string,
+  kind: NovelXGrowth.TerrainKind,
+  parentId: string | null,
+  ordinal: number,
+  map: NovelXGrowth.TerrainNodeProfile["map"],
+): NovelXGrowth.RegisteredTerrainNode {
+  return {
+    id,
+    name,
+    kind,
+    parentId,
+    ordinal,
+    prominence: ordinal === 1 ? "core" : "major",
+    summary: `${name}拥有清晰而具体的地貌结构与空间边界。`,
+    formation: `${name}由长期地质活动和侵蚀过程共同塑造。`,
+    map,
+    status: "registered",
+  }
+}
+
+function profileNode(
+  name: string,
+  kind: NovelXGrowth.TerrainKind,
+  parentNodeIndex: number | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): NovelXGrowth.TerrainNodeProfile {
+  return {
+    name,
+    kind,
+    parentNodeIndex,
+    prominence: parentNodeIndex === null && kind === "continent" ? "core" : "major",
+    summary: `${name}拥有清晰而具体的地貌结构与空间边界。`,
+    formation: `${name}由长期地质活动和侵蚀过程共同塑造。`,
+    map: { x, y, width, height },
+  }
+}

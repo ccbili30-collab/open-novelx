@@ -12,21 +12,9 @@ import { NovelXGrowthSkeletonTool } from "@/tool/novelx-growth-skeleton"
 import { MessageID, SessionID } from "@/session/schema"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
+import { fantasyTerrain as profile } from "../novelx/growth-skeleton.fixture"
 
 const it = testEffect(LayerNode.compile(LayerNode.group([FSUtil.node, EventV2Bridge.node, Truncate.node, Agent.node])))
-
-const profile = {
-  title: "中土新纪元",
-  genre: { family: "fantasy", label: "中世纪大世界幻想", scale: "大陆" },
-  worldLayers: [
-    { label: "天文", parentLayerIndex: null, slotCount: 1 },
-    { label: "地理", parentLayerIndex: null, slotCount: 3 },
-    { label: "国家", parentLayerIndex: 1, slotCount: 4 },
-  ],
-  characterGroups: [{ label: "核心角色", slotCount: 4 }],
-  graphViews: ["因果链", "人物关系"],
-  chapterCount: 8,
-} satisfies NovelXGrowth.Profile
 
 const context = {
   sessionID: SessionID.make("ses_growth"),
@@ -61,10 +49,11 @@ describe("tool.novelx_register_growth_skeleton", () => {
 
       expect(first.metadata.replayed).toBe(false)
       expect(second.metadata.replayed).toBe(true)
-      expect(manifest.profile.title).toBe("中土新纪元")
-      expect(manifest.surfaces.story.chapters[0]?.contentState).toBe("empty")
+      expect(manifest.profile.title).toBe("埃兰世界")
+      expect(manifest.terrain.nodes.some((node) => node.name === "北境冠脉")).toBe(true)
       expect((yield* Effect.promise(() => fs.readdir(test.directory))).includes(".novelx")).toBe(true)
-      expect(first.output).toContain("尚未生成任何正式内容")
+      expect(first.output).toContain("具名地形")
+      expect(first.output).toContain("没有注册国家、文明、角色、故事或图片")
     }),
   )
 

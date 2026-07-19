@@ -8,7 +8,7 @@
 
 2026-07-19 的当前单一视觉基准更新为：
 
-`C:\Users\16014\.codex\generated_images\019f7695-ddcf-7772-a15d-90d7e87efe96\exec-770f6d85-7ba1-4c6e-8899-cddbd6449532.png`
+`C:\Users\16014\.codex\generated_images\019f7695-ddcf-7772-a15d-90d7e87efe96\exec-94112247-4542-4f86-99c4-2211896fedb3.png`
 
 该图为 `1672 × 941`。本轮优先复刻其布局几何、符号密度、选中方式和主次关系；暖色数值不是本轮判断重点。仓库内六张工作面概念图继续约束各页内容组织，但不再覆盖这一统一网格。
 
@@ -29,31 +29,31 @@ OpenCode 单层外壳参考为 `2560 × 1600`，只用于外壳融合、折叠�
 
 以当前视觉基准为六工作面共同网格。测量边界允许浏览器 1px 取整误差：
 
-| 区域 | 目标边界 | 基线尺寸 |
-| --- | --- | --- |
-| 唯一顶栏 | `x 0–1672, y 0–62` | `1672 × 62` |
-| 项目方块栏 | `x 0–56, y 62–941` | `56 × 879` |
-| 小对话栏 | `x 56–399, y 62–941` | `343 × 879` |
-| 资源导航器 | `x 399–633, y 135–941` | `234 × 806` |
-| 主工作面 | `x 633–1314, y 135–941` | `681 × 806` |
-| 条件式详情栏 | `x 1314–1604, y 135–941` | `290 × 806` |
-| 六图标栏 | `x 1604–1672, y 62–941` | `68 × 879` |
-| 资源页总标题 | `x 399–1604, y 62–135` | `1205 × 73` |
+| 区域         | 目标边界                 | 基线尺寸     |
+| ------------ | ------------------------ | ------------ |
+| 唯一顶栏     | `x 0–1672, y 0–55`       | `1672 × 55`  |
+| 项目方块栏   | `x 0–60, y 55–941`       | `60 × 886`   |
+| 小对话栏     | `x 60–411, y 55–941`     | `351 × 886`  |
+| 资源导航器   | `x 411–634, y 158–941`   | `223 × 783`  |
+| 主工作面     | `x 634–1300, y 158–941`  | `666 × 783`  |
+| 条件式详情栏 | `x 1300–1604, y 158–941` | `304 × 783`  |
+| 六图标栏     | `x 1604–1672, y 55–941`  | `68 × 886`   |
+| 资源页总标题 | `x 411–1604, y 55–158`   | `1193 × 103` |
 
 本轮使用以下可调变量：
 
 ```css
---novelx-titlebar-height: 62px;
---novelx-project-rail-width: 56px;
+--novelx-titlebar-height: 55px;
+--novelx-project-rail-width: 60px;
 --novelx-project-sidebar-width: 300px;
---novelx-conversation-compact-width: 343px;
---novelx-resource-nav-width: 234px;
---novelx-inspector-width: 290px;
+--novelx-conversation-compact-width: 351px;
+--novelx-resource-nav-width: 223px;
+--novelx-inspector-width: 304px;
 --novelx-resource-dock-width: 68px;
 --novelx-compact-files-width: 324px;
 ```
 
-Electron Windows 原生 caption overlay（标题栏覆盖层）必须与 `62px` 同步，不能只增高网页标题栏而让原生窗口按钮错位。
+Electron Windows 原生 caption overlay（标题栏覆盖层）必须与 `55px` 同步，不能只增高网页标题栏而让原生窗口按钮错位。
 
 固定宽度总和不得再次挤压主编辑区。目标视口中主工作面约占总宽度 `40.7%`；当资源工作区不足以同时容纳三列时，详情栏改为可关闭的覆盖式检查器，资源导航和小对话再按既有状态收起，主编辑面保持可用。
 
@@ -120,18 +120,18 @@ icons-only + click(right-toggle)
 
 从概念图和已确认的暖色低彩度方向抽取：
 
-| 令牌 | 初始值 | 用途 |
-| --- | --- | --- |
-| `--nx-bg-shell` | `#f8f4ef` | 顶栏、项目栏、图标栏连续底色 |
-| `--nx-bg-surface` | `#fbfaf8` | 对话和主要内容面 |
-| `--nx-bg-subtle` | `#f4f0eb` | 选中行、弱层级 |
-| `--nx-bg-editor` | `#fffdfa` | 编辑器和输入框 |
-| `--nx-ink` | `#282522` | 主文字与图标 |
-| `--nx-muted` | `#77716b` | 次要文字 |
-| `--nx-faint` | `#aaa39b` | 辅助信息 |
-| `--nx-line` | `#e4ded7` | 1px 分隔线 |
-| `--nx-line-strong` | `#d8d0c8` | 输入和焦点边界 |
-| `--nx-accent` | `#8e3f39` | 仅用于真实活动/错误状态点 |
+| 令牌               | 初始值    | 用途                         |
+| ------------------ | --------- | ---------------------------- |
+| `--nx-bg-shell`    | `#f8f4ef` | 顶栏、项目栏、图标栏连续底色 |
+| `--nx-bg-surface`  | `#fbfaf8` | 对话和主要内容面             |
+| `--nx-bg-subtle`   | `#f4f0eb` | 选中行、弱层级               |
+| `--nx-bg-editor`   | `#fffdfa` | 编辑器和输入框               |
+| `--nx-ink`         | `#282522` | 主文字与图标                 |
+| `--nx-muted`       | `#77716b` | 次要文字                     |
+| `--nx-faint`       | `#aaa39b` | 辅助信息                     |
+| `--nx-line`        | `#e4ded7` | 1px 分隔线                   |
+| `--nx-line-strong` | `#d8d0c8` | 输入和焦点边界               |
+| `--nx-accent`      | `#8e3f39` | 仅用于真实活动/错误状态点    |
 
 - 字体：`"Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif`。
 - 普通正文：`13–14px`，行高 `1.55–1.75`。
@@ -191,16 +191,16 @@ icons-only + click(right-toggle)
 
 首次导航性能基线（run id `2026-07-18T22-29-39-305Z-11616`）：
 
-| 路径 | 首次到达 | 稳定到达 | 空白/未知帧 |
-| --- | ---: | ---: | ---: |
-| 未访问会话 | `69.3ms` | `83.3ms` | `0 / 0` |
-| 新会话 | `38.7ms` | `46.9ms` | `0 / 0` |
-| 子会话 | `49.3ms` | `65.5ms` | `0 / 0` |
+| 路径       | 首次到达 | 稳定到达 | 空白/未知帧 |
+| ---------- | -------: | -------: | ----------: |
+| 未访问会话 | `69.3ms` | `83.3ms` |     `0 / 0` |
+| 新会话     | `38.7ms` | `46.9ms` |     `0 / 0` |
+| 子会话     | `49.3ms` | `65.5ms` |     `0 / 0` |
 
 第一可提交批次的实际状态：
 
 - 已删除页面内第二层 NovelX 工具栏和状态栏，标题栏改为真实 DOM；中心 `NovelX` 返回当前项目主页，不再误触发新建会话。
-- 标题栏、项目栏和六图标栏统一使用 `#f8f4ef`；Windows 原生 caption overlay 高度同步为 `48px`。
+- 标题栏、项目栏和六图标栏统一使用 `#f8f4ef`；Windows 原生 caption overlay 高度同步为 `55px`。
 - 六资源切换、同键返回、左右折叠、小对话完全折叠与恢复、详情栏关闭与重开均由每项目持久化状态驱动。
 - 项目与会话来自真实项目/会话 Store（状态存储）；会话不会跨项目拖动，项目、同项目会话和置顶快捷方式分别排序。
 - 文件、世界、角色、故事工作面只投影真实目录；图谱与世界包在没有领域 Runtime（运行时）数据时明确失败关闭，不生成假节点、假地图、假校验或假导出。
@@ -208,12 +208,12 @@ icons-only + click(right-toggle)
 
 定向验收证据：
 
-| 验收 | 结果 |
-| --- | --- |
-| `novelx-workspace.test.ts` | `5 passed`，覆盖资源状态转移、右栏恢复、持久化归一化、置顶和排序 |
-| 两个 NovelX Playwright 回归 | `2 passed`，`1672 × 941 @ 1x` |
-| App typecheck / E2E typecheck | 通过 |
-| App production build | 通过，`2428` modules transformed |
+| 验收                                 | 结果                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `novelx-workspace.test.ts`           | `5 passed`，覆盖资源状态转移、右栏恢复、持久化归一化、置顶和排序               |
+| 两个 NovelX Playwright 回归          | `2 passed`，`1672 × 941 @ 1x`                                                  |
+| App typecheck / E2E typecheck        | 通过                                                                           |
+| App production build                 | 通过，`2428` modules transformed                                               |
 | Desktop typecheck / production build | 通过；真实 Electron renderer（渲染进程）启动并连接真实本地 sidecar（伴随进程） |
 
 Electron 实拍使用真实构建、隔离的 onboarding test root（首次启动测试目录）和实际 `oc://renderer/index.html`，渲染视口为 `1656 × 933 @ 1x`。`Page.captureScreenshot` 只能捕获 WebContents（网页内容），因此截图中 Windows 原生最小化/最大化/关闭按钮所在的 `137px` caption overlay 保留为空白；这不能替代对原生按钮点击、拖动和双击最大化的人工验收。
@@ -237,3 +237,9 @@ Electron 实拍使用真实构建、隔离的 onboarding test root（首次启�
 3. 至少完成两轮视觉修正。
 4. 在真实 Electron 中确认 Windows caption buttons、拖动、双击最大化和折叠控制。
 5. 覆盖 `C:\Users\16014\Desktop\NovelX-正式预览.png`，同时把阶段证据保存到 `tmp/visual-replica/`；临时证据不提交。
+
+### 9.1 地形注册阶段实拍
+
+2026-07-19 的地形注册批次继续以本规范的 `exec-941...png` 为唯一视觉基准，完成三轮真实截图比较。正式预览来自生产构建后的 Electron（桌面运行壳），并读取真实 Provider 写入的 `.novelx/growth/skeleton.json`；没有使用前端静态地图、Fixture（测试夹具）或编号空槽。
+
+本轮 `1672 × 941` 实拍的关键竖线为：项目栏右缘 `x=60`、小对话栏右缘 `x=411`、地形导航右缘 `x=635`、Atlas 右缘 `x=1300`、详情栏右缘 `x=1604`、六入口栏右缘 `x=1672`。WebContents（网页内容）截图无法真实拉伸 Windows 原生 caption overlay，验收脚本只对截图中的顶栏覆盖区域注入等宽样式；该注入不进入产品源码，也不能代替原生窗口按钮的人工交互验收。

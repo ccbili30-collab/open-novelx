@@ -21,7 +21,8 @@ it.instance("registers /growth as a hidden-agent command with user arguments", (
     expect(growth?.agent).toBe("growth")
     expect(growth?.source).toBe("command")
     expect(growth?.hints).toEqual(["$ARGUMENTS"])
-    expect(yield* Effect.promise(async () => growth?.template)).toContain("只注册六个工作面的空骨架")
+    expect(yield* Effect.promise(async () => growth?.template)).toContain("主大陆及周边海域")
+    expect(yield* Effect.promise(async () => growth?.template)).toContain("禁止编号占位")
   }),
 )
 

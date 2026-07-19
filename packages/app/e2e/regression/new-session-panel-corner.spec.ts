@@ -68,7 +68,7 @@ test("NovelX 新会话遵守唯一外壳与六类资源切换契约", async ({ p
   const dock = page.getByRole("navigation", { name: "项目资源" })
 
   await expect(titlebar.getByRole("button", { name: "返回当前项目主页" })).toHaveText("NovelX")
-  await expect(titlebar).toHaveCSS("height", "62px")
+  await expect(titlebar).toHaveCSS("height", "55px")
   await expect(titlebar.getByRole("button", { name: "展开或收起项目与会话" })).toBeVisible()
   await expect(titlebar.getByRole("button", { name: "展开或收起项目资源" })).toBeVisible()
   await expect(page.locator('[data-component="novelx-shell-toolbar"]')).toHaveCount(0)
@@ -88,10 +88,10 @@ test("NovelX 新会话遵守唯一外壳与六类资源切换契约", async ({ p
   await dock.getByRole("button", { name: "世界", exact: true }).click()
   await expect(resources).toHaveClass(/is-expanded/)
   await expect(resources.locator('[data-resource="world"]')).toBeVisible()
-  await expect(resources.locator(".novelx-resource-page-heading")).toHaveCSS("height", "73px")
-  await expect(resources.locator(".novelx-resource-navigator")).toHaveCSS("width", "234px")
-  await assertWidth(navigation, 56)
-  await assertWidth(conversation, 343)
+  await expect(resources.locator(".novelx-resource-page-heading")).toHaveCSS("height", "103px")
+  await expect(resources.locator(".novelx-resource-navigator")).toHaveCSS("width", "223px")
+  await assertWidth(navigation, 60)
+  await assertWidth(conversation, 351)
   await expect(page.getByText("尚未选择 Atlas 场景", { exact: true })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("novelx-world-expanded.png") })
 
@@ -99,7 +99,7 @@ test("NovelX 新会话遵守唯一外壳与六类资源切换契约", async ({ p
   await assertWidth(conversation, 0)
   await expect(page.getByRole("button", { name: "展开对话" })).toBeVisible()
   await page.getByRole("button", { name: "展开对话" }).click()
-  await assertWidth(conversation, 343)
+  await assertWidth(conversation, 351)
 
   await dock.getByRole("button", { name: "图谱", exact: true }).click()
   await expect(resources.locator('[data-resource="graph"]')).toBeVisible()

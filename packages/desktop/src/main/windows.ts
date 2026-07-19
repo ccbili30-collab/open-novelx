@@ -58,7 +58,7 @@ const registry = createWindowRegistry<BrowserWindow>({
     removeStoreFile(windowDataFile(id))
   },
 })
-const titlebarHeight = 62
+const titlebarHeight = 55
 const maxZoomLevel = 10
 const minZoomLevel = 0.2
 

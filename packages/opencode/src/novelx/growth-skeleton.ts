@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto"
 import { NovelXGrowth } from "@opencode-ai/schema"
 
-const MAX_WORLD_SLOTS = 200
-const MAX_CHARACTER_SLOTS = 100
-const MAX_CHAPTERS = 200
-const MAX_PLANNED_FILES = 500
+const ROOT_KINDS = new Set<NovelXGrowth.TerrainKind>(["continent", "ocean", "sea"])
+const LOWLAND_KINDS = new Set<NovelXGrowth.TerrainKind>(["plain", "basin", "valley", "plateau"])
+const WATER_KINDS = new Set<NovelXGrowth.TerrainKind>(["ocean", "sea"])
 
 export class GrowthSkeletonError extends Error {
   constructor(
@@ -26,111 +25,38 @@ export function compileNovelXGrowthSkeleton(input: {
 }): NovelXGrowth.Manifest {
   const profile = normalizeProfile(input.profile)
   const profileSha256 = sha256(profile)
-  const world = profile.worldLayers.map((layer, layerIndex) => {
-    const id = stableId("world-layer", layerIndex, layer.label)
-    return {
-      id,
-      label: layer.label,
-      ordinal: layerIndex + 1,
-      parentId:
-        layer.parentLayerIndex === null
-          ? null
-          : stableId("world-layer", layer.parentLayerIndex, profile.worldLayers[layer.parentLayerIndex]!.label),
-      status: "planned" as const,
-      slots: Array.from({ length: layer.slotCount }, (_, slotIndex) => ({
-        id: stableId("world-slot", layerIndex, layer.label, slotIndex),
-        label: `${layer.label} ${pad(slotIndex + 1, layer.slotCount)}`,
-        ordinal: slotIndex + 1,
-        status: "planned" as const,
-      })),
-    }
-  })
-  const characters = profile.characterGroups.map((group, groupIndex) => ({
-    id: stableId("character-group", groupIndex, group.label),
-    label: group.label,
-    ordinal: groupIndex + 1,
-    status: "planned" as const,
-    slots: Array.from({ length: group.slotCount }, (_, slotIndex) => ({
-      id: stableId("character-slot", groupIndex, group.label, slotIndex),
-      label: `${group.label} ${pad(slotIndex + 1, group.slotCount)}`,
-      ordinal: slotIndex + 1,
-      status: "planned" as const,
-    })),
-  }))
-  const graph = profile.graphViews.map((label, index) => ({
-    id: stableId("graph-view", index, label),
-    label,
+  const nodes = profile.nodes.map((node, index) => ({
+    id: stableId("terrain", index, node.kind, node.name),
+    name: node.name,
+    kind: node.kind,
+    parentId:
+      node.parentNodeIndex === null
+        ? null
+        : stableId(
+            "terrain",
+            node.parentNodeIndex,
+            profile.nodes[node.parentNodeIndex]!.kind,
+            profile.nodes[node.parentNodeIndex]!.name,
+          ),
     ordinal: index + 1,
-    status: "planned" as const,
+    prominence: node.prominence,
+    summary: node.summary,
+    formation: node.formation,
+    map: node.map,
+    status: "registered" as const,
   }))
-  const chapters = Array.from({ length: profile.chapterCount }, (_, index) => ({
-    id: stableId("chapter", index),
-    label: `第${String(index + 1).padStart(3, "0")}章`,
-    ordinal: index + 1,
-    status: "planned" as const,
-    contentState: "empty" as const,
+  const relations = profile.relations.map((relation, index) => ({
+    id: stableId("terrain-relation", index, relation.fromNodeIndex, relation.toNodeIndex, relation.kind),
+    fromId: nodes[relation.fromNodeIndex]!.id,
+    toId: nodes[relation.toNodeIndex]!.id,
+    kind: relation.kind,
+    summary: relation.summary,
+    status: "registered" as const,
   }))
-  const storyId = stableId("story", profile.title)
-  const packageId = stableId("package", profile.title)
-  const packageSections = ["封面", "简介", "世界总览", "角色总览", "因果图谱", "故事目录"].map((label, index) => ({
-    id: stableId("package-section", index, label),
-    label,
-    ordinal: index + 1,
-    status: "planned" as const,
-  }))
-  const files = [
-    ...world.flatMap((layer) =>
-      layer.slots.map((slot) =>
-        plannedFile({
-          label: slot.label,
-          path: `World/${folder(layer.ordinal, layer.label)}/${file(slot.ordinal, slot.label, "md")}`,
-          kind: "document",
-          sourceId: slot.id,
-        }),
-      ),
-    ),
-    ...characters.flatMap((group) =>
-      group.slots.map((slot) =>
-        plannedFile({
-          label: slot.label,
-          path: `Characters/${folder(group.ordinal, group.label)}/${file(slot.ordinal, slot.label, "md")}`,
-          kind: "document",
-          sourceId: slot.id,
-        }),
-      ),
-    ),
-    ...graph.map((view) =>
-      plannedFile({
-        label: view.label,
-        path: `Graph/${file(view.ordinal, view.label, "view.json")}`,
-        kind: "view",
-        sourceId: view.id,
-      }),
-    ),
-    ...chapters.map((chapter) =>
-      plannedFile({
-        label: chapter.label,
-        path: `Story/${chapter.label}.md`,
-        kind: "document",
-        sourceId: chapter.id,
-      }),
-    ),
-    ...packageSections.map((section) =>
-      plannedFile({
-        label: section.label,
-        path: section.label === "封面" ? "WorldPackage/cover.png" : `WorldPackage/${section.label}.md`,
-        kind: section.label === "封面" ? "image" : "document",
-        sourceId: section.id,
-      }),
-    ),
-  ]
-  if (files.length > MAX_PLANNED_FILES) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_FILE_LIMIT", `Planned file count exceeds ${MAX_PLANNED_FILES}.`)
-  }
-
   const draft = {
-    schemaVersion: 1 as const,
-    status: "planned" as const,
+    schemaVersion: 2 as const,
+    stage: "terrain_registration" as const,
+    status: "registered" as const,
     registeredAt: input.source.registeredAt,
     source: {
       sessionId: input.source.sessionId,
@@ -139,19 +65,7 @@ export function compileNovelXGrowthSkeleton(input: {
       profileSha256,
     },
     profile,
-    surfaces: {
-      files: { items: files },
-      world: { layers: world },
-      characters: { groups: characters },
-      graph: { views: graph },
-      story: { id: storyId, label: `${profile.title}·故事`, status: "planned" as const, chapters },
-      package: {
-        id: packageId,
-        label: `${profile.title}·世界包`,
-        status: "planned" as const,
-        sections: packageSections,
-      },
-    },
+    terrain: { nodes, relations },
   }
   return { ...draft, integritySha256: sha256(draft) }
 }
@@ -159,10 +73,10 @@ export function compileNovelXGrowthSkeleton(input: {
 export function verifyNovelXGrowthSkeleton(manifest: NovelXGrowth.Manifest) {
   const { integritySha256, ...draft } = manifest
   if (sha256(draft) !== integritySha256) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_INTEGRITY_INVALID", "Growth skeleton integrity check failed.")
+    throw new GrowthSkeletonError("NOVELX_GROWTH_INTEGRITY_INVALID", "Growth terrain integrity check failed.")
   }
   if (sha256(manifest.profile) !== manifest.source.profileSha256) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_PROFILE_HASH_INVALID", "Growth profile hash check failed.")
+    throw new GrowthSkeletonError("NOVELX_GROWTH_PROFILE_HASH_INVALID", "Growth terrain profile hash check failed.")
   }
   return manifest
 }
@@ -171,63 +85,93 @@ function normalizeProfile(profile: NovelXGrowth.Profile): NovelXGrowth.Profile {
   const normalized = {
     title: text(profile.title, "title"),
     genre: {
-      family: text(profile.genre.family, "genre.family"),
+      family: profile.genre.family,
       label: text(profile.genre.label, "genre.label"),
-      scale: text(profile.genre.scale, "genre.scale"),
+      scale: profile.genre.scale,
     },
-    worldLayers: profile.worldLayers.map((layer, index) => ({
-      label: text(layer.label, `worldLayers[${index}].label`),
-      parentLayerIndex: layer.parentLayerIndex,
-      slotCount: count(layer.slotCount, 40, `worldLayers[${index}].slotCount`),
+    designSummary: detail(profile.designSummary, "designSummary"),
+    nodes: profile.nodes.map((node, index) => ({
+      name: placeName(node.name, `nodes[${index}].name`),
+      kind: node.kind,
+      parentNodeIndex: node.parentNodeIndex,
+      prominence: node.prominence,
+      summary: detail(node.summary, `nodes[${index}].summary`),
+      formation: detail(node.formation, `nodes[${index}].formation`),
+      map: node.map,
     })),
-    characterGroups: profile.characterGroups.map((group, index) => ({
-      label: text(group.label, `characterGroups[${index}].label`),
-      slotCount: count(group.slotCount, 40, `characterGroups[${index}].slotCount`),
+    relations: profile.relations.map((relation, index) => ({
+      fromNodeIndex: relation.fromNodeIndex,
+      toNodeIndex: relation.toNodeIndex,
+      kind: relation.kind,
+      summary: detail(relation.summary, `relations[${index}].summary`),
     })),
-    graphViews: profile.graphViews.map((label, index) => text(label, `graphViews[${index}]`)),
-    chapterCount: count(profile.chapterCount, MAX_CHAPTERS, "chapterCount"),
-  }
-  if (normalized.worldLayers.length < 1 || normalized.worldLayers.length > 20) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_WORLD_LAYER_COUNT", "World layers must contain 1 to 20 entries.")
-  }
-  if (normalized.characterGroups.length < 1 || normalized.characterGroups.length > 20) {
-    throw new GrowthSkeletonError(
-      "NOVELX_GROWTH_CHARACTER_GROUP_COUNT",
-      "Character groups must contain 1 to 20 entries.",
-    )
-  }
-  if (normalized.graphViews.length < 1 || normalized.graphViews.length > 20) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_GRAPH_VIEW_COUNT", "Graph views must contain 1 to 20 entries.")
   }
   unique(
-    normalized.worldLayers.map((layer) => layer.label),
-    "world layer",
+    normalized.nodes.map((node) => node.name),
+    "terrain name",
   )
-  unique(
-    normalized.characterGroups.map((group) => group.label),
-    "character group",
-  )
-  unique(normalized.graphViews, "graph view")
-  normalized.worldLayers.forEach((layer, index) => {
-    if (layer.parentLayerIndex === null) return
-    if (!Number.isInteger(layer.parentLayerIndex) || layer.parentLayerIndex < 0 || layer.parentLayerIndex >= index) {
+  normalized.nodes.forEach((node, index) => {
+    if (node.map.x + node.map.width > 100 || node.map.y + node.map.height > 100) {
       throw new GrowthSkeletonError(
-        "NOVELX_GROWTH_WORLD_TOPOLOGY_INVALID",
-        `World layer ${index + 1} must reference an earlier parent layer.`,
+        "NOVELX_GROWTH_TERRAIN_MAP_INVALID",
+        `Terrain node ${index + 1} exceeds the normalized 100 by 100 map.`,
+      )
+    }
+    if (node.parentNodeIndex === null) {
+      if (!ROOT_KINDS.has(node.kind)) {
+        throw new GrowthSkeletonError(
+          "NOVELX_GROWTH_TERRAIN_ROOT_INVALID",
+          `Terrain node ${index + 1} must belong to an earlier parent.`,
+        )
+      }
+      return
+    }
+    if (!Number.isInteger(node.parentNodeIndex) || node.parentNodeIndex < 0 || node.parentNodeIndex >= index) {
+      throw new GrowthSkeletonError(
+        "NOVELX_GROWTH_TERRAIN_TOPOLOGY_INVALID",
+        `Terrain node ${index + 1} must reference an earlier parent node.`,
       )
     }
   })
-  const worldSlots = normalized.worldLayers.reduce((total, layer) => total + layer.slotCount, 0)
-  const characterSlots = normalized.characterGroups.reduce((total, group) => total + group.slotCount, 0)
-  if (worldSlots > MAX_WORLD_SLOTS) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_WORLD_SLOT_LIMIT", `World slots exceed ${MAX_WORLD_SLOTS}.`)
-  }
-  if (characterSlots > MAX_CHARACTER_SLOTS) {
+  const continents = normalized.nodes.filter((node) => node.kind === "continent" && node.parentNodeIndex === null)
+  if (continents.length !== 1 || continents[0]?.prominence !== "core") {
     throw new GrowthSkeletonError(
-      "NOVELX_GROWTH_CHARACTER_SLOT_LIMIT",
-      `Character slots exceed ${MAX_CHARACTER_SLOTS}.`,
+      "NOVELX_GROWTH_PRIMARY_CONTINENT_REQUIRED",
+      "Terrain registration requires exactly one core root continent.",
     )
   }
+  if (!normalized.nodes.some((node) => WATER_KINDS.has(node.kind) && node.parentNodeIndex === null)) {
+    throw new GrowthSkeletonError(
+      "NOVELX_GROWTH_SURROUNDING_WATER_REQUIRED",
+      "Terrain registration requires at least one surrounding root ocean or sea.",
+    )
+  }
+  if (!normalized.nodes.some((node) => node.kind === "mountain_range")) {
+    throw new GrowthSkeletonError("NOVELX_GROWTH_MOUNTAIN_REQUIRED", "Terrain registration requires a mountain range.")
+  }
+  if (!normalized.nodes.some((node) => LOWLAND_KINDS.has(node.kind))) {
+    throw new GrowthSkeletonError("NOVELX_GROWTH_LOWLAND_REQUIRED", "Terrain registration requires a lowland region.")
+  }
+  if (!normalized.nodes.some((node) => node.kind === "river" || node.kind === "lake")) {
+    throw new GrowthSkeletonError(
+      "NOVELX_GROWTH_INLAND_WATER_REQUIRED",
+      "Terrain registration requires a river or lake.",
+    )
+  }
+  const relationKeys = normalized.relations.map((relation, index) => {
+    if (
+      relation.fromNodeIndex >= normalized.nodes.length ||
+      relation.toNodeIndex >= normalized.nodes.length ||
+      relation.fromNodeIndex === relation.toNodeIndex
+    ) {
+      throw new GrowthSkeletonError(
+        "NOVELX_GROWTH_TERRAIN_RELATION_INVALID",
+        `Terrain relation ${index + 1} has an invalid endpoint.`,
+      )
+    }
+    return `${relation.fromNodeIndex}:${relation.toNodeIndex}:${relation.kind}`
+  })
+  unique(relationKeys, "terrain relation")
   return normalized
 }
 
@@ -239,52 +183,37 @@ function text(value: string, field: string) {
   return normalized
 }
 
-function count(value: number, maximum: number, field: string) {
-  if (!Number.isInteger(value) || value < 1 || value > maximum) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_COUNT_INVALID", `${field} must be an integer from 1 to ${maximum}.`)
+function detail(value: string, field: string) {
+  const normalized = value.trim().replace(/\s+/gu, " ")
+  if (normalized.length < 8 || normalized.length > 800 || /(?:待填充|待补充|尚未生成|TODO|TBD)/iu.test(normalized)) {
+    throw new GrowthSkeletonError(
+      "NOVELX_GROWTH_TERRAIN_DETAIL_INVALID",
+      `${field} must contain concrete terrain content rather than an empty-content marker.`,
+    )
   }
-  return value
+  return normalized
+}
+
+function placeName(value: string, field: string) {
+  const normalized = text(value, field)
+  if (
+    /\d+$/u.test(normalized) ||
+    /^(?:地形|地点|区域|大陆|海洋|海域|山脉|平原|河流|湖泊|岛屿|群岛)$/u.test(normalized) ||
+    /(?:待命名|未命名|占位|待填充)/u.test(normalized)
+  ) {
+    throw new GrowthSkeletonError(
+      "NOVELX_GROWTH_TERRAIN_NAME_PLACEHOLDER",
+      `${field} must be a specific place name, not a numbered or generic placeholder.`,
+    )
+  }
+  return normalized
 }
 
 function unique(values: string[], kind: string) {
   const keys = values.map((value) => value.toLocaleLowerCase("zh-CN"))
   if (new Set(keys).size !== keys.length) {
-    throw new GrowthSkeletonError("NOVELX_GROWTH_LABEL_DUPLICATE", `Duplicate ${kind} labels are not allowed.`)
+    throw new GrowthSkeletonError("NOVELX_GROWTH_LABEL_DUPLICATE", `Duplicate ${kind} values are not allowed.`)
   }
-}
-
-function plannedFile(input: { label: string; path: string; kind: "document" | "view" | "image"; sourceId: string }) {
-  return {
-    id: stableId("file", input.path),
-    label: input.label,
-    path: input.path,
-    kind: input.kind,
-    sourceId: input.sourceId,
-    status: "planned" as const,
-  }
-}
-
-function folder(ordinal: number, label: string) {
-  return `${String(ordinal).padStart(2, "0")}-${safeSegment(label)}`
-}
-
-function file(ordinal: number, label: string, extension: string) {
-  return `${String(ordinal).padStart(3, "0")}-${safeSegment(label)}.${extension}`
-}
-
-function safeSegment(label: string) {
-  const value = label
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/gu, "-")
-    .replace(/[. ]+$/u, "")
-    .trim()
-    .slice(0, 80)
-  if (!value) return "未命名"
-  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(value)) return `${value}-项目`
-  return value
-}
-
-function pad(value: number, maximum: number) {
-  return String(value).padStart(Math.max(2, String(maximum).length), "0")
 }
 
 function stableId(...parts: Array<string | number>) {

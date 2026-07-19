@@ -134,15 +134,18 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const resources = page.locator("#file-tree-panel")
   const dock = page.getByRole("navigation", { name: "项目资源" })
   await dock.getByRole("button", { name: "世界", exact: true }).click()
-  await expect(resources.getByText("生长骨架已注册 · 尚未生成正式内容", { exact: true })).toBeVisible()
-  await resources.getByRole("button", { name: "大陆地理 01", exact: true }).click()
-  await expect(resources.locator(".novelx-resource-selection .novelx-growth-state")).toHaveText("待填充槽位 · 待填充")
+  await expect(resources.getByText("埃兰世界的地理与区域", { exact: true })).toBeVisible()
+  await expect(resources.locator(".novelx-terrain-atlas")).toBeVisible()
+  await resources.getByRole("button", { name: "北境冠脉", exact: true }).click()
+  await expect(resources.locator(".novelx-resource-inspector-heading")).toContainText("北境冠脉")
   await expect(
-    resources.getByText(
-      "这是 Growth 注册的空骨架节点。后续 Agent 可以沿此道路创建内容；当前没有正文、事实或已应用修改。",
-      { exact: true },
-    ),
+    resources.getByText("横贯大陆北部的高大山系，连续雪峰构成最醒目的东西向屏障。", { exact: true }),
   ).toBeVisible()
+  await expect(resources.getByText(/(?:地形|地点|区域|大陆|海域|山脉|平原|河流|湖泊|岛屿|群岛)\s*0*\d+/u)).toHaveCount(
+    0,
+  )
+  await page.locator('[aria-label="开发性能诊断"]').evaluate((element) => element.remove())
+  await page.screenshot({ path: testInfo.outputPath("novelx-world-expanded.png") })
   await dock.getByRole("button", { name: "文件", exact: true }).click()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
   await resources.getByRole("button", { name: "World\\", exact: true }).click()
@@ -187,8 +190,8 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   const inspector = resources.locator(".novelx-resource-inspector")
   await expect(inspector).toBeVisible()
-  await expect(resources.locator(".novelx-resource-navigator")).toHaveCSS("width", "234px")
-  await expect(inspector).toHaveCSS("width", "290px")
+  await expect(resources.locator(".novelx-resource-navigator")).toHaveCSS("width", "223px")
+  await expect(inspector).toHaveCSS("width", "304px")
   await inspector.getByRole("button", { name: "关闭" }).click()
   await expect(inspector).toHaveCount(0)
   await resources.getByRole("button", { name: "展开详细信息" }).click()
@@ -307,17 +310,142 @@ async function growthManifestFixture() {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
   }
+  const profileNodes = [
+    terrainProfile(
+      "埃兰大陆",
+      "continent",
+      null,
+      "core",
+      12,
+      10,
+      72,
+      76,
+      "占据世界中央的主大陆，北高南低，山脉与河谷共同切分内部区域。",
+      "古老陆块经多次抬升与侵蚀形成，承担整张地图的空间母体。",
+    ),
+    terrainProfile(
+      "西陲苍海",
+      "ocean",
+      null,
+      "major",
+      0,
+      12,
+      18,
+      72,
+      "包围大陆西侧的深水海域，海岸线曲折并散布外海岛链。",
+      "大陆边缘快速沉降形成深水洋盆，为西岸提供明确外部边界。",
+    ),
+    terrainProfile(
+      "南境暖海",
+      "sea",
+      null,
+      "major",
+      18,
+      78,
+      66,
+      20,
+      "贴近大陆南缘的温暖内海，与主要河口和沿岸浅滩相连。",
+      "南部陆架缓慢下沉形成浅海，承接大陆主要水系的入海口。",
+    ),
+    terrainProfile(
+      "北境冠脉",
+      "mountain_range",
+      0,
+      "core",
+      24,
+      18,
+      48,
+      16,
+      "横贯大陆北部的高大山系，连续雪峰构成最醒目的东西向屏障。",
+      "大陆北缘挤压隆起形成连续褶皱山系，控制北部通行与水系源头。",
+    ),
+    terrainProfile(
+      "中央沃原",
+      "plain",
+      0,
+      "major",
+      30,
+      40,
+      38,
+      28,
+      "位于山脉南侧的广阔冲积平原，地势舒缓并由多条支流切割。",
+      "山地沉积物长期向南堆积，形成连片低地与宽阔河谷。",
+    ),
+    terrainProfile(
+      "白河",
+      "river",
+      0,
+      "major",
+      48,
+      29,
+      8,
+      55,
+      "发源于北境冠脉，穿过中央沃原后向南汇入暖海。",
+      "高山融水汇集成稳定干流，把北部高地与南部海岸连接起来。",
+    ),
+    terrainProfile(
+      "西风海岸",
+      "coast",
+      0,
+      "supporting",
+      14,
+      34,
+      12,
+      42,
+      "大陆西缘面向苍海的狭长海岸，海岬、港湾与陡崖交替出现。",
+      "海浪侵蚀抬升岩岸并切出深湾，形成大陆与外海的主要接触带。",
+    ),
+    terrainProfile(
+      "暮潮群岛",
+      "archipelago",
+      1,
+      "supporting",
+      3,
+      38,
+      12,
+      24,
+      "散布在西陲苍海外缘的岛链，与大陆西岸隔着多条潮汐水道。",
+      "沉没山脊的高点露出海面，排列成由东北向西南延伸的群岛。",
+    ),
+  ]
   const profile = {
-    title: "中土 Growth 空骨架",
-    genre: { family: "奇幻", label: "经典中土大世界魔幻", scale: "大陆级" },
-    worldLayers: [{ label: "大陆地理", parentLayerIndex: null, slotCount: 1 }],
-    characterGroups: [{ label: "核心角色", slotCount: 1 }],
-    graphViews: ["因果链"],
-    chapterCount: 1,
+    title: "埃兰世界",
+    genre: { family: "fantasy", label: "经典中土大世界魔幻", scale: "主大陆及周边海域" },
+    designSummary: "一块由北方高山脊柱、中央低地与南部暖海共同塑造的主大陆，东西海岸形成清晰边界。",
+    nodes: profileNodes,
+    relations: [
+      {
+        fromNodeIndex: 3,
+        toNodeIndex: 4,
+        kind: "borders",
+        summary: "北境冠脉沿中央沃原北缘延伸，构成高地与低地的清晰边界。",
+      },
+      {
+        fromNodeIndex: 5,
+        toNodeIndex: 4,
+        kind: "crosses",
+        summary: "白河自北向南穿过中央沃原，形成贯穿平原的主水道。",
+      },
+      { fromNodeIndex: 5, toNodeIndex: 2, kind: "flows_into", summary: "白河在大陆南缘形成河口，并最终汇入南境暖海。" },
+      { fromNodeIndex: 6, toNodeIndex: 1, kind: "opens_to", summary: "西风海岸的港湾与海峡全部向西陲苍海敞开。" },
+    ],
   }
+  const terrainNodes = profileNodes.map((node, index) => ({
+    id: `terrain-${index}`,
+    name: node.name,
+    kind: node.kind,
+    parentId: node.parentNodeIndex === null ? null : `terrain-${node.parentNodeIndex}`,
+    ordinal: index + 1,
+    prominence: node.prominence,
+    summary: node.summary,
+    formation: node.formation,
+    map: node.map,
+    status: "registered",
+  }))
   const draft = {
-    schemaVersion: 1,
-    status: "planned",
+    schemaVersion: 2,
+    stage: "terrain_registration",
+    status: "registered",
     registeredAt: 1,
     source: {
       sessionId: currentID,
@@ -326,56 +454,32 @@ async function growthManifestFixture() {
       profileSha256: await sha256(profile),
     },
     profile,
-    surfaces: {
-      files: {
-        items: [
-          {
-            id: "file-world-1",
-            label: "大陆地理 01",
-            path: "World/01-大陆地理/001-大陆地理-01.md",
-            kind: "document",
-            sourceId: "world-slot-1",
-            status: "planned",
-          },
-        ],
-      },
-      world: {
-        layers: [
-          {
-            id: "world-layer-1",
-            label: "大陆地理",
-            ordinal: 1,
-            parentId: null,
-            status: "planned",
-            slots: [{ id: "world-slot-1", label: "大陆地理 01", ordinal: 1, status: "planned" }],
-          },
-        ],
-      },
-      characters: {
-        groups: [
-          {
-            id: "character-group-1",
-            label: "核心角色",
-            ordinal: 1,
-            status: "planned",
-            slots: [{ id: "character-slot-1", label: "核心角色 01", ordinal: 1, status: "planned" }],
-          },
-        ],
-      },
-      graph: { views: [{ id: "graph-view-1", label: "因果链", ordinal: 1, status: "planned" }] },
-      story: {
-        id: "story-1",
-        label: "中土 Growth 空骨架·故事",
-        status: "planned",
-        chapters: [{ id: "chapter-1", label: "第001章", ordinal: 1, status: "planned", contentState: "empty" }],
-      },
-      package: {
-        id: "package-1",
-        label: "中土 Growth 空骨架·世界包",
-        status: "planned",
-        sections: [{ id: "section-1", label: "封面", ordinal: 1, status: "planned" }],
-      },
+    terrain: {
+      nodes: terrainNodes,
+      relations: profile.relations.map((relation, index) => ({
+        id: `relation-${index}`,
+        fromId: `terrain-${relation.fromNodeIndex}`,
+        toId: `terrain-${relation.toNodeIndex}`,
+        kind: relation.kind,
+        summary: relation.summary,
+        status: "registered",
+      })),
     },
   }
   return { ...draft, integritySha256: await sha256(draft) }
+}
+
+function terrainProfile(
+  name: string,
+  kind: string,
+  parentNodeIndex: number | null,
+  prominence: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  summary: string,
+  formation: string,
+) {
+  return { name, kind, parentNodeIndex, prominence, summary, formation, map: { x, y, width, height } }
 }
