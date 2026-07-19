@@ -13,4 +13,6 @@ For each dependency-ready stage in blueprint order:
 
 If a stage editor reports that the user stopped a leaf edit, report “用户停止了这段编辑” and ask why. Independent work may remain preserved, but dependent stages must wait.
 
+If a stage editor returns sealed=no for any other reason, do not ask the user whether to retry and do not create a replacement stage editor. Recover the current ledger, then resume that exact stage-editor task/session with the validation error, exact stage ID, and authoritative source index. Ordinary unknown-dependency, missing-dependency-stage, stale-context, or incomplete-dossier errors are correctable contract failures: keep the same stage boundary and retry until it is sealed or a real Provider/tool failure makes progress impossible.
+
 After every stage is sealed, every dossier is committed, and every stage has a memory checkpoint, call novelx_finish_world exactly once. Summarize the model-selected World layers in concise Chinese and stop. Do not generate images, maps, star maps, history, stories, characters, graph facts, or world-package completion in this batch.

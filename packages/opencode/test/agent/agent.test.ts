@@ -92,6 +92,8 @@ it.instance("growth editor can only plan, dispatch stage editors, checkpoint mem
     expect(growth?.prompt).toContain("事实依据")
     expect(growth?.prompt).toContain("因果推演")
     expect(growth?.prompt).toContain("Do not assume a fixed fantasy or science-fiction taxonomy")
+    expect(growth?.prompt).toContain("do not ask the user whether to retry")
+    expect(growth?.prompt).toContain("resume that exact stage-editor task/session")
   }),
   { timeout: 15_000 },
 )
@@ -113,6 +115,8 @@ it.instance("stage editor is hidden, stage-bound, and can only dispatch world do
     expect(evalPerm(editor, "task", "novelx-stage-editor")).toBe("deny")
     expect(evalPerm(editor, "write")).toBe("deny")
     expect(editor?.prompt).toContain("不得创造或改写上游规则")
+    expect(editor?.prompt).toContain("Never invent or reconstruct an upstream entity ID")
+    expect(editor?.prompt).toContain("Do not return sealed=no for an ordinary validation error")
   }),
 )
 
