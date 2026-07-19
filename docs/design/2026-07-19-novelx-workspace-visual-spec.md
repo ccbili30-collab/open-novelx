@@ -207,6 +207,16 @@ icons-only + click(right-toggle)
 
 Electron 实拍使用真实构建、隔离的 onboarding test root（首次启动测试目录）和实际 `oc://renderer/index.html`，渲染视口为 `1656 × 933 @ 1x`。`Page.captureScreenshot` 只能捕获 WebContents（网页内容），因此截图中 Windows 原生最小化/最大化/关闭按钮所在的 `137px` caption overlay 保留为空白；这不能替代对原生按钮点击、拖动和双击最大化的人工验收。
 
+本批实现提交为 `d9d28ac`（`feat(app): build NovelX workspace shell`），设计基线提交为 `6b5e790`。冻结前执行的关键命令为：
+
+- `bun test --preload ./happydom.ts ./src/context/novelx-workspace.test.ts`
+- `bun run typecheck`
+- `bun run typecheck:e2e`
+- `bunx playwright test --config e2e/regression/playwright.config.ts e2e/regression/new-session-panel-corner.spec.ts e2e/regression/novelx-workspace.spec.ts`
+- Desktop 包内 `bun run typecheck` 与 `bun run build`
+
+上述均为前端状态、交互和构建验收；没有使用真实 Provider（模型服务），也没有把 Growth、领域写入、图谱投影或世界包导出标记为 Live（真实运行）。原生窗口按钮的人工交互仍是明确未完成项。
+
 ## 9. 截图验收
 
 每个可提交阶段至少：
