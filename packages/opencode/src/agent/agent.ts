@@ -14,6 +14,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_NOVELX_GROWTH_SKELETON from "./prompt/novelx-growth-skeleton.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -136,6 +137,10 @@ const layer = Layer.effect(
         })
 
         const user = Permission.fromConfig(cfg.permission ?? {})
+        const growthRestriction = Permission.fromConfig({
+          "*": "deny",
+          novelx_register_growth_skeleton: "allow",
+        })
 
         const agents: Record<string, Info> = {
           build: {
@@ -178,6 +183,18 @@ const layer = Layer.effect(
             ),
             mode: "primary",
             native: true,
+          },
+          growth: {
+            name: "growth",
+            description:
+              "NovelX Growth registration stage. Registers an adaptive empty skeleton for all six work surfaces.",
+            options: {},
+            permission: Permission.merge(defaults, user, growthRestriction),
+            mode: "primary",
+            native: true,
+            hidden: true,
+            steps: 3,
+            prompt: PROMPT_NOVELX_GROWTH_SKELETON,
           },
           general: {
             name: "general",
@@ -265,6 +282,7 @@ const layer = Layer.effect(
         }
 
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
+          if (key === "growth") continue
           if (value.disable) {
             delete agents[key]
             continue

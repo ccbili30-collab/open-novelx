@@ -197,6 +197,7 @@ export default function FileTree(props: {
   active?: string
   level?: number
   allowed?: readonly string[]
+  hidden?: (node: FileNode) => boolean
   modified?: readonly string[]
   kinds?: ReadonlyMap<string, Kind>
   draggable?: boolean
@@ -219,6 +220,7 @@ export default function FileTree(props: {
       .replace(/[\\/]+$/, "")
       .replaceAll("\\", "/")
   const chain = props._chain ? [...props._chain, key(props.path)] : [key(props.path)]
+  const hidden = (node: FileNode) => props.hidden?.(node) ?? false
 
   const filter = createMemo(() => {
     if (props._filter) return props._filter
@@ -274,6 +276,7 @@ export default function FileTree(props: {
 
       const kids = file.tree
         .children(dir)
+        .filter((node) => !hidden(node))
         .filter((node) => node.type === "directory" && (file.tree.state(node.path)?.expanded ?? false))
         .map((node) => node.path)
 
@@ -326,7 +329,7 @@ export default function FileTree(props: {
   )
 
   const nodes = createMemo(() => {
-    const nodes = file.tree.children(props.path)
+    const nodes = file.tree.children(props.path).filter((node) => !hidden(node))
     const current = filter()
     if (!current) return nodes
 
@@ -436,6 +439,7 @@ export default function FileTree(props: {
                         path={node.path}
                         level={level + 1}
                         allowed={props.allowed}
+                        hidden={props.hidden}
                         modified={props.modified}
                         kinds={props.kinds}
                         active={props.active}

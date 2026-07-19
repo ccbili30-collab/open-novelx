@@ -15,6 +15,7 @@ const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${pr
 test.use({ viewport: { width: 1672, height: 941 }, deviceScaleFactor: 1 })
 
 test("真实会话保留导航、置顶、资源文件与覆盖式项目面板", async ({ page }, testInfo) => {
+  const growthManifest = await growthManifestFixture()
   let editable = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n"
   let saved: { content: string; expectedContent: string; expectedBom: boolean } | undefined
   let conflictNext = false
@@ -55,9 +56,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     },
     fileContent: (path) => ({ type: "text", content: `真实内容：${path}` }),
     fileEditable: (path) =>
-      path === "README.md"
-        ? { type: "text", content: editable, bom: true }
-        : { type: "text", content: `# ${path}\n`, bom: false },
+      path === ".novelx/growth/skeleton.json"
+        ? { type: "text", content: JSON.stringify(growthManifest), bom: false }
+        : path === "README.md"
+          ? { type: "text", content: editable, bom: true }
+          : { type: "text", content: `# ${path}\n`, bom: false },
     fileWrite: ({ path, body }) => {
       const write = body as { content: string; expectedContent: string; expectedBom: boolean }
       if (conflictNext) {
@@ -130,6 +133,16 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   const resources = page.locator("#file-tree-panel")
   const dock = page.getByRole("navigation", { name: "项目资源" })
+  await dock.getByRole("button", { name: "世界", exact: true }).click()
+  await expect(resources.getByText("生长骨架已注册 · 尚未生成正式内容", { exact: true })).toBeVisible()
+  await resources.getByRole("button", { name: "大陆地理 01", exact: true }).click()
+  await expect(resources.locator(".novelx-resource-selection .novelx-growth-state")).toHaveText("待填充槽位 · 待填充")
+  await expect(
+    resources.getByText(
+      "这是 Growth 注册的空骨架节点。后续 Agent 可以沿此道路创建内容；当前没有正文、事实或已应用修改。",
+      { exact: true },
+    ),
+  ).toBeVisible()
   await dock.getByRole("button", { name: "文件", exact: true }).click()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
   await resources.getByRole("button", { name: "World\\", exact: true }).click()
@@ -287,4 +300,82 @@ function toolEvent(status: "running" | "completed") {
       },
     },
   }
+}
+
+async function growthManifestFixture() {
+  const sha256 = async (value: unknown) => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+  const profile = {
+    title: "中土 Growth 空骨架",
+    genre: { family: "奇幻", label: "经典中土大世界魔幻", scale: "大陆级" },
+    worldLayers: [{ label: "大陆地理", parentLayerIndex: null, slotCount: 1 }],
+    characterGroups: [{ label: "核心角色", slotCount: 1 }],
+    graphViews: ["因果链"],
+    chapterCount: 1,
+  }
+  const draft = {
+    schemaVersion: 1,
+    status: "planned",
+    registeredAt: 1,
+    source: {
+      sessionId: currentID,
+      messageId: userMessageID,
+      toolCallId: "call_growth",
+      profileSha256: await sha256(profile),
+    },
+    profile,
+    surfaces: {
+      files: {
+        items: [
+          {
+            id: "file-world-1",
+            label: "大陆地理 01",
+            path: "World/01-大陆地理/001-大陆地理-01.md",
+            kind: "document",
+            sourceId: "world-slot-1",
+            status: "planned",
+          },
+        ],
+      },
+      world: {
+        layers: [
+          {
+            id: "world-layer-1",
+            label: "大陆地理",
+            ordinal: 1,
+            parentId: null,
+            status: "planned",
+            slots: [{ id: "world-slot-1", label: "大陆地理 01", ordinal: 1, status: "planned" }],
+          },
+        ],
+      },
+      characters: {
+        groups: [
+          {
+            id: "character-group-1",
+            label: "核心角色",
+            ordinal: 1,
+            status: "planned",
+            slots: [{ id: "character-slot-1", label: "核心角色 01", ordinal: 1, status: "planned" }],
+          },
+        ],
+      },
+      graph: { views: [{ id: "graph-view-1", label: "因果链", ordinal: 1, status: "planned" }] },
+      story: {
+        id: "story-1",
+        label: "中土 Growth 空骨架·故事",
+        status: "planned",
+        chapters: [{ id: "chapter-1", label: "第001章", ordinal: 1, status: "planned", contentState: "empty" }],
+      },
+      package: {
+        id: "package-1",
+        label: "中土 Growth 空骨架·世界包",
+        status: "planned",
+        sections: [{ id: "section-1", label: "封面", ordinal: 1, status: "planned" }],
+      },
+    },
+  }
+  return { ...draft, integritySha256: await sha256(draft) }
 }

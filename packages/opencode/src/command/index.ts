@@ -9,6 +9,7 @@ import { MCP } from "../mcp"
 import { Skill } from "../skill"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_NOVELX_GROWTH from "./template/novelx-growth.txt"
 import { LegacyEvent } from "@opencode-ai/schema/legacy-event"
 
 type State = {
@@ -46,6 +47,7 @@ export function hints(template: string) {
 export const Default = {
   INIT: "init",
   REVIEW: "review",
+  GROWTH: "growth",
 } as const
 
 export interface Interface {
@@ -86,8 +88,17 @@ const layer = Layer.effect(
         subtask: true,
         hints: hints(PROMPT_REVIEW),
       }
+      commands[Default.GROWTH] = {
+        name: Default.GROWTH,
+        description: "注册 NovelX 六个工作面的自适应空骨架",
+        agent: "growth",
+        source: "command",
+        template: PROMPT_NOVELX_GROWTH,
+        hints: hints(PROMPT_NOVELX_GROWTH),
+      }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
+        if (name === Default.GROWTH) continue
         commands[name] = {
           name,
           agent: command.agent,

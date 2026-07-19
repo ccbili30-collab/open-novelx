@@ -109,6 +109,13 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("exposes the NovelX Growth skeleton registration tool", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      expect(yield* registry.ids()).toContain("novelx_register_growth_skeleton")
+    }),
+  )
+
   it.instance("does not expose execute unless code mode is enabled", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

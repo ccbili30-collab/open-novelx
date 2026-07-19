@@ -50,12 +50,52 @@ it.instance("returns default native agents when no config", () =>
     const names = agents.map((a) => a.name)
     expect(names).toContain("build")
     expect(names).toContain("plan")
+    expect(names).toContain("growth")
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
     expect(names).toContain("title")
     expect(names).toContain("summary")
   }),
+)
+
+it.instance("growth agent is hidden and can only register the NovelX skeleton", () =>
+  Effect.gen(function* () {
+    const growth = yield* load((svc) => svc.get("growth"))
+    expect(growth).toBeDefined()
+    expect(growth?.mode).toBe("primary")
+    expect(growth?.hidden).toBe(true)
+    expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("allow")
+    expect(evalPerm(growth, "read")).toBe("deny")
+    expect(evalPerm(growth, "write")).toBe("deny")
+    expect(evalPerm(growth, "edit")).toBe("deny")
+    expect(evalPerm(growth, "bash")).toBe("deny")
+    expect(evalPerm(growth, "task")).toBe("deny")
+    expect(evalPerm(growth, "question")).toBe("deny")
+  }),
+)
+
+it.instance(
+  "project config cannot turn the internal growth agent into a general writer",
+  () =>
+    Effect.gen(function* () {
+      const growth = yield* load((svc) => svc.get("growth"))
+      expect(growth?.hidden).toBe(true)
+      expect(growth?.prompt).not.toContain("CONFIG_OVERRIDE_SENTINEL")
+      expect(evalPerm(growth, "write")).toBe("deny")
+      expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("allow")
+    }),
+  {
+    config: {
+      agent: {
+        growth: {
+          prompt: "CONFIG_OVERRIDE_SENTINEL",
+          hidden: false,
+          permission: { write: "allow" },
+        },
+      },
+    },
+  },
 )
 
 it.instance("build agent has correct default properties", () =>

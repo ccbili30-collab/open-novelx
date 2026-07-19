@@ -669,12 +669,19 @@
   display: flex;
   min-width: 0;
   align-items: center;
+  gap: 10px;
 }
 
 .novelx-resource-page-identity strong {
   color: var(--novelx-ink);
   font-size: 20px;
   font-weight: 650;
+}
+
+.novelx-resource-page-identity span {
+  color: var(--novelx-muted);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .novelx-resource-page-columns {
@@ -868,6 +875,176 @@
   line-height: 1.7;
 }
 
+.novelx-resource-selection code {
+  max-width: min(680px, 90%);
+  border: 1px solid var(--novelx-line);
+  border-radius: 5px;
+  padding: 7px 10px;
+  color: var(--novelx-muted);
+  background: rgba(250, 247, 243, 0.72);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.novelx-growth-state {
+  color: #75685d !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.novelx-growth-overview {
+  display: flex;
+  width: min(680px, calc(100% - 64px));
+  min-height: 100%;
+  margin: 0 auto;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 48px 0;
+  color: var(--novelx-muted);
+  text-align: center;
+}
+
+.novelx-growth-overview h2 {
+  margin: 10px 0 0;
+  color: var(--novelx-ink);
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.novelx-growth-overview p {
+  margin: 7px 0 0;
+  font-size: 13px;
+}
+
+.novelx-growth-overview dl {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 28px 0 20px;
+  overflow: hidden;
+  border: 1px solid var(--novelx-line);
+  border-radius: 7px;
+  background: var(--novelx-line);
+}
+
+.novelx-growth-overview dl div {
+  padding: 16px 12px;
+  background: #faf7f3;
+}
+
+.novelx-growth-overview dt {
+  font-size: 11px;
+}
+
+.novelx-growth-overview dd {
+  margin: 6px 0 0;
+  color: var(--novelx-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.novelx-growth-overview small {
+  max-width: 560px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.novelx-growth-tree {
+  padding-bottom: 12px;
+}
+
+.novelx-growth-tree-heading {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  color: var(--novelx-muted);
+  font-size: 11px;
+}
+
+.novelx-growth-tree-heading strong {
+  color: var(--novelx-ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.novelx-growth-tree-item {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 5px;
+  padding: 5px 8px 5px calc(8px + var(--novelx-growth-depth) * 14px);
+  color: var(--novelx-muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.novelx-growth-tree-item:hover {
+  color: var(--novelx-ink);
+  background: rgba(63, 53, 45, 0.045);
+}
+
+.novelx-growth-tree-item.is-selected {
+  color: var(--novelx-ink);
+  background: rgba(103, 88, 73, 0.08);
+}
+
+.novelx-growth-tree-item:focus-visible {
+  outline: 1px solid #817970;
+  outline-offset: -1px;
+}
+
+.novelx-growth-tree-item.is-group {
+  color: var(--novelx-ink);
+  font-weight: 600;
+}
+
+.novelx-growth-tree-mark {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.48;
+}
+
+.novelx-growth-tree-item.is-group .novelx-growth-tree-mark {
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.3;
+}
+
+.novelx-growth-error {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 7px;
+  margin: 8px 0 14px;
+  border-left: 2px solid #8e3f39;
+  padding: 5px 10px;
+  color: #8e3f39;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.novelx-growth-error button {
+  border: 1px solid rgba(142, 63, 57, 0.26);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: inherit;
+  background: transparent;
+}
+
 .novelx-resource-inspector {
   display: flex;
   width: var(--novelx-inspector-width);
@@ -998,5 +1175,16 @@
     right: 0;
     bottom: 0;
     box-shadow: -12px 0 28px rgba(59, 48, 39, 0.08);
+  }
+}
+
+@container (max-width: 620px) {
+  .novelx-resource-navigator {
+    width: 190px;
+    min-width: 190px;
+  }
+
+  .novelx-growth-overview dl {
+    grid-template-columns: 1fr;
   }
 }
