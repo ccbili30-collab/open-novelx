@@ -1566,6 +1566,58 @@
   overflow-wrap: anywhere;
 }
 
+.novelx-growth-tree-item.is-world-stage {
+  font-weight: 650;
+  margin-top: 6px;
+}
+
+.novelx-growth-tree-item.is-world-stage .novelx-growth-tree-mark {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--novelx-ink) 62%, transparent);
+}
+
+.novelx-world-stage-contract {
+  padding: 24px 28px 32px;
+  overflow: auto;
+}
+
+.novelx-world-stage-contract > p {
+  margin: 0 0 20px;
+  color: var(--novelx-muted);
+  line-height: 1.8;
+}
+
+.novelx-world-stage-contract dl {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0 0 22px;
+}
+
+.novelx-world-stage-contract dt {
+  color: var(--novelx-faint);
+}
+
+.novelx-world-stage-contract dd {
+  margin: 0;
+}
+
+.novelx-world-stage-contract section {
+  padding-top: 16px;
+  border-top: 1px solid var(--novelx-line);
+}
+
+.novelx-world-stage-contract section + section {
+  margin-top: 16px;
+}
+
+.novelx-world-stage-contract ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--novelx-muted);
+  line-height: 1.75;
+}
+
 .novelx-resource-empty {
   padding: 12px 10px;
   color: var(--novelx-muted);

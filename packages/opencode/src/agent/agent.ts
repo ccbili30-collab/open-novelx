@@ -14,8 +14,9 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
-import PROMPT_NOVELX_GROWTH_SKELETON from "./prompt/novelx-growth-skeleton.txt"
+import PROMPT_NOVELX_WORLD_GROWTH from "./prompt/novelx-world-growth.txt"
 import PROMPT_NOVELX_GEOGRAPHY_WRITER from "./prompt/novelx-geography-writer.txt"
+import PROMPT_NOVELX_WORLD_WRITER from "./prompt/novelx-world-writer.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -138,19 +139,40 @@ const layer = Layer.effect(
         })
 
         const user = Permission.fromConfig(cfg.permission ?? {})
-        const growthRestriction = Permission.fromConfig({
-          "*": "deny",
-          novelx_register_growth_skeleton: "allow",
-          novelx_prepare_geography: "allow",
-          novelx_commit_geography: "allow",
-          novelx_abort_geography: "allow",
-          novelx_finish_geography: "allow",
-          task: {
+        const growthRestriction = Permission.merge(
+          Permission.fromConfig({
             "*": "deny",
-            "novelx-geography": "allow",
-          },
-        })
+            novelx_register_world_blueprint: "allow",
+            novelx_prepare_world_stage: "allow",
+            novelx_register_world_stage: "allow",
+            novelx_prepare_world_document: "allow",
+            novelx_commit_world_document: "allow",
+            novelx_abort_world_document: "allow",
+            novelx_finish_world: "allow",
+            task: {
+              "*": "deny",
+              "novelx-world-writer": "allow",
+            },
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_register_world_blueprint", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_prepare_world_stage", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_world_stage", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_prepare_world_document", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_commit_world_document", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_world", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
         const geographyRestriction = Permission.fromConfig({
+          "*": "deny",
+          read: "allow",
+          glob: "allow",
+          grep: "allow",
+          list: "allow",
+          external_directory: readonlyExternalDirectory,
+        })
+        const worldWriterRestriction = Permission.fromConfig({
           "*": "deny",
           read: "allow",
           glob: "allow",
@@ -204,14 +226,14 @@ const layer = Layer.effect(
           growth: {
             name: "growth",
             description:
-              "NovelX Growth registration stage. Registers an adaptive empty skeleton for all six work surfaces.",
+              "NovelX Growth editor. Registers and completes a genre-adaptive World surface through child Agents.",
             options: {},
             permission: Permission.merge(defaults, user, growthRestriction),
             mode: "primary",
             native: true,
             hidden: true,
             steps: 120,
-            prompt: PROMPT_NOVELX_GROWTH_SKELETON,
+            prompt: PROMPT_NOVELX_WORLD_GROWTH,
           },
           "novelx-geography": {
             name: "novelx-geography",
@@ -223,6 +245,17 @@ const layer = Layer.effect(
             hidden: true,
             steps: 4,
             prompt: PROMPT_NOVELX_GEOGRAPHY_WRITER,
+          },
+          "novelx-world-writer": {
+            name: "novelx-world-writer",
+            description: "NovelX 世界档案执行叶节点。只根据主编提供的真实世界事实与依赖档案撰写一份正式档案。",
+            options: {},
+            permission: Permission.merge(defaults, user, worldWriterRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 4,
+            prompt: PROMPT_NOVELX_WORLD_WRITER,
           },
           general: {
             name: "general",
@@ -310,7 +343,7 @@ const layer = Layer.effect(
         }
 
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
-          if (key === "growth" || key === "novelx-geography") continue
+          if (key === "growth" || key === "novelx-geography" || key === "novelx-world-writer") continue
           if (value.disable) {
             delete agents[key]
             continue

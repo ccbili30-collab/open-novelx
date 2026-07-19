@@ -1,5 +1,5 @@
 import { Icon } from "@opencode-ai/ui/icon"
-import type { NovelXGrowth } from "@opencode-ai/schema"
+import type { NovelXGrowth, NovelXWorld } from "@opencode-ai/schema"
 import { NovelXResourceIcon } from "@/components/novelx-resource-icon"
 import FileTree from "@/components/file-tree"
 import { useFile } from "@/context/file"
@@ -18,8 +18,14 @@ import {
   novelXGrowthNavigationItems,
   type NovelXGrowthNavigationItem,
 } from "@/context/novelx-growth-skeleton"
+import {
+  createNovelXWorldGrowthController,
+  novelXWorldNavigationItems,
+  type NovelXWorldNavigationItem,
+} from "@/context/novelx-world-growth"
 import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
+import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowthTree } from "./novelx-world-growth-view"
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
@@ -161,6 +167,7 @@ export function NovelXResourceWorkspace(props: {
     const state = growth.state()
     return state.status === "ready" ? state.manifest.integritySha256 : undefined
   })
+  const worldGrowth = createNovelXWorldGrowthController()
   const [plannedSelection, setPlannedSelection] = createSignal<Partial<Record<NovelXResource, string>>>({})
   const [terrainQuery, setTerrainQuery] = createSignal("")
 
@@ -188,6 +195,54 @@ export function NovelXResourceWorkspace(props: {
   const growthErrorMessage = createMemo(() => {
     const state = growth.state()
     return state.status === "error" ? state.message : "未知错误"
+  })
+  const worldBlueprint = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "ready" ? state.blueprint : undefined
+  })
+  const worldMaterialization = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "ready" ? state.materialization : undefined
+  })
+  const worldGrowthErrorMessage = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "error" ? state.message : "未知错误"
+  })
+  const worldStageRecords = createMemo(
+    () => new Map(worldMaterialization()?.stages.map((stage) => [stage.stageId, stage]) ?? []),
+  )
+  const worldDocumentRecords = createMemo(
+    () => new Map(worldMaterialization()?.documents.map((record) => [record.entityId, record]) ?? []),
+  )
+  const worldProgress = createMemo(() => ({
+    committed: worldMaterialization()?.documents.filter((record) => record.status === "committed").length ?? 0,
+    registered: worldMaterialization()?.documents.length ?? 0,
+    total: worldBlueprint()?.stages.reduce((sum, stage) => sum + stage.itemCount, 0) ?? 0,
+  }))
+  const worldItems = createMemo(() => {
+    const blueprint = worldBlueprint()
+    return blueprint ? novelXWorldNavigationItems(blueprint, worldMaterialization()) : []
+  })
+  const selectedWorldItem = createMemo(() => {
+    if (active() !== "world") return
+    const selected = plannedSelection().world
+    return worldItems().find((item) => item.id === selected)
+  })
+  const selectedWorldStage = createMemo(() => {
+    const item = selectedWorldItem()
+    const blueprint = worldBlueprint()
+    return item && blueprint ? blueprint.stages.find((stage) => stage.id === item.stageId) : undefined
+  })
+  const selectedWorldEntity = createMemo(() => {
+    const item = selectedWorldItem()
+    if (item?.kind !== "entity") return
+    return worldStageRecords()
+      .get(item.stageId)
+      ?.entities.find((entity) => entity.id === item.id)
+  })
+  const selectedWorldDocument = createMemo(() => {
+    const entity = selectedWorldEntity()
+    return entity ? worldDocumentRecords().get(entity.id) : undefined
   })
   const geographyManifest = createMemo(() => {
     const state = geography.state()
@@ -240,6 +295,30 @@ export function NovelXResourceWorkspace(props: {
         return input?.subagent_type === "novelx-geography" && input?.description === `地理：${terrain.name}`
       })
   }
+  const taskPartForWorldEntity = (entityId: string) => {
+    const root = params.id
+    const entity = worldMaterialization()
+      ?.stages.flatMap((stage) => stage.entities)
+      .find((item) => item.id === entityId)
+    if (!root || !entity) return
+    return (sync().data.message[root] ?? [])
+      .flatMap((message) => sync().data.part[message.id] ?? [])
+      .findLast((part) => {
+        if (part.type !== "tool" || part.tool !== "task") return false
+        const input = "input" in part.state ? part.state.input : undefined
+        return input?.subagent_type === "novelx-world-writer" && input?.description === `世界：${entity.name}`
+      })
+  }
+  const projectedWorldStatus = (entityId: string): NovelXWorld.WorldDocumentStatus => {
+    const record = worldDocumentRecords().get(entityId)
+    if (!record || record.status !== "leased") return record?.status ?? "registered"
+    const task = taskPartForWorldEntity(entityId)
+    if (!task || task.type !== "tool") return "leased"
+    if (task.state.status === "running" || task.state.status === "pending") return "drafting"
+    if (task.state.status === "completed") return "reviewing"
+    if (task.state.status === "error") return "failed"
+    return "leased"
+  }
   const projectedGeographyStatus = (terrainId: string) => {
     const record = geographyRecords().get(terrainId)
     if (!record || record.status !== "leased") return record?.status ?? "registered"
@@ -251,6 +330,15 @@ export function NovelXResourceWorkspace(props: {
     return "leased"
   }
   const selectedChildSessionId = createMemo(() => {
+    const worldRecord = selectedWorldDocument()
+    if (worldRecord?.taskSessionId) return worldRecord.taskSessionId
+    const worldEntity = selectedWorldEntity()
+    if (worldEntity) {
+      const task = taskPartForWorldEntity(worldEntity.id)
+      if (task?.type === "tool" && "metadata" in task.state && typeof task.state.metadata?.sessionId === "string") {
+        return task.state.metadata.sessionId
+      }
+    }
     const record = selectedGeographyRecord()
     if (record?.taskSessionId) return record.taskSessionId
     const terrain = selectedTerrain()
@@ -259,21 +347,26 @@ export function NovelXResourceWorkspace(props: {
     if (!task || task.type !== "tool" || !("metadata" in task.state)) return
     return typeof task.state.metadata?.sessionId === "string" ? task.state.metadata.sessionId : undefined
   })
-  const selectedChildText = createMemo(() => {
+  const [selectedChildText, setSelectedChildText] = createSignal("")
+  createEffect(() => {
     const sessionID = selectedChildSessionId()
-    if (!sessionID) return ""
-    return (sync().data.message[sessionID] ?? [])
+    if (!sessionID) {
+      setSelectedChildText("")
+      return
+    }
+    const text = (sync().data.message[sessionID] ?? [])
       .filter((message) => message.role === "assistant")
       .flatMap((message) => sync().data.part[message.id] ?? [])
       .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
       .map((part) => part.text)
       .join("\n")
       .trim()
+    setSelectedChildText(text)
   })
 
   createEffect(() => {
     const sessionID = selectedChildSessionId()
-    if (sessionID) void sync().session.sync(sessionID)
+    if (sessionID) void sync().session.sync(sessionID, { force: true })
   })
   const selectedTerrainRelations = createMemo(() => {
     const manifest = growthManifest()
@@ -322,6 +415,20 @@ export function NovelXResourceWorkspace(props: {
     setPlannedSelection((current) => ({ ...current, [item.resource]: item.id }))
   }
 
+  const selectWorldItem = (item: NovelXWorldNavigationItem) => {
+    if (!document.canLeave()) {
+      showToast({
+        variant: "default",
+        title: language.t("novelx.document.unsaved.title"),
+        description: language.t("novelx.document.unsaved.description"),
+      })
+      return
+    }
+    const record = item.kind === "entity" ? worldDocumentRecords().get(item.id) : undefined
+    view.setActiveFile(record?.status === "committed" ? record.targetPath : "")
+    setPlannedSelection((current) => ({ ...current, world: item.id }))
+  }
+
   const resourcePath = (resource: NovelXResource) => {
     if (resource === "world") return "World"
     if (resource === "characters") {
@@ -341,10 +448,10 @@ export function NovelXResourceWorkspace(props: {
   const renderTree = (resource: NovelXResource) => {
     const path = resourcePath(resource)
     if (resource === "graph" || resource === "package") {
-      if (growthManifest()) return
+      if (growthManifest() || worldBlueprint()) return
       return <div class="novelx-resource-empty">{language.t("novelx.resource.noStructuredData")}</div>
     }
-    if (growthManifest()) {
+    if (growthManifest() || worldBlueprint()) {
       if (resource === "world" && props.worldStatus() !== "tree") return
       if (resource !== "files" && !hasDirectory(path)) return
     }
@@ -365,9 +472,35 @@ export function NovelXResourceWorkspace(props: {
 
   const renderGrowthTree = (resource: NovelXResource) => (
     <Switch>
-      <Match when={growth.state().status === "loading"}>
+      <Match when={resource === "world" && worldGrowth.state().status === "ready"}>
+        <NovelXWorldGrowthTree
+          blueprint={worldBlueprint()!}
+          materialization={worldMaterialization()}
+          items={worldItems()}
+          query={terrainQuery()}
+          selectedId={plannedSelection().world}
+          selectedStage={selectedWorldStage()}
+          selectedEntity={selectedWorldEntity()}
+          selectedDocument={selectedWorldDocument()}
+          selectedChildText={selectedChildText}
+          selectedChildSessionId={selectedChildSessionId()}
+          status={projectedWorldStatus}
+          onQuery={setTerrainQuery}
+          onSelect={selectWorldItem}
+        />
+      </Match>
+      <Match when={resource === "world" && worldGrowth.state().status === "error"}>
+        <div class="novelx-growth-error" role="alert">
+          <strong>世界生长状态无法读取</strong>
+          <span>{worldGrowthErrorMessage()}</span>
+          <button type="button" onClick={worldGrowth.reload}>
+            重新读取
+          </button>
+        </div>
+      </Match>
+      <Match when={growth.state().status === "loading" && worldGrowth.state().status === "loading"}>
         <div class="novelx-resource-empty" role="status">
-          正在读取生长骨架…
+          正在读取世界生长状态…
         </div>
       </Match>
       <Match when={growth.state().status === "error"}>
@@ -434,7 +567,7 @@ export function NovelXResourceWorkspace(props: {
   )
 
   const resourceEmpty = (resource: NovelXResource) => {
-    if (growthManifest()) return
+    if (growthManifest() || worldBlueprint()) return
     if (resource === "world") {
       return (
         <Switch>
@@ -523,7 +656,18 @@ export function NovelXResourceWorkspace(props: {
         <Show
           when={document.state()}
           fallback={
-            resource === "world" && growthManifest() ? (
+            resource === "world" && worldBlueprint() ? (
+              <NovelXWorldGrowthPrimary
+                blueprint={worldBlueprint()!}
+                materialization={worldMaterialization()}
+                selectedStage={selectedWorldStage()}
+                selectedEntity={selectedWorldEntity()}
+                selectedDocument={selectedWorldDocument()}
+                selectedChildText={selectedChildText}
+                selectedChildSessionId={selectedChildSessionId()}
+                status={projectedWorldStatus}
+              />
+            ) : resource === "world" && growthManifest() ? (
               selectedPlanned() && selectedGeographyRecord()?.status !== "committed" ? (
                 terrainDraftPanel()
               ) : (
@@ -597,29 +741,33 @@ export function NovelXResourceWorkspace(props: {
                 <div class="novelx-resource-page-identity" title={language.t(resourceCopy[resource()].summary)}>
                   <strong>{title()}</strong>
                   <span>
-                    {resource() === "world" && growthManifest()
-                      ? `${growthManifest()!.profile.title} · ${geographyProgress().committed}/${geographyProgress().total} 份地理档案已提交`
-                      : language.t(resourceCopy[resource()].summary)}
+                    {resource() === "world" && worldBlueprint()
+                      ? `${worldBlueprint()!.profile.title} · ${worldProgress().committed}/${worldProgress().total} 份世界档案已提交`
+                      : resource() === "world" && growthManifest()
+                        ? `${growthManifest()!.profile.title} · ${geographyProgress().committed}/${geographyProgress().total} 份地理档案已提交`
+                        : language.t(resourceCopy[resource()].summary)}
                   </span>
                 </div>
                 <div class="novelx-resource-page-actions">
-                  <Show when={resource() === "world" && growthManifest()}>
+                  <Show when={resource() === "world" && (growthManifest() || worldBlueprint())}>
                     <button
                       type="button"
                       class="novelx-terrain-add-button"
                       onClick={() =>
                         showToast({
                           variant: "default",
-                          title: "当前由 Growth 统一规划地形",
-                          description: "第一阶段只接受 /growth 的整体验证与注册，暂不单独创建无因果地点。",
+                          title: "当前由 Growth 统一规划世界",
+                          description: "新增实体必须读取前序正式事实并经过注册、子 Agent 写作和主编提交。",
                         })
                       }
                     >
                       <Icon name="plus-small" size="small" />
-                      新增地点
+                      新增世界实体
                     </button>
                   </Show>
-                  <Show when={(view.activeFile() || selectedTerrain()) && !view.inspectorOpen()}>
+                  <Show
+                    when={(view.activeFile() || selectedTerrain() || selectedWorldStage()) && !view.inspectorOpen()}
+                  >
                     <button
                       type="button"
                       class="novelx-symbol-button"
@@ -640,10 +788,15 @@ export function NovelXResourceWorkspace(props: {
                   </div>
                 </nav>
                 {primary(resource())}
-                <Show when={view.inspectorOpen() && (view.activeFile() || selectedTerrain())}>
+                <Show when={view.inspectorOpen() && (view.activeFile() || selectedTerrain() || selectedWorldStage())}>
                   <aside class="novelx-resource-inspector">
                     <div class="novelx-resource-inspector-heading">
-                      <strong>{selectedTerrain()?.name ?? language.t("novelx.resource.details")}</strong>
+                      <strong>
+                        {selectedWorldEntity()?.name ??
+                          selectedWorldStage()?.label ??
+                          selectedTerrain()?.name ??
+                          language.t("novelx.resource.details")}
+                      </strong>
                       <button
                         type="button"
                         class="novelx-symbol-button"
@@ -653,67 +806,79 @@ export function NovelXResourceWorkspace(props: {
                         <Icon name="close-small" size="small" />
                       </button>
                     </div>
-                    <Show
-                      when={selectedTerrain()}
-                      fallback={
+                    <Switch>
+                      <Match when={worldBlueprint() && selectedWorldStage()}>
+                        <NovelXWorldGrowthInspector
+                          blueprint={worldBlueprint()!}
+                          materialization={worldMaterialization()}
+                          selectedStage={selectedWorldStage()}
+                          selectedEntity={selectedWorldEntity()}
+                          selectedDocument={selectedWorldDocument()}
+                          selectedChildText={selectedChildText}
+                          selectedChildSessionId={selectedChildSessionId()}
+                          status={projectedWorldStatus}
+                        />
+                      </Match>
+                      <Match when={selectedTerrain()}>
+                        {(terrain) => (
+                          <div class="novelx-terrain-inspector-body">
+                            <p>{terrain().summary}</p>
+                            <section>
+                              <strong>地貌</strong>
+                              <dl>
+                                <dt>类型</dt>
+                                <dd>{terrainKindLabel(terrain().kind)}</dd>
+                                <dt>层级</dt>
+                                <dd>
+                                  {terrain().prominence === "core"
+                                    ? "核心"
+                                    : terrain().prominence === "major"
+                                      ? "主要"
+                                      : "支撑"}
+                                </dd>
+                                <dt>状态</dt>
+                                <dd>{novelXGeographyStatusLabel(projectedGeographyStatus(terrain().id))}</dd>
+                                <dt>执行 Agent</dt>
+                                <dd>{selectedChildSessionId() ? "novelx-geography" : "尚未分配"}</dd>
+                                <dt>文件锁</dt>
+                                <dd>
+                                  {selectedGeographyRecord()?.status === "committed" ? "已释放" : "只读 / 尚未提交"}
+                                </dd>
+                              </dl>
+                            </section>
+                            <section>
+                              <strong>形成与作用</strong>
+                              <p>{terrain().formation}</p>
+                            </section>
+                            <Show when={selectedTerrainRelations().length}>
+                              <section>
+                                <strong>空间关系</strong>
+                                <ul>
+                                  <For each={selectedTerrainRelations()}>
+                                    {(item) => (
+                                      <li>
+                                        <b>
+                                          {terrainRelationLabel(item.relation.kind)} {item.other.name}
+                                        </b>
+                                        <span>{item.relation.summary}</span>
+                                      </li>
+                                    )}
+                                  </For>
+                                </ul>
+                              </section>
+                            </Show>
+                          </div>
+                        )}
+                      </Match>
+                      <Match when={true}>
                         <dl>
                           <dt>{language.t("novelx.resource.path")}</dt>
                           <dd>{view.activeFile()}</dd>
                           <dt>{language.t("novelx.resource.state")}</dt>
                           <dd>{language.t("novelx.resource.realFile")}</dd>
                         </dl>
-                      }
-                    >
-                      {(terrain) => (
-                        <div class="novelx-terrain-inspector-body">
-                          <p>{terrain().summary}</p>
-                          <section>
-                            <strong>地貌</strong>
-                            <dl>
-                              <dt>类型</dt>
-                              <dd>{terrainKindLabel(terrain().kind)}</dd>
-                              <dt>层级</dt>
-                              <dd>
-                                {terrain().prominence === "core"
-                                  ? "核心"
-                                  : terrain().prominence === "major"
-                                    ? "主要"
-                                    : "支撑"}
-                              </dd>
-                              <dt>状态</dt>
-                              <dd>{novelXGeographyStatusLabel(projectedGeographyStatus(terrain().id))}</dd>
-                              <dt>执行 Agent</dt>
-                              <dd>{selectedChildSessionId() ? "novelx-geography" : "尚未分配"}</dd>
-                              <dt>文件锁</dt>
-                              <dd>
-                                {selectedGeographyRecord()?.status === "committed" ? "已释放" : "只读 / 尚未提交"}
-                              </dd>
-                            </dl>
-                          </section>
-                          <section>
-                            <strong>形成与作用</strong>
-                            <p>{terrain().formation}</p>
-                          </section>
-                          <Show when={selectedTerrainRelations().length}>
-                            <section>
-                              <strong>空间关系</strong>
-                              <ul>
-                                <For each={selectedTerrainRelations()}>
-                                  {(item) => (
-                                    <li>
-                                      <b>
-                                        {terrainRelationLabel(item.relation.kind)} {item.other.name}
-                                      </b>
-                                      <span>{item.relation.summary}</span>
-                                    </li>
-                                  )}
-                                </For>
-                              </ul>
-                            </section>
-                          </Show>
-                        </div>
-                      )}
-                    </Show>
+                      </Match>
+                    </Switch>
                   </aside>
                 </Show>
               </div>

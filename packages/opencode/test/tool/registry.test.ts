@@ -121,6 +121,20 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("exposes the NovelX adaptive world Growth toolchain", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+      expect(ids).toContain("novelx_register_world_blueprint")
+      expect(ids).toContain("novelx_prepare_world_stage")
+      expect(ids).toContain("novelx_register_world_stage")
+      expect(ids).toContain("novelx_prepare_world_document")
+      expect(ids).toContain("novelx_commit_world_document")
+      expect(ids).toContain("novelx_abort_world_document")
+      expect(ids).toContain("novelx_finish_world")
+    }),
+  )
+
   it.instance("does not expose execute unless code mode is enabled", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

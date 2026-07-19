@@ -17,10 +17,15 @@ test.use({ viewport: { width: 1672, height: 941 }, deviceScaleFactor: 1 })
 test("真实会话保留导航、置顶、资源文件与覆盖式项目面板", async ({ page }, testInfo) => {
   const growthManifest = await growthManifestFixture()
   const geographyMaterialization = await geographyMaterializationFixture(growthManifest)
+  const worldBlueprint = await worldBlueprintFixture()
+  const worldMaterialization = await worldMaterializationFixture(worldBlueprint)
   let editable = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n"
   let saved: { content: string; expectedContent: string; expectedBom: boolean } | undefined
   let conflictNext = false
   const events: unknown[] = []
+  const messageRequests: { sessionID: string; phase: "start" | "end" }[] = []
+  const pageErrors: string[] = []
+  page.on("pageerror", (error) => pageErrors.push(error.message))
   await mockOpenCodeServer(page, {
     directory,
     project: {
@@ -45,7 +50,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     sessions: [
       session(currentID, "构建地理", 4),
       session(olderID, "建立第一批王国", 2),
-      { ...session("ses_child", "地理：北境冠脉", 5), parentID: currentID, agent: "novelx-geography" },
+      { ...session("ses_child", "世界：赫利俄斯同步环", 5), parentID: currentID, agent: "novelx-world-writer" },
       { ...session("ses_archived", "已归档草稿", 6), time: { created: 6, updated: 6, archived: 7 } },
     ],
     vcsDiff: [],
@@ -59,11 +64,15 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     fileEditable: (path) =>
       path === ".novelx/growth/skeleton.json"
         ? { type: "text", content: JSON.stringify(growthManifest), bom: false }
-        : path === ".novelx/growth/geography-materialization.json"
-          ? { type: "text", content: JSON.stringify(geographyMaterialization), bom: false }
-          : path === "README.md"
-            ? { type: "text", content: editable, bom: true }
-            : { type: "text", content: `# ${path}\n`, bom: false },
+        : path === ".novelx/growth/world-blueprint.json"
+          ? { type: "text", content: JSON.stringify(worldBlueprint), bom: false }
+          : path === ".novelx/growth/world-materialization.json"
+            ? { type: "text", content: JSON.stringify(worldMaterialization), bom: false }
+            : path === ".novelx/growth/geography-materialization.json"
+              ? { type: "text", content: JSON.stringify(geographyMaterialization), bom: false }
+              : path === "README.md"
+                ? { type: "text", content: editable, bom: true }
+                : { type: "text", content: `# ${path}\n`, bom: false },
     fileWrite: ({ path, body }) => {
       const write = body as { content: string; expectedContent: string; expectedBom: boolean }
       if (conflictNext) {
@@ -80,8 +89,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       return { body: { type: "text", content: write.content, bom: write.expectedBom } }
     },
     pageMessages: (sessionID) => ({
-      items: sessionID === currentID ? agentMessages() : sessionID === "ses_child" ? geographyChildMessages() : [],
+      items: sessionID === currentID ? agentMessages() : sessionID === "ses_child" ? worldChildMessages() : [],
     }),
+    onMessages: ({ sessionID, phase }) => {
+      messageRequests.push({ sessionID, phase })
+    },
     message: (sessionID, messageID) =>
       sessionID === currentID ? agentMessages().find((message) => message.info.id === messageID) : undefined,
     events: () => events.splice(0, 1),
@@ -139,23 +151,49 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const resources = page.locator("#file-tree-panel")
   const dock = page.getByRole("navigation", { name: "项目资源" })
   await dock.getByRole("button", { name: "世界", exact: true }).click()
-  await expect(resources.getByText("埃兰世界 · 0/8 份地理档案已提交", { exact: true })).toBeVisible()
+  await expect(resources.getByText("日环档案 · 0/1 份世界档案已提交", { exact: true })).toBeVisible()
   await expect(resources.locator(".novelx-terrain-atlas")).toBeVisible()
-  await expect(resources.getByText("地图尚未生成", { exact: true })).toBeVisible()
-  await resources.getByRole("button", { name: "北境冠脉", exact: true }).click()
+  await expect(resources.getByText("世界正在生长", { exact: true })).toBeVisible()
+  await resources.getByRole("button", { name: "赫利俄斯同步环", exact: true }).click()
+  await expect
+    .poll(() => messageRequests.filter((item) => item.sessionID === "ses_child" && item.phase === "end").length)
+    .toBeGreaterThan(0)
+  expect(pageErrors).toEqual([])
   await expect(resources.getByText("流式草稿 · 只读", { exact: true })).toBeVisible()
   await expect(resources.locator(".novelx-geography-stream pre")).toContainText(
-    "北境冠脉控制大陆北部的高差与主要水系源头。",
+    "强辐射与散热上限共同限制同步环的连续输出。",
   )
-  await expect(resources.locator(".novelx-resource-inspector-heading")).toContainText("北境冠脉")
+  await expect(resources.locator(".novelx-resource-inspector-heading")).toContainText("赫利俄斯同步环")
   await expect(
-    resources.getByText("横贯大陆北部的高大山系，连续雪峰构成最醒目的东西向屏障。", { exact: true }),
+    resources.getByText("围绕恒星运行的采能、通信与维护轨道集合，为整个系统提供能源和统一时标。", { exact: true }),
   ).toBeVisible()
   await expect(
     resources.locator(".novelx-growth-tree-label").filter({
       hasText: /(?:地形|地点|区域|大陆|海域|山脉|平原|河流|湖泊|岛屿|群岛)\s*0*\d+/u,
     }),
   ).toHaveCount(0)
+
+  const conversationBox = await page.locator('[data-component="novelx-session-panel"]').boundingBox()
+  const navigatorBox = await resources.locator(".novelx-resource-navigator").boundingBox()
+  const primaryBox = await resources.locator(".novelx-resource-primary").boundingBox()
+  const worldInspectorBox = await resources.locator(".novelx-resource-inspector").boundingBox()
+  expect(conversationBox).not.toBeNull()
+  expect(navigatorBox).not.toBeNull()
+  expect(primaryBox).not.toBeNull()
+  expect(worldInspectorBox).not.toBeNull()
+  expect(navigatorBox!.x).toBeGreaterThanOrEqual(conversationBox!.x + conversationBox!.width - 1)
+  expect(primaryBox!.x).toBeGreaterThanOrEqual(navigatorBox!.x + navigatorBox!.width - 1)
+  expect(worldInspectorBox!.x).toBeGreaterThanOrEqual(primaryBox!.x + primaryBox!.width - 1)
+  expect(primaryBox!.width).toBeGreaterThan(500)
+
+  await page.setViewportSize({ width: 1024, height: 768 })
+  const narrowPrimaryBox = await resources.locator(".novelx-resource-primary").boundingBox()
+  const narrowInspectorBox = await resources.locator(".novelx-resource-inspector").boundingBox()
+  expect(narrowPrimaryBox).not.toBeNull()
+  expect(narrowInspectorBox).not.toBeNull()
+  expect(narrowInspectorBox!.x).toBeLessThan(narrowPrimaryBox!.x + narrowPrimaryBox!.width)
+  await page.setViewportSize({ width: 1672, height: 941 })
+
   await page.locator('[aria-label="开发性能诊断"]').evaluate((element) => element.remove())
   await page.screenshot({ path: testInfo.outputPath("novelx-world-expanded.png") })
   await dock.getByRole("button", { name: "文件", exact: true }).click()
@@ -293,9 +331,9 @@ function agentMessages() {
           state: {
             status: "running",
             input: {
-              description: "地理：北境冠脉",
+              description: "世界：赫利俄斯同步环",
               prompt: "Context Pack",
-              subagent_type: "novelx-geography",
+              subagent_type: "novelx-world-writer",
             },
             metadata: { sessionId: "ses_child", parentSessionId: currentID },
             time: { start: 1700000002000 },
@@ -306,7 +344,7 @@ function agentMessages() {
   ]
 }
 
-function geographyChildMessages() {
+function worldChildMessages() {
   return [
     {
       info: {
@@ -315,7 +353,7 @@ function geographyChildMessages() {
         role: "user",
         time: { created: 1700000002200 },
         summary: { diffs: [] },
-        agent: "novelx-geography",
+        agent: "novelx-world-writer",
         model: { providerID: "opencode", modelID: "test" },
       },
       parts: [
@@ -337,8 +375,8 @@ function geographyChildMessages() {
         parentID: "msg_novelx_geography_child_user",
         modelID: "test",
         providerID: "opencode",
-        mode: "novelx-geography",
-        agent: "novelx-geography",
+        mode: "novelx-world-writer",
+        agent: "novelx-world-writer",
         path: { cwd: directory, root: directory },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -349,7 +387,7 @@ function geographyChildMessages() {
           sessionID: "ses_child",
           messageID: "msg_novelx_geography_child",
           type: "text",
-          text: "# 北境冠脉\n\n## 事实依据\n\n北境冠脉控制大陆北部的高差与主要水系源头。",
+          text: "# 赫利俄斯同步环\n\n## 事实依据\n\n强辐射与散热上限共同限制同步环的连续输出。",
         },
       ],
     },
@@ -583,6 +621,119 @@ async function geographyMaterializationFixture(skeleton: Awaited<ReturnType<type
       updatedAt: 1700000002500,
       errorCode: null,
     })),
+  }
+  return { ...draft, integritySha256: await sha256(draft) }
+}
+
+async function worldBlueprintFixture() {
+  const sha256 = async (value: unknown) => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+  const profile = {
+    title: "日环档案",
+    genre: { family: "science fiction", label: "轨道殖民科技题材", scale: "单恒星系" },
+    designSummary: "从恒星辐射、轨道窗口和能源边界出发，让设施与组织沿真实依赖逐层生长。",
+    stages: [
+      {
+        label: "恒星与轨道环境",
+        purpose: "建立后续设施与组织必须遵守的能源、辐射、通信和通行边界。",
+        itemCount: 1,
+        dependsOnStageIndices: [],
+        reasoningFocus: ["辐射怎样限制长期活动", "轨道窗口怎样限制交通和维护"],
+        documentSections: ["空间结构", "物理环境", "资源与通行", "风险与边界"],
+      },
+    ],
+  }
+  const stage = {
+    id: "stage-orbit",
+    label: "恒星与轨道环境",
+    ordinal: 1,
+    purpose: profile.stages[0]!.purpose,
+    itemCount: 1,
+    dependsOnStageIds: [],
+    reasoningFocus: profile.stages[0]!.reasoningFocus,
+    documentSections: ["事实依据", "因果推演", ...profile.stages[0]!.documentSections],
+    status: "registered",
+  }
+  const draft = {
+    schemaVersion: 1,
+    stage: "world_blueprint",
+    status: "registered",
+    registeredAt: 1700000001000,
+    source: {
+      sessionId: currentID,
+      messageId: userMessageID,
+      toolCallId: "call-world-blueprint",
+      profileSha256: await sha256(profile),
+    },
+    profile,
+    stages: [stage],
+  }
+  return { ...draft, integritySha256: await sha256(draft) }
+}
+
+async function worldMaterializationFixture(blueprint: Awaited<ReturnType<typeof worldBlueprintFixture>>) {
+  const sha256 = async (value: unknown) => {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)))
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
+  }
+  const stage = blueprint.stages[0]!
+  const entity = {
+    id: "entity-helios-ring",
+    stageId: stage.id,
+    name: "赫利俄斯同步环",
+    typeLabel: "采能与通信轨道带",
+    ordinal: 1,
+    summary: "围绕恒星运行的采能、通信与维护轨道集合，为整个系统提供能源和统一时标。",
+    facts: [
+      { label: "轨道", detail: "节点通过共振轨道轮换避开周期性高粒子流。" },
+      { label: "能源", detail: "近星阵列输出受散热和材料疲劳限制。" },
+      { label: "通信", detail: "恒星遮挡造成周期性断联窗口。" },
+    ],
+    constraints: ["强辐射与散热上限使载人维护只能在有限窗口进行。"],
+    dependencyEntityIds: [],
+    status: "registered",
+  }
+  const draft = {
+    schemaVersion: 1,
+    stage: "world_materialization",
+    status: "running",
+    blueprintIntegritySha256: blueprint.integritySha256,
+    growthSessionId: currentID,
+    startedAt: 1700000002000,
+    updatedAt: 1700000002500,
+    stages: [
+      {
+        stageId: stage.id,
+        status: "registered",
+        preparedContextSha256: "a".repeat(64),
+        preparedAt: 1700000002000,
+        registeredAt: 1700000002100,
+        entities: [entity],
+        relations: [],
+      },
+    ],
+    documents: [
+      {
+        entityId: entity.id,
+        stageId: stage.id,
+        targetPath: "World/01-恒星与轨道环境/赫利俄斯同步环.md",
+        draftPath: `.novelx/growth/world-drafts/${entity.id}.md`,
+        status: "leased",
+        lease: {
+          id: "lease-helios",
+          ownerSessionId: currentID,
+          ownerMessageId: userMessageID,
+          acquiredAt: 1700000002200,
+        },
+        taskSessionId: null,
+        draftSha256: null,
+        committedSha256: null,
+        updatedAt: 1700000002500,
+        errorCode: null,
+      },
+    ],
   }
   return { ...draft, integritySha256: await sha256(draft) }
 }

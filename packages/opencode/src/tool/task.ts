@@ -22,7 +22,9 @@ export interface TaskPromptOps {
 }
 
 const id = "task"
-const novelXGeographyInvocations = new Map<string, number>()
+const novelXLeafInvocations = new Map<string, number>()
+
+const isNovelXOwnedLeaf = (name: string) => name === "novelx-geography" || name === "novelx-world-writer"
 const BACKGROUND_DESCRIPTION = [
   "Background mode: background=true launches the subagent asynchronously and returns immediately.",
   "Foreground is the default; use it when you need the result before continuing.",
@@ -133,46 +135,43 @@ export const TaskTool = Tool.define(
       if (!next) {
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
-      if (next.name === "novelx-geography" && ctx.agent !== "growth") {
-        return yield* Effect.fail(
-          new Error("NOVELX_GROWTH_EDITOR_REQUIRED: novelx-geography may only be dispatched by the Growth editor."),
-        )
+      if (isNovelXOwnedLeaf(next.name) && ctx.agent !== "growth") {
+        return yield* Effect.fail(new Error(`${next.name} may only be dispatched by the NovelX Growth editor.`))
       }
 
       const requestedSession = params.task_id
         ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
         : undefined
-      if (next.name === "novelx-geography" && requestedSession) {
-        if (requestedSession.parentID !== ctx.sessionID || requestedSession.agent !== "novelx-geography") {
+      if (isNovelXOwnedLeaf(next.name) && requestedSession) {
+        if (requestedSession.parentID !== ctx.sessionID || requestedSession.agent !== next.name) {
           return yield* Effect.fail(
-            new Error("NOVELX_GEOGRAPHY_CHILD_SESSION_INVALID: Can only resume an owned novelx-geography child."),
+            new Error(`NOVELX_CHILD_SESSION_INVALID: Can only resume an owned ${next.name} child.`),
           )
         }
         const invocationKey = `${ctx.sessionID}\0${ctx.messageID}\0${requestedSession.id}`
-        if (novelXGeographyInvocations.has(invocationKey)) {
+        if (novelXLeafInvocations.has(invocationKey)) {
           return yield* Effect.fail(
             new Error(
-              `NOVELX_GEOGRAPHY_TASK_ALREADY_INVOKED: Child ${requestedSession.id} was already invoked by this editor message. Wait for its result before another revision.`,
+              `NOVELX_TASK_ALREADY_INVOKED: Child ${requestedSession.id} was already invoked by this editor message. Wait for its result before another revision.`,
             ),
           )
         }
-        novelXGeographyInvocations.set(invocationKey, Date.now())
-        if (novelXGeographyInvocations.size > 2048) {
-          const oldest = novelXGeographyInvocations.keys().next().value
-          if (oldest) novelXGeographyInvocations.delete(oldest)
+        novelXLeafInvocations.set(invocationKey, Date.now())
+        if (novelXLeafInvocations.size > 2048) {
+          const oldest = novelXLeafInvocations.keys().next().value
+          if (oldest) novelXLeafInvocations.delete(oldest)
         }
       }
       const duplicate =
-        next.name === "novelx-geography" && !params.task_id
+        isNovelXOwnedLeaf(next.name) && !params.task_id
           ? (yield* sessions.children(ctx.sessionID)).find(
-              (child) =>
-                child.agent === "novelx-geography" && child.title === `${params.description} (@${next.name} subagent)`,
+              (child) => child.agent === next.name && child.title === `${params.description} (@${next.name} subagent)`,
             )
           : undefined
       if (duplicate) {
         return yield* Effect.fail(
           new Error(
-            `NOVELX_GEOGRAPHY_TASK_ALREADY_EXISTS: Resume child ${duplicate.id} with task_id instead of creating a duplicate.`,
+            `NOVELX_TASK_ALREADY_EXISTS: Resume child ${duplicate.id} with task_id instead of creating a duplicate.`,
           ),
         )
       }
@@ -387,23 +386,23 @@ export const TaskTool = Tool.define(
       )
     })
 
-    const novelXGeographyCalls = new Map<string, Effect.Effect<Tool.ExecuteResult<any>, never, never>>()
-    const novelXGeographyCallLock = Semaphore.makeUnsafe(1)
+    const novelXLeafCalls = new Map<string, Effect.Effect<Tool.ExecuteResult<any>, never, never>>()
+    const novelXLeafCallLock = Semaphore.makeUnsafe(1)
 
     const execute = (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) => {
       const effect = run(params, ctx).pipe(Effect.orDie)
-      if (params.subagent_type !== "novelx-geography" || !ctx.callID) return effect
+      if (!isNovelXOwnedLeaf(params.subagent_type) || !ctx.callID) return effect
       return Effect.gen(function* () {
         const key = `${ctx.sessionID}\0${ctx.callID}`
-        const memoized = yield* novelXGeographyCallLock.withPermits(1)(
+        const memoized = yield* novelXLeafCallLock.withPermits(1)(
           Effect.gen(function* () {
-            const existing = novelXGeographyCalls.get(key)
+            const existing = novelXLeafCalls.get(key)
             if (existing) return existing
             const cached = yield* Effect.cached(effect)
-            novelXGeographyCalls.set(key, cached)
-            if (novelXGeographyCalls.size > 2048) {
-              const oldest = novelXGeographyCalls.keys().next().value
-              if (oldest) novelXGeographyCalls.delete(oldest)
+            novelXLeafCalls.set(key, cached)
+            if (novelXLeafCalls.size > 2048) {
+              const oldest = novelXLeafCalls.keys().next().value
+              if (oldest) novelXLeafCalls.delete(oldest)
             }
             return cached
           }),

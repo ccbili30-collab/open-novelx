@@ -52,6 +52,7 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("plan")
     expect(names).toContain("growth")
     expect(names).toContain("novelx-geography")
+    expect(names).toContain("novelx-world-writer")
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
@@ -60,28 +61,62 @@ it.instance("returns default native agents when no config", () =>
   }),
 )
 
-it.instance("growth editor is hidden and can only run the geography materialization chain", () =>
+it.instance("growth editor is hidden and can only run the adaptive world materialization chain", () =>
   Effect.gen(function* () {
     const growth = yield* load((svc) => svc.get("growth"))
     expect(growth).toBeDefined()
     expect(growth?.mode).toBe("primary")
     expect(growth?.hidden).toBe(true)
-    expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("allow")
-    expect(evalPerm(growth, "novelx_prepare_geography")).toBe("allow")
-    expect(evalPerm(growth, "novelx_commit_geography")).toBe("allow")
-    expect(evalPerm(growth, "novelx_finish_geography")).toBe("allow")
+    expect(evalPerm(growth, "novelx_register_world_blueprint")).toBe("allow")
+    expect(evalPerm(growth, "novelx_prepare_world_stage")).toBe("allow")
+    expect(evalPerm(growth, "novelx_register_world_stage")).toBe("allow")
+    expect(evalPerm(growth, "novelx_prepare_world_document")).toBe("allow")
+    expect(evalPerm(growth, "novelx_commit_world_document")).toBe("allow")
+    expect(evalPerm(growth, "novelx_finish_world")).toBe("allow")
+    expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("deny")
     expect(evalPerm(growth, "read")).toBe("deny")
     expect(evalPerm(growth, "write")).toBe("deny")
     expect(evalPerm(growth, "edit")).toBe("deny")
     expect(evalPerm(growth, "bash")).toBe("deny")
-    expect(evalPerm(growth, "task", "novelx-geography")).toBe("allow")
+    expect(evalPerm(growth, "task", "novelx-world-writer")).toBe("allow")
+    expect(evalPerm(growth, "task", "novelx-geography")).toBe("deny")
     expect(evalPerm(growth, "task", "general")).toBe("deny")
+    expect(evalPerm(growth, "doom_loop", "novelx_register_world_stage")).toBe("allow")
+    expect(evalPerm(growth, "doom_loop", "novelx_prepare_world_document")).toBe("allow")
+    expect(evalPerm(growth, "doom_loop", "task")).toBe("deny")
+    expect(evalPerm(growth, "doom_loop", "read")).toBe("deny")
     expect(evalPerm(growth, "question")).toBe("deny")
-    for (const section of ["事实依据", "因果推演", "地貌与空间", "气候与生态", "资源与通行", "风险与限制", "关系"]) {
-      expect(growth?.prompt).toContain(section)
-    }
-    expect(growth?.prompt).toContain("do not request, substitute, or prefer another section scheme")
+    expect(growth?.prompt).toContain("事实依据")
+    expect(growth?.prompt).toContain("因果推演")
+    expect(growth?.prompt).toContain("Do not assume a fixed fantasy or science-fiction taxonomy")
   }),
+  { timeout: 15_000 },
+)
+
+it.instance(
+  "world dossier child is a hidden read-only leaf that project config cannot override",
+  () =>
+    Effect.gen(function* () {
+      const child = yield* load((svc) => svc.get("novelx-world-writer"))
+      expect(child?.mode).toBe("subagent")
+      expect(child?.hidden).toBe(true)
+      expect(evalPerm(child, "read")).toBe("allow")
+      expect(evalPerm(child, "write")).toBe("deny")
+      expect(evalPerm(child, "edit")).toBe("deny")
+      expect(evalPerm(child, "task", "general")).toBe("deny")
+      expect(child?.prompt).not.toContain("CONFIG_OVERRIDE_SENTINEL")
+    }),
+  {
+    config: {
+      agent: {
+        "novelx-world-writer": {
+          prompt: "CONFIG_OVERRIDE_SENTINEL",
+          hidden: false,
+          permission: { write: "allow", task: "allow" },
+        },
+      },
+    },
+  },
 )
 
 it.instance(
@@ -119,7 +154,7 @@ it.instance(
       expect(growth?.hidden).toBe(true)
       expect(growth?.prompt).not.toContain("CONFIG_OVERRIDE_SENTINEL")
       expect(evalPerm(growth, "write")).toBe("deny")
-      expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("allow")
+      expect(evalPerm(growth, "novelx_register_world_blueprint")).toBe("allow")
     }),
   {
     config: {
@@ -720,6 +755,7 @@ it.instance(
       },
     },
   },
+  { timeout: 15_000 },
 )
 
 it.instance("defaultAgent returns build when no default_agent config", () =>

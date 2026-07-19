@@ -59,6 +59,13 @@ import { NovelXPrepareGeographyTool } from "./novelx-prepare-geography"
 import { NovelXCommitGeographyTool } from "./novelx-commit-geography"
 import { NovelXAbortGeographyTool } from "./novelx-abort-geography"
 import { NovelXFinishGeographyTool } from "./novelx-finish-geography"
+import { NovelXRegisterWorldBlueprintTool } from "./novelx-register-world-blueprint"
+import { NovelXPrepareWorldStageTool } from "./novelx-prepare-world-stage"
+import { NovelXRegisterWorldStageTool } from "./novelx-register-world-stage"
+import { NovelXPrepareWorldDocumentTool } from "./novelx-prepare-world-document"
+import { NovelXCommitWorldDocumentTool } from "./novelx-commit-world-document"
+import { NovelXAbortWorldDocumentTool } from "./novelx-abort-world-document"
+import { NovelXFinishWorldTool } from "./novelx-finish-world"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
   return providerID === ProviderV2.ID.opencode || flags.exa || flags.parallel
@@ -119,6 +126,13 @@ const layer = Layer.effect(
     const commitGeography = yield* NovelXCommitGeographyTool
     const abortGeography = yield* NovelXAbortGeographyTool
     const finishGeography = yield* NovelXFinishGeographyTool
+    const registerWorldBlueprint = yield* NovelXRegisterWorldBlueprintTool
+    const prepareWorldStage = yield* NovelXPrepareWorldStageTool
+    const registerWorldStage = yield* NovelXRegisterWorldStageTool
+    const prepareWorldDocument = yield* NovelXPrepareWorldDocumentTool
+    const commitWorldDocument = yield* NovelXCommitWorldDocumentTool
+    const abortWorldDocument = yield* NovelXAbortWorldDocumentTool
+    const finishWorld = yield* NovelXFinishWorldTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -231,6 +245,13 @@ const layer = Layer.effect(
           commitGeography: Tool.init(commitGeography),
           abortGeography: Tool.init(abortGeography),
           finishGeography: Tool.init(finishGeography),
+          registerWorldBlueprint: Tool.init(registerWorldBlueprint),
+          prepareWorldStage: Tool.init(prepareWorldStage),
+          registerWorldStage: Tool.init(registerWorldStage),
+          prepareWorldDocument: Tool.init(prepareWorldDocument),
+          commitWorldDocument: Tool.init(commitWorldDocument),
+          abortWorldDocument: Tool.init(abortWorldDocument),
+          finishWorld: Tool.init(finishWorld),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -258,6 +279,13 @@ const layer = Layer.effect(
             tool.commitGeography,
             tool.abortGeography,
             tool.finishGeography,
+            tool.registerWorldBlueprint,
+            tool.prepareWorldStage,
+            tool.registerWorldStage,
+            tool.prepareWorldDocument,
+            tool.commitWorldDocument,
+            tool.abortWorldDocument,
+            tool.finishWorld,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),

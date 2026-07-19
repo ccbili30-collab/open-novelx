@@ -327,6 +327,44 @@ describe("tool.task", () => {
     }),
   )
 
+  it.instance("NovelX world writer is Growth-owned and replays the same call ID once", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const def = yield* (yield* TaskTool).init()
+      let prompts = 0
+      const promptOps = stubOps({ onPrompt: () => prompts++ })
+      const ctx = {
+        sessionID: chat.id,
+        messageID: assistant.id,
+        callID: "call-world-once",
+        agent: "growth",
+        abort: new AbortController().signal,
+        extra: { promptOps },
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const input = {
+        description: "世界：赫利俄斯同步环",
+        prompt: "World Context Pack",
+        subagent_type: "novelx-world-writer",
+      }
+
+      const [first, replay] = yield* Effect.all([def.execute(input, ctx), def.execute(input, ctx)], {
+        concurrency: "unbounded",
+      })
+      const unauthorized = yield* def
+        .execute(input, { ...ctx, callID: "call-world-build", agent: "build" })
+        .pipe(Effect.exit)
+
+      expect(first.metadata.sessionId).toBe(replay.metadata.sessionId)
+      expect(yield* sessions.children(chat.id)).toHaveLength(1)
+      expect(prompts).toBe(1)
+      expect(unauthorized._tag).toBe("Failure")
+    }),
+  )
+
   it.instance("execute asks by default and skips checks when bypassed", () =>
     Effect.gen(function* () {
       const { chat, assistant } = yield* seed()

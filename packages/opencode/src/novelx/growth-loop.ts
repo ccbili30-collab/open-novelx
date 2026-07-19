@@ -1,5 +1,5 @@
 export const NOVELX_GROWTH_AGENT = "growth"
-export const NOVELX_GROWTH_TOOL = "novelx_finish_geography"
+export const NOVELX_GROWTH_TOOL = "novelx_finish_world"
 
 type TurnMessage = {
   info: {
