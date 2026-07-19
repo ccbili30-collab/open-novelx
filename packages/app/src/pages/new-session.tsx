@@ -155,7 +155,7 @@ export default function NewSessionPage() {
               novelx.activeResource() && !novelx.rightCollapsed()
                 ? novelx.conversationCollapsed()
                   ? "0px"
-                  : "300px"
+                  : "var(--novelx-conversation-compact-width)"
                 : undefined,
           }}
         >

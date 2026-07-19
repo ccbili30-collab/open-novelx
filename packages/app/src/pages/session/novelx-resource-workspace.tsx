@@ -1,4 +1,5 @@
-import { Icon, type IconProps } from "@opencode-ai/ui/icon"
+import { Icon } from "@opencode-ai/ui/icon"
+import { NovelXResourceIcon } from "@/components/novelx-resource-icon"
 import FileTree from "@/components/file-tree"
 import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
@@ -10,15 +11,6 @@ import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
 import "./novelx-document-editor.css"
 import { For, Match, Show, Switch, createMemo } from "solid-js"
-
-const resourceIcon: Record<NovelXResource, IconProps["name"]> = {
-  files: "file-tree",
-  world: "branch",
-  characters: "subagent",
-  graph: "fork",
-  story: "bullet-list",
-  package: "archive",
-}
 
 const resourceLabel = (resource: NovelXResource) =>
   ({
@@ -206,29 +198,13 @@ export function NovelXResourceWorkspace(props: {
 
   const primary = (resource: NovelXResource) => (
     <div class="novelx-resource-primary">
-      <div class="novelx-resource-primary-heading">
-        <div>
-          <span>{language.t(resourceLabel(resource))}</span>
-          <small>{language.t(resourceCopy[resource].summary)}</small>
-        </div>
-        <Show when={view.activeFile() && !view.inspectorOpen()}>
-          <button
-            type="button"
-            class="novelx-symbol-button"
-            aria-label={language.t("novelx.resource.openDetails")}
-            onClick={() => view.setInspectorOpen(true)}
-          >
-            <Icon name="sidebar" size="small" />
-          </button>
-        </Show>
-      </div>
       <div class="novelx-resource-primary-body">
         <Show
           when={document.state()}
           fallback={
             <div class="novelx-resource-blank">
               {resourceScaffold(resource)}
-              <Icon name={resourceIcon[resource]} size="large" />
+              <NovelXResourceIcon resource={resource} size={28} />
               <strong>{language.t(resourceCopy[resource].emptyTitle)}</strong>
               <span>{language.t(resourceCopy[resource].emptyDescription)}</span>
             </div>
@@ -287,38 +263,51 @@ export function NovelXResourceWorkspace(props: {
         >
           {(resource) => (
             <div class="novelx-resource-expanded" data-resource={resource()}>
-              <nav class="novelx-resource-navigator" aria-label={title()}>
-                <div class="novelx-resource-page-title">
-                  <Icon name={resourceIcon[resource()]} size="normal" />
+              <header class="novelx-resource-page-heading">
+                <div class="novelx-resource-page-identity" title={language.t(resourceCopy[resource()].summary)}>
                   <strong>{title()}</strong>
                 </div>
-                <div class="novelx-resource-navigator-tree">
-                  {resourceEmpty(resource())}
-                  {renderTree(resource())}
-                </div>
-              </nav>
-              {primary(resource())}
-              <Show when={view.inspectorOpen() && view.activeFile()}>
-                <aside class="novelx-resource-inspector">
-                  <div class="novelx-resource-inspector-heading">
-                    <strong>{language.t("novelx.resource.details")}</strong>
-                    <button
-                      type="button"
-                      class="novelx-symbol-button"
-                      aria-label={language.t("common.close")}
-                      onClick={() => view.setInspectorOpen(false)}
-                    >
-                      <Icon name="close-small" size="small" />
-                    </button>
+                <Show when={view.activeFile() && !view.inspectorOpen()}>
+                  <button
+                    type="button"
+                    class="novelx-symbol-button"
+                    aria-label={language.t("novelx.resource.openDetails")}
+                    onClick={() => view.setInspectorOpen(true)}
+                  >
+                    <Icon name="sidebar" size="small" />
+                  </button>
+                </Show>
+              </header>
+              <div class="novelx-resource-page-columns">
+                <nav class="novelx-resource-navigator" aria-label={title()}>
+                  <div class="novelx-resource-navigator-tree">
+                    {resourceEmpty(resource())}
+                    {renderTree(resource())}
                   </div>
-                  <dl>
-                    <dt>{language.t("novelx.resource.path")}</dt>
-                    <dd>{view.activeFile()}</dd>
-                    <dt>{language.t("novelx.resource.state")}</dt>
-                    <dd>{language.t("novelx.resource.realFile")}</dd>
-                  </dl>
-                </aside>
-              </Show>
+                </nav>
+                {primary(resource())}
+                <Show when={view.inspectorOpen() && view.activeFile()}>
+                  <aside class="novelx-resource-inspector">
+                    <div class="novelx-resource-inspector-heading">
+                      <strong>{language.t("novelx.resource.details")}</strong>
+                      <button
+                        type="button"
+                        class="novelx-symbol-button"
+                        aria-label={language.t("common.close")}
+                        onClick={() => view.setInspectorOpen(false)}
+                      >
+                        <Icon name="close-small" size="small" />
+                      </button>
+                    </div>
+                    <dl>
+                      <dt>{language.t("novelx.resource.path")}</dt>
+                      <dd>{view.activeFile()}</dd>
+                      <dt>{language.t("novelx.resource.state")}</dt>
+                      <dd>{language.t("novelx.resource.realFile")}</dd>
+                    </dl>
+                  </aside>
+                </Show>
+              </div>
             </div>
           )}
         </Show>
@@ -336,7 +325,7 @@ export function NovelXResourceWorkspace(props: {
               title={language.t(resourceLabel(resource))}
               onClick={() => view.activateResource(resource)}
             >
-              <Icon name={resourceIcon[resource]} size="normal" />
+              <NovelXResourceIcon resource={resource} size={24} />
             </button>
           )}
         </For>

@@ -274,7 +274,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
               aria-expanded={novelx.leftExpanded()}
               onClick={novelx.toggleLeft}
             >
-              <Icon name={novelx.leftExpanded() ? "layout-left-full" : "layout-left"} size="small" />
+              <Icon name={novelx.leftExpanded() ? "layout-left-full" : "layout-left"} size="medium" />
             </button>
             <button
               type="button"
@@ -291,7 +291,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
               aria-expanded={!novelx.rightCollapsed()}
               onClick={novelx.toggleRight}
             >
-              <Icon name={novelx.rightCollapsed() ? "layout-right" : "layout-right-full"} size="small" />
+              <Icon name={novelx.rightCollapsed() ? "layout-right" : "layout-right-full"} size="medium" />
             </button>
           </div>
         </Match>

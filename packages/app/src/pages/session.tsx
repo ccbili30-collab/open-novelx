@@ -505,9 +505,10 @@ export default function Page() {
   )
   const sessionPanelWidth = createMemo(() => {
     if (newSessionDesign()) {
-      if (novelx.rightCollapsed()) return "calc(100% - 64px)"
-      if (novelx.activeResource()) return novelx.conversationCollapsed() ? "0px" : "300px"
-      return "calc(100% - 388px)"
+      if (novelx.rightCollapsed()) return "calc(100% - var(--novelx-resource-dock-width))"
+      if (novelx.activeResource())
+        return novelx.conversationCollapsed() ? "0px" : "var(--novelx-conversation-compact-width)"
+      return "calc(100% - var(--novelx-compact-files-width) - var(--novelx-resource-dock-width))"
     }
     if (!desktopSidePanelOpen()) return "100%"
     if (desktopSessionResizeOpen()) return `${sessionPanelResizedWidth()}px`

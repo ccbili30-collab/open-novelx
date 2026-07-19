@@ -76,8 +76,8 @@
   }
 }
 [data-novelx-titlebar] {
-  height: 48px !important;
-  min-height: 48px !important;
+  height: 62px !important;
+  min-height: 62px !important;
   overflow: hidden !important;
   border-bottom: 1px solid #e4ded7;
   background: #f8f4ef !important;

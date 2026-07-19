@@ -174,6 +174,8 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   const inspector = resources.locator(".novelx-resource-inspector")
   await expect(inspector).toBeVisible()
+  await expect(resources.locator(".novelx-resource-navigator")).toHaveCSS("width", "234px")
+  await expect(inspector).toHaveCSS("width", "290px")
   await inspector.getByRole("button", { name: "关闭" }).click()
   await expect(inspector).toHaveCount(0)
   await resources.getByRole("button", { name: "展开详细信息" }).click()
@@ -202,6 +204,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await page.reload()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
   await expect(resources.locator(".novelx-document-editor")).toBeVisible()
+  await page.locator('[aria-label="开发性能诊断"]').evaluate((element) => element.remove())
   await page.screenshot({ path: testInfo.outputPath("novelx-session-files.png") })
 })
 
