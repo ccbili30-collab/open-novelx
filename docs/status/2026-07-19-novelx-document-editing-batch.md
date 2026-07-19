@@ -4,6 +4,7 @@
 
 - 分支：`novelx-ui`。
 - 协议与后端提交：`7e3b53c`（`feat(api): add conflict-safe file editing`）。
+- 应用实现提交：`511221f`（`feat(app): add conflict-safe document editing`）。
 - 设计与执行计划：[`../plans/2026-07-19-novelx-document-editing-design.md`](../plans/2026-07-19-novelx-document-editing-design.md)、[`../plans/2026-07-19-novelx-document-editing.md`](../plans/2026-07-19-novelx-document-editing.md)。
 - 本批只完成真实项目文件的读取、编辑、条件保存、冲突保护和 Agent 占用锁；没有把 Growth、世界领域对象、图谱、世界包或 Provider（模型服务）声明为已完成。
 
