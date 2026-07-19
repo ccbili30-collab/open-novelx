@@ -1,6 +1,8 @@
 import * as InstanceState from "@/effect/instance-state"
 import { FileSystem } from "@opencode-ai/core/filesystem"
+import { FileMutation } from "@opencode-ai/core/file-mutation"
 import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
+import { LocationMutation } from "@opencode-ai/core/location-mutation"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Location } from "@opencode-ai/core/location"
@@ -10,6 +12,51 @@ import ignore from "ignore"
 import path from "path"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
+import {
+  FileEditConflictError,
+  FileEditInvalidError,
+  FileEditNotFoundError,
+  FileEditableWrite,
+} from "../groups/file"
+
+const utf8Bom = new Uint8Array([0xef, 0xbb, 0xbf])
+
+function hasUtf8Bom(content: Uint8Array) {
+  return content[0] === utf8Bom[0] && content[1] === utf8Bom[1] && content[2] === utf8Bom[2]
+}
+
+function editableBytes(content: string, bom: boolean) {
+  const text = content.replace(/^\uFEFF+/, "")
+  return new TextEncoder().encode(bom ? `\uFEFF${text}` : text)
+}
+
+function mapAccessError(requested: string, error: unknown): FileEditInvalidError | FileEditNotFoundError {
+  if (error instanceof FileEditInvalidError || error instanceof FileEditNotFoundError) {
+    return error
+  }
+  const tagged = error as { _tag?: string; reason?: string }
+  if (tagged?._tag === "LocationMutation.PathError") {
+    return new FileEditInvalidError({ path: requested, reason: "invalid_path", message: "Path escapes the project." })
+  }
+  if (tagged?._tag === "PlatformError" && tagged.reason === "NotFound") {
+    return new FileEditNotFoundError({ path: requested, message: "File does not exist." })
+  }
+  return new FileEditInvalidError({ path: requested, reason: "io", message: "Unable to access the file." })
+}
+
+function mapWriteError(
+  requested: string,
+  error: unknown,
+): FileEditInvalidError | FileEditNotFoundError | FileEditConflictError {
+  if (error instanceof FileEditConflictError) return error
+  if (error instanceof FileMutation.StaleContentError) {
+    return new FileEditConflictError({
+      path: requested,
+      message: "The file changed after it was opened. Reload before saving again.",
+    })
+  }
+  return mapAccessError(requested, error)
+}
 
 export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handlers) =>
   Effect.gen(function* () {
@@ -124,6 +171,83 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       )
     })
 
+    const editableTarget = Effect.fnUntraced(function* (requested: string) {
+      const mutation = yield* LocationMutation.Service
+      const raw = yield* FSUtil.Service
+      const target = yield* mutation.resolve({ path: requested, kind: "file" })
+      if (target.externalDirectory) {
+        return yield* new FileEditInvalidError({
+          path: requested,
+          reason: "invalid_path",
+          message: "Editable files must stay inside the current project.",
+        })
+      }
+      if (!(yield* raw.existsSafe(target.canonical))) {
+        return yield* new FileEditNotFoundError({ path: requested, message: "File does not exist." })
+      }
+      if (!(yield* raw.isFile(target.canonical))) {
+        return yield* new FileEditInvalidError({
+          path: requested,
+          reason: "not_file",
+          message: "Editable target is not a file.",
+        })
+      }
+      return target
+    })
+
+    const decodeEditable = Effect.fnUntraced(function* (requested: string, bytes: Uint8Array) {
+      const bom = hasUtf8Bom(bytes)
+      const body = bom ? bytes.slice(utf8Bom.length) : bytes
+      if (body.includes(0)) {
+        return yield* new FileEditInvalidError({
+          path: requested,
+          reason: "binary",
+          message: "Binary files cannot be edited as text.",
+        })
+      }
+      const content = yield* Effect.try({
+        try: () => new TextDecoder("utf-8", { fatal: true }).decode(body),
+        catch: () =>
+          new FileEditInvalidError({
+            path: requested,
+            reason: "invalid_utf8",
+            message: "File is not valid UTF-8 text.",
+          }),
+      })
+      return { type: "text" as const, content, bom }
+    })
+
+    const editable = Effect.fn("FileHttpApi.editable")(function* (ctx: { query: { path: string } }) {
+      const requested = ctx.query.path
+      return yield* filesystem(
+        Effect.gen(function* () {
+          const target = yield* editableTarget(requested)
+          const raw = yield* FSUtil.Service
+          return yield* decodeEditable(requested, yield* raw.readFile(target.canonical))
+        }),
+      ).pipe(Effect.mapError((error) => mapAccessError(requested, error)))
+    })
+
+    const write = Effect.fn("FileHttpApi.write")(function* (ctx: {
+      query: { path: string }
+      payload: typeof FileEditableWrite.Type
+    }) {
+      const requested = ctx.query.path
+      return yield* filesystem(
+        Effect.gen(function* () {
+          const target = yield* editableTarget(requested)
+          const files = yield* FileMutation.Service
+          const bom = ctx.payload.expectedBom
+          yield* files.writeIfUnchanged({
+            target,
+            expected: editableBytes(ctx.payload.expectedContent, bom),
+            content: editableBytes(ctx.payload.content, bom),
+          })
+          return { type: "text" as const, content: ctx.payload.content.replace(/^\uFEFF+/, ""), bom }
+        }),
+      ).pipe(Effect.mapError((error) => mapWriteError(requested, error)))
+    })
+
     const status = Effect.fn("FileHttpApi.status")(function* () {
       return []
     })
@@ -134,6 +258,8 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
       .handle("findSymbol", findSymbol)
       .handle("list", list)
       .handle("content", content)
+      .handle("editable", editable)
+      .handle("write", write)
       .handle("status", status)
   }),
 ).pipe(Layer.provide(locationServiceMapLayer))

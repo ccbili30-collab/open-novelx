@@ -60,6 +60,9 @@ import type {
   ExperimentalWorkspaceSyncListResponses,
   ExperimentalWorkspaceWarpErrors,
   ExperimentalWorkspaceWarpResponses,
+  FileEditableErrors,
+  FileEditableResponses,
+  FileEditableWrite,
   FileListErrors,
   FileListResponses,
   FilePartInput,
@@ -68,6 +71,8 @@ import type {
   FileReadResponses,
   FileStatusErrors,
   FileStatusResponses,
+  FileWriteErrors,
+  FileWriteResponses,
   FindFilesErrors,
   FindFilesResponses,
   FindSymbolsErrors,
@@ -1888,6 +1893,77 @@ export class File extends HeyApiClient {
       url: "/file/content",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Read editable file
+   *
+   * Read exact UTF-8 text without trimming and report whether it has a UTF-8 BOM.
+   */
+  public editable<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<FileEditableResponses, FileEditableErrors, ThrowOnError>({
+      url: "/file/edit",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Conditionally write editable file
+   *
+   * Write exact UTF-8 text only when the current bytes still match the supplied baseline.
+   */
+  public write<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      path: string
+      fileEditableWrite?: FileEditableWrite
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "path" },
+            { key: "fileEditableWrite", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<FileWriteResponses, FileWriteErrors, ThrowOnError>({
+      url: "/file/edit",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

@@ -2289,6 +2289,37 @@ export type FileContent = {
   mimeType?: string
 }
 
+export type FileEditableContent = {
+  type: "text"
+  content: string
+  bom: boolean
+}
+
+export type FileEditInvalidError = {
+  _tag: "FileEditInvalidError"
+  path: string
+  reason: "invalid_path" | "not_file" | "binary" | "invalid_utf8" | "io"
+  message: string
+}
+
+export type FileEditNotFoundError = {
+  _tag: "FileEditNotFoundError"
+  path: string
+  message: string
+}
+
+export type FileEditableWrite = {
+  content: string
+  expectedContent: string
+  expectedBom: boolean
+}
+
+export type FileEditConflictError = {
+  _tag: "FileEditConflictError"
+  path: string
+  message: string
+}
+
 export type File = {
   path: string
   added: number
@@ -8048,6 +8079,76 @@ export type FileReadResponses = {
 }
 
 export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
+
+export type FileEditableData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    path: string
+  }
+  url: "/file/edit"
+}
+
+export type FileEditableErrors = {
+  /**
+   * FileEditInvalidError | InvalidRequestError
+   */
+  400: FileEditInvalidError | InvalidRequestError
+  /**
+   * FileEditNotFoundError
+   */
+  404: FileEditNotFoundError
+}
+
+export type FileEditableError = FileEditableErrors[keyof FileEditableErrors]
+
+export type FileEditableResponses = {
+  /**
+   * Exact editable file content
+   */
+  200: FileEditableContent
+}
+
+export type FileEditableResponse = FileEditableResponses[keyof FileEditableResponses]
+
+export type FileWriteData = {
+  body?: FileEditableWrite
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    path: string
+  }
+  url: "/file/edit"
+}
+
+export type FileWriteErrors = {
+  /**
+   * FileEditInvalidError | InvalidRequestError
+   */
+  400: FileEditInvalidError | InvalidRequestError
+  /**
+   * FileEditNotFoundError
+   */
+  404: FileEditNotFoundError
+  /**
+   * FileEditConflictError
+   */
+  409: FileEditConflictError
+}
+
+export type FileWriteError = FileWriteErrors[keyof FileWriteErrors]
+
+export type FileWriteResponses = {
+  /**
+   * Saved editable file content
+   */
+  200: FileEditableContent
+}
+
+export type FileWriteResponse = FileWriteResponses[keyof FileWriteResponses]
 
 export type FileStatusData = {
   body?: never

@@ -340,6 +340,35 @@ const scenarios: Scenario[] = [
       object(body)
       check(body.type === "text" && body.content === "", "missing file content should return an empty text result")
     }),
+  http.protected
+    .get("/file/edit", "file.editable")
+    .seeded((ctx) => ctx.file("editable.md", "  exact\n"))
+    .at((ctx) => ({ path: `/file/edit?${new URLSearchParams({ path: "editable.md" })}`, headers: ctx.headers() }))
+    .json(200, (body) => {
+      object(body)
+      check(body.type === "text" && body.content === "  exact\n" && body.bom === false, "editable read must be exact")
+    }),
+  http.protected
+    .put("/file/edit", "file.write")
+    .seeded((ctx) => ctx.file("editable.md", "before\n"))
+    .at((ctx) => ({
+      path: `/file/edit?${new URLSearchParams({ path: "editable.md" })}`,
+      headers: ctx.headers(),
+      body: { content: "after\n", expectedContent: "before\n", expectedBom: false },
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(body.content === "after\n" && body.bom === false, "editable write must return exact saved content")
+    }),
+  http.protected
+    .put("/file/edit", "file.write.conflict")
+    .seeded((ctx) => ctx.file("editable.md", "current\n"))
+    .at((ctx) => ({
+      path: `/file/edit?${new URLSearchParams({ path: "editable.md" })}`,
+      headers: ctx.headers(),
+      body: { content: "after\n", expectedContent: "stale\n", expectedBom: false },
+    }))
+    .json(409, object, "status"),
   http.protected.get("/file/status", "file.status").json(200, array),
   http.protected
     .get("/find", "find.text")

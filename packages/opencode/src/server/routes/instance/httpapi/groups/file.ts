@@ -92,12 +92,47 @@ export const LegacyStatus = Schema.Struct({
   status: Schema.Literals(["added", "deleted", "modified"]),
 }).annotate({ identifier: "File" })
 
+export const FileEditableContent = Schema.Struct({
+  type: Schema.Literal("text"),
+  content: Schema.String,
+  bom: Schema.Boolean,
+}).annotate({ identifier: "FileEditableContent" })
+
+export const FileEditableWrite = Schema.Struct({
+  content: Schema.String,
+  expectedContent: Schema.String,
+  expectedBom: Schema.Boolean,
+}).annotate({ identifier: "FileEditableWrite" })
+
+export class FileEditInvalidError extends Schema.TaggedErrorClass<FileEditInvalidError>()(
+  "FileEditInvalidError",
+  {
+    path: Schema.String,
+    reason: Schema.Literals(["invalid_path", "not_file", "binary", "invalid_utf8", "io"]),
+    message: Schema.String,
+  },
+  { httpApiStatus: 400 },
+) {}
+
+export class FileEditNotFoundError extends Schema.TaggedErrorClass<FileEditNotFoundError>()(
+  "FileEditNotFoundError",
+  { path: Schema.String, message: Schema.String },
+  { httpApiStatus: 404 },
+) {}
+
+export class FileEditConflictError extends Schema.TaggedErrorClass<FileEditConflictError>()(
+  "FileEditConflictError",
+  { path: Schema.String, message: Schema.String },
+  { httpApiStatus: 409 },
+) {}
+
 export const FilePaths = {
   findText: "/find",
   findFile: "/find/file",
   findSymbol: "/find/symbol",
   list: "/file",
   content: "/file/content",
+  edit: "/file/edit",
   status: "/file/status",
 } as const
 
@@ -153,6 +188,29 @@ export const FileApi = HttpApi.make("file")
             identifier: "file.read",
             summary: "Read file",
             description: "Read the content of a specified file.",
+          }),
+        ),
+        HttpApiEndpoint.get("editable", FilePaths.edit, {
+          query: FileQuery,
+          success: described(FileEditableContent, "Exact editable file content"),
+          error: [FileEditInvalidError, FileEditNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "file.editable",
+            summary: "Read editable file",
+            description: "Read exact UTF-8 text without trimming and report whether it has a UTF-8 BOM.",
+          }),
+        ),
+        HttpApiEndpoint.put("write", FilePaths.edit, {
+          query: FileQuery,
+          payload: FileEditableWrite,
+          success: described(FileEditableContent, "Saved editable file content"),
+          error: [FileEditInvalidError, FileEditNotFoundError, FileEditConflictError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "file.write",
+            summary: "Conditionally write editable file",
+            description: "Write exact UTF-8 text only when the current bytes still match the supplied baseline.",
           }),
         ),
         HttpApiEndpoint.get("status", FilePaths.status, {
