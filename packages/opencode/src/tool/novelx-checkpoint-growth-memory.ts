@@ -82,7 +82,7 @@ export const NovelXCheckpointGrowthMemoryTool = Tool.define<
                 sessionID: ctx.sessionID,
                 agent: "growth",
                 model: { providerID: assistant.info.providerID, modelID: assistant.info.modelID },
-                auto: false,
+                auto: true,
               })),
             )
             if (!existingCheckpoint && !recoveredMarker) {

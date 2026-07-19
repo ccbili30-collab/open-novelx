@@ -159,7 +159,10 @@ describe("NovelX editorial world tools", () => {
         )
         expect(checkpointed.metadata.contextEpoch).toBe(1)
         const messages = yield* sessions.messages({ sessionID: root.id })
-        expect(messages.some((message) => message.parts.some((part) => part.type === "compaction"))).toBe(true)
+        const compactionPart = messages
+          .flatMap((message) => message.parts)
+          .find((part) => part.type === "compaction")
+        expect(compactionPart).toMatchObject({ type: "compaction", auto: true })
         const recover = yield* (yield* NovelXRecoverGrowthContextTool).init()
         const recovered = yield* recover.execute({}, { ...rootContext, callID: "call-recover" })
         expect(recovered.metadata).toMatchObject({ completedStages: 1, nextStageId: null, contextEpoch: 1 })
