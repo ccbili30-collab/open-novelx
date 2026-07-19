@@ -1,0 +1,59 @@
+import { describe, expect, test } from "bun:test"
+import {
+  DEFAULT_NOVELX_PROJECT_LAYOUT,
+  activateNovelXResource,
+  mergeNovelXOrder,
+  normalizeNovelXProjectLayout,
+  reorderNovelXItems,
+  toggleNovelXRight,
+  toggleNovelXShortcut,
+} from "./novelx-workspace"
+
+describe("NovelX workspace layout", () => {
+  test("opens one resource, switches in place, and returns home on repeated activation", () => {
+    const files = activateNovelXResource(DEFAULT_NOVELX_PROJECT_LAYOUT, "files")
+    expect(files.activeResource).toBe("files")
+    expect(files.rightCollapsed).toBe(false)
+    expect(files.leftExpanded).toBe(false)
+
+    const world = activateNovelXResource(files, "world")
+    expect(world.activeResource).toBe("world")
+
+    const home = activateNovelXResource(world, "world")
+    expect(home.activeResource).toBeUndefined()
+    expect(home.conversationCollapsed).toBe(false)
+    expect(home.leftExpanded).toBe(true)
+  })
+
+  test("right collapse preserves the active resource for restoration", () => {
+    const active = activateNovelXResource(DEFAULT_NOVELX_PROJECT_LAYOUT, "story")
+    const collapsed = toggleNovelXRight(active)
+    expect(collapsed.rightCollapsed).toBe(true)
+    expect(collapsed.activeResource).toBe("story")
+    expect(toggleNovelXRight(collapsed)).toEqual(active)
+  })
+
+  test("normalizes incomplete persisted snapshots without inventing a resource", () => {
+    expect(normalizeNovelXProjectLayout({ leftExpanded: false, activeResource: "unknown" as "files" })).toEqual({
+      ...DEFAULT_NOVELX_PROJECT_LAYOUT,
+      leftExpanded: false,
+      homeLeftExpanded: false,
+    })
+  })
+})
+
+describe("NovelX project navigation", () => {
+  test("pinning adds and removes shortcuts without changing their source objects", () => {
+    const project = { type: "project" as const, directory: "C:/NovelX/World" }
+    const session = { type: "session" as const, directory: project.directory, sessionID: "ses_one" }
+    const pinned = toggleNovelXShortcut(toggleNovelXShortcut([], project), session)
+    expect(pinned).toEqual([project, session])
+    expect(toggleNovelXShortcut(pinned, project)).toEqual([session])
+  })
+
+  test("reorders only known IDs and merges persisted order with newly discovered sessions", () => {
+    expect(reorderNovelXItems(["one", "two", "three"], "three", 1)).toEqual(["one", "three", "two"])
+    expect(reorderNovelXItems(["one", "two"], "missing", 0)).toEqual(["one", "two"])
+    expect(mergeNovelXOrder(["one", "two", "three"], ["two", "gone"])).toEqual(["two", "one", "three"])
+  })
+})

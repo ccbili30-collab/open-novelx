@@ -56,6 +56,7 @@ import { setSessionHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { SessionFileBrowserTab, type SessionFileBrowserState } from "@/pages/session/v2/session-file-browser-tab"
 import { worldTreeStatus } from "@/pages/session/novelx-workspace-model"
+import { NovelXResourceWorkspace } from "@/pages/session/novelx-resource-workspace"
 
 type RenderDiff = (SnapshotFileDiff & { file: string }) | VcsFileDiff
 
@@ -158,6 +159,7 @@ export function SessionSidePanel(props: {
       .filter((node) => file.normalize(node.path) !== file.normalize("World"))
       .map((node) => node.path),
   )
+  const allRootResourcePaths = createMemo(() => file.tree.children("").map((node) => node.path))
   const worldState = createMemo(() => file.tree.state("World"))
   const hasWorldDirectory = createMemo(() =>
     file.tree
@@ -309,7 +311,21 @@ export function SessionSidePanel(props: {
 
   return (
     <Show when={isDesktop()}>
-      <aside
+      <Show
+        when={!settings.general.newLayoutDesigns()}
+        fallback={
+          <NovelXResourceWorkspace
+            rootPaths={allRootResourcePaths}
+            modified={diffFiles}
+            kinds={kinds}
+            rootEmpty={nofiles}
+            worldStatus={worldStatus}
+            worldError={() => worldState()?.error ?? rootState()?.error}
+            onOpenFile={(path) => openTab(file.tab(path))}
+          />
+        }
+      >
+        <aside
         id="review-panel"
         aria-label={language.t("session.panel.reviewAndFiles")}
         aria-hidden={!open()}
@@ -1043,7 +1059,8 @@ export function SessionSidePanel(props: {
             </Show>
           </div>
         </Show>
-      </aside>
+        </aside>
+      </Show>
     </Show>
   )
 }

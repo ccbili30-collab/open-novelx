@@ -81,7 +81,7 @@ import {
 } from "@/pages/session/session-panel-width"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
 import { NovelXWorkspaceSidebar } from "@/pages/session/novelx-workspace-sidebar"
-import { NovelXShellToolbar, NovelXStatusbar } from "@/pages/session/novelx-shell-chrome"
+import { NovelXConversationToggle } from "@/pages/session/novelx-conversation-toggle"
 import { sessionPanelLayout } from "@/pages/session/session-panel-layout"
 import { SessionReviewEmptyChangesV2 } from "@opencode-ai/session-ui/v2/session-review-empty-changes-v2"
 import { SessionReviewEmptyNoGitV2 } from "@opencode-ai/session-ui/v2/session-review-empty-no-git-v2"
@@ -380,6 +380,7 @@ export default function Page() {
   const reviewFile = () => view().review.file()
   const sessionOwnership = createSessionOwnership(sessionKey)
   const newSessionDesign = createMemo(() => settings.general.newLayoutDesigns())
+  const novelx = layout.novelx.project(() => sdk().directory)
 
   createEffect(() => {
     if (!prompt.ready()) return
@@ -462,10 +463,11 @@ export default function Page() {
   const desktopFileTreeOpen = createMemo(
     () =>
       isDesktop() &&
-      shouldShowFileTree({
-        visible: settings.visibility.fileTree(),
-        opened: layout.fileTree.opened(),
-      }),
+      (newSessionDesign() ||
+        shouldShowFileTree({
+          visible: settings.visibility.fileTree(),
+          opened: layout.fileTree.opened(),
+        })),
   )
   const desktopSessionResizeOpen = createMemo(() =>
     newSessionDesign() ? desktopV2ReviewOpen() || desktopTerminalOpen() : desktopReviewOpen(),
@@ -502,6 +504,11 @@ export default function Page() {
     }),
   )
   const sessionPanelWidth = createMemo(() => {
+    if (newSessionDesign()) {
+      if (novelx.rightCollapsed()) return "calc(100% - 64px)"
+      if (novelx.activeResource()) return novelx.conversationCollapsed() ? "0px" : "300px"
+      return "calc(100% - 388px)"
+    }
     if (!desktopSidePanelOpen()) return "100%"
     if (desktopSessionResizeOpen()) return `${sessionPanelResizedWidth()}px`
     return `calc(100% - ${layout.fileTree.width()}px)`
@@ -2250,7 +2257,6 @@ export default function Page() {
 
   return (
     <SessionRouteFrame>
-      <NovelXShellToolbar />
       <SessionHeader />
       <div class="flex-1 min-h-0 flex">
         <NovelXWorkspaceSidebar />
@@ -2258,6 +2264,7 @@ export default function Page() {
           <Show when={!isDesktop() && !!params.id && !settings.general.newLayoutDesigns()}>{mobileTabs()}</Show>
 
           <div
+            data-component="novelx-conversation-surface"
             classList={{
               "@container relative shrink-0 flex flex-col min-h-0 h-full flex-1 md:flex-none transition-[width]": true,
               "duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
@@ -2267,6 +2274,7 @@ export default function Page() {
               width: sessionPanelWidth(),
             }}
           >
+            <NovelXConversationToggle />
             {settings.general.newLayoutDesigns() ? (
               <Show when={sessionPanelKey()} keyed>
                 {(_) => (
@@ -2382,7 +2390,6 @@ export default function Page() {
       <Show when={!newSessionDesign()}>
         <TerminalPanel />
       </Show>
-      <NovelXStatusbar />
     </SessionRouteFrame>
   )
 }

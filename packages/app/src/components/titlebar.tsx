@@ -28,6 +28,7 @@ import { tabKey, useTabs } from "@/context/tabs"
 import type { PromptSession } from "@/context/prompt"
 import "./titlebar.css"
 import { newTabTooltipKeybind } from "./command-tooltip-keybind"
+import { useServerSync } from "@/context/server-sync"
 
 type TauriDesktopWindow = {
   startDragging?: () => Promise<void>
@@ -52,7 +53,7 @@ const currentDesktopWindow = () => tauriApi()?.window?.getCurrentWindow?.()
 const currentThemeWindow = () => tauriApi()?.webviewWindow?.getCurrentWebviewWindow?.()
 const legacyTitlebarHeight = 40
 const v2TitlebarHeight = 36
-const novelxTitlebarHeight = 28
+const novelxTitlebarHeight = 48
 const minTitlebarZoom = 0.25
 const windowsControlsBaseWidth = 138 // 3 native Windows caption buttons at 46px each.
 
@@ -76,6 +77,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
   const settings = useSettings()
   const theme = useTheme()
   const server = useServer()
+  const serverSync = useServerSync()
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
@@ -84,6 +86,13 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
     const type = layout.route().type
     return type === "session" || type === "draft" || type === "dir-new-sesssion"
   })
+  const novelxDirectory = createMemo(() => {
+    const route = layout.route()
+    if (route.type === "dir-new-sesssion") return route.dir
+    if (route.type === "session") return serverSync().session.get(route.sessionId)?.directory ?? ""
+    return layout.projects.list()[0]?.worktree ?? ""
+  })
+  const novelx = layout.novelx.project(novelxDirectory)
   const mobile = createMediaQuery("(max-width: 767px)")
   const bottom = createMemo(() => useV2Titlebar() && mobile() && settings.general.mobileTitlebarPosition() === "bottom")
 
@@ -236,7 +245,7 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
       data-novelx-titlebar={novelxWorkspace() ? "" : undefined}
       classList={{
         "shrink-0 relative flex flex-row": true,
-        "h-7 novelx-window-titlebar": novelxWorkspace(),
+        "novelx-window-titlebar": novelxWorkspace(),
         "h-9 bg-v2-background-bg-deep overflow-visible": useV2Titlebar() && !novelxWorkspace(),
         "h-10 bg-background-base overflow-hidden": !useV2Titlebar(),
         "order-last": bottom(),
@@ -256,6 +265,36 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
       onDblClick={maximize}
     >
       <Switch>
+        <Match when={novelxWorkspace()}>
+          <div class="novelx-titlebar-content" style={{ zoom: counterZoom() }}>
+            <button
+              type="button"
+              class="novelx-titlebar-control"
+              aria-label={language.t("novelx.titlebar.leftToggle")}
+              aria-expanded={novelx.leftExpanded()}
+              onClick={novelx.toggleLeft}
+            >
+              <Icon name={novelx.leftExpanded() ? "layout-left-full" : "layout-left"} size="small" />
+            </button>
+            <button
+              type="button"
+              class="novelx-titlebar-home"
+              aria-label={language.t("novelx.titlebar.home")}
+              onClick={novelx.clearResource}
+            >
+              NovelX
+            </button>
+            <button
+              type="button"
+              class="novelx-titlebar-control"
+              aria-label={language.t("novelx.titlebar.rightToggle")}
+              aria-expanded={!novelx.rightCollapsed()}
+              onClick={novelx.toggleRight}
+            >
+              <Icon name={novelx.rightCollapsed() ? "layout-right" : "layout-right-full"} size="small" />
+            </button>
+          </div>
+        </Match>
         <Match when={useV2Titlebar()}>
           {(_) => {
             const layout = useLayout()

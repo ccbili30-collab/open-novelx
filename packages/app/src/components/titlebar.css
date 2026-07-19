@@ -76,27 +76,60 @@
   }
 }
 [data-novelx-titlebar] {
-  height: 28px !important;
-  min-height: 28px !important;
+  height: 48px !important;
+  min-height: 48px !important;
   overflow: hidden !important;
-  border-bottom: 1px solid #e5e2de;
-  background: #f4f3f1 !important;
-  color: #252422;
+  border-bottom: 1px solid #e4ded7;
+  background: #f8f4ef !important;
+  color: #282522;
 }
 
-[data-novelx-titlebar] > * {
-  display: none !important;
-}
-
-[data-novelx-titlebar]::before {
-  content: "◒  novelx";
-  display: flex;
+.novelx-titlebar-content {
+  display: grid;
+  width: 100%;
+  min-width: 0;
   height: 100%;
+  grid-template-columns: minmax(44px, 1fr) auto minmax(44px, 1fr);
   align-items: center;
-  padding-left: 5px;
+  padding: 0 8px;
+}
+
+.novelx-titlebar-control,
+.novelx-titlebar-home {
+  border: 0;
+  color: inherit;
+  background: transparent;
+}
+
+.novelx-titlebar-control {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 5px;
+}
+
+.novelx-titlebar-control:last-child {
+  justify-self: end;
+}
+
+.novelx-titlebar-home {
+  height: 32px;
+  border-radius: 5px;
+  padding: 0 14px;
   font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 650;
   letter-spacing: 0.01em;
-  color: #242321;
+}
+
+.novelx-titlebar-control:hover,
+.novelx-titlebar-home:hover {
+  background: rgba(63, 53, 45, 0.055);
+}
+
+.novelx-titlebar-control:focus-visible,
+.novelx-titlebar-home:focus-visible {
+  outline: 1px solid #817970;
+  outline-offset: -2px;
 }

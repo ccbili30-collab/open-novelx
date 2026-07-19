@@ -20,6 +20,18 @@ import { createSessionKeyReader, ensureSessionKey, pruneSessionKeys } from "./la
 import { requireServerKey } from "@/utils/session-route"
 import { type DraftTab, useTabs } from "./tabs"
 import { closeSessionTab, openSessionTab, previewSessionTab, type SessionTabs } from "./layout-tabs"
+import {
+  DEFAULT_NOVELX_PROJECT_LAYOUT,
+  activateNovelXResource,
+  mergeNovelXOrder,
+  normalizeNovelXProjectLayout,
+  reorderNovelXItems,
+  toggleNovelXRight,
+  toggleNovelXShortcut,
+  type NovelXProjectLayout,
+  type NovelXResource,
+  type NovelXShortcut,
+} from "./novelx-workspace"
 
 export { createSessionKeyReader, ensureSessionKey, pruneSessionKeys }
 
@@ -302,6 +314,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         home: {
           selection: { server: server.key } as HomeProjectSelection,
+        },
+        novelx: {
+          projects: {} as Record<string, NovelXProjectLayout>,
+          shortcuts: [] as NovelXShortcut[],
+          sessionOrder: {} as Record<string, string[]>,
         },
       }),
     )
@@ -645,6 +662,99 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         move(directory: string, toIndex: number) {
           server.projects.move(directory, toIndex)
+        },
+      },
+      novelx: {
+        project(directory: string | Accessor<string>) {
+          const dir = typeof directory === "function" ? directory : () => directory
+          const key = createMemo(() => pathKey(dir()))
+          const snapshot = createMemo(() =>
+            normalizeNovelXProjectLayout(store.novelx?.projects?.[key()] ?? DEFAULT_NOVELX_PROJECT_LAYOUT),
+          )
+          const update = (next: NovelXProjectLayout) => {
+            setStore("novelx", "projects", key(), next)
+          }
+          return {
+            snapshot,
+            leftExpanded: createMemo(() => snapshot().leftExpanded),
+            rightCollapsed: createMemo(() => snapshot().rightCollapsed),
+            activeResource: createMemo(() => snapshot().activeResource),
+            conversationCollapsed: createMemo(() => snapshot().conversationCollapsed),
+            inspectorOpen: createMemo(() => snapshot().inspectorOpen),
+            toggleLeft() {
+              const leftExpanded = !snapshot().leftExpanded
+              update({
+                ...snapshot(),
+                leftExpanded,
+                homeLeftExpanded: snapshot().activeResource ? snapshot().homeLeftExpanded : leftExpanded,
+              })
+            },
+            setLeftExpanded(value: boolean) {
+              update({
+                ...snapshot(),
+                leftExpanded: value,
+                homeLeftExpanded: snapshot().activeResource ? snapshot().homeLeftExpanded : value,
+              })
+            },
+            toggleRight() {
+              update(toggleNovelXRight(snapshot()))
+            },
+            activateResource(resource: NovelXResource) {
+              update(activateNovelXResource(snapshot(), resource))
+            },
+            clearResource() {
+              update({
+                ...snapshot(),
+                leftExpanded: snapshot().homeLeftExpanded,
+                activeResource: undefined,
+                rightCollapsed: false,
+                conversationCollapsed: false,
+              })
+            },
+            toggleConversation() {
+              update({ ...snapshot(), conversationCollapsed: !snapshot().conversationCollapsed })
+            },
+            setInspectorOpen(value: boolean) {
+              update({ ...snapshot(), inspectorOpen: value })
+            },
+          }
+        },
+        shortcuts: createMemo(() => store.novelx?.shortcuts ?? []),
+        toggleShortcut(shortcut: NovelXShortcut) {
+          setStore("novelx", "shortcuts", toggleNovelXShortcut(store.novelx?.shortcuts ?? [], shortcut))
+        },
+        moveShortcut(id: string, toIndex: number) {
+          const shortcuts = store.novelx?.shortcuts ?? []
+          const order = reorderNovelXItems(
+            shortcuts.map((item) =>
+              item.type === "project" ? `project:${item.directory}` : `session:${item.directory}:${item.sessionID}`,
+            ),
+            id,
+            toIndex,
+          )
+          const byID = new Map(
+            shortcuts.map((item) => [
+              item.type === "project" ? `project:${item.directory}` : `session:${item.directory}:${item.sessionID}`,
+              item,
+            ]),
+          )
+          setStore(
+            "novelx",
+            "shortcuts",
+            order.flatMap((key) => {
+              const item = byID.get(key)
+              return item ? [item] : []
+            }),
+          )
+        },
+        sessionOrder(directory: string, ids: readonly string[]) {
+          const key = pathKey(directory)
+          return mergeNovelXOrder(ids, store.novelx?.sessionOrder?.[key] ?? [])
+        },
+        moveSession(directory: string, ids: readonly string[], id: string, toIndex: number) {
+          const key = pathKey(directory)
+          const current = mergeNovelXOrder(ids, store.novelx?.sessionOrder?.[key] ?? [])
+          setStore("novelx", "sessionOrder", key, reorderNovelXItems(current, id, toIndex))
         },
       },
       sidebar: {

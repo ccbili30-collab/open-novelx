@@ -28,10 +28,11 @@ import { useSettingsCommand, useSettingsDialog } from "@/components/settings-dia
 import { Persist, persisted } from "@/utils/persist"
 import createPresence from "solid-presence"
 import { useLocal } from "@/context/local"
+import { useLayout } from "@/context/layout"
 import { createPromptModelSelection } from "@/pages/session/composer/prompt-model-selection"
 import { NovelXWorkspaceSidebar } from "@/pages/session/novelx-workspace-sidebar"
-import { NovelXShellToolbar, NovelXStatusbar } from "@/pages/session/novelx-shell-chrome"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
+import { NovelXConversationToggle } from "@/pages/session/novelx-conversation-toggle"
 import { createSizing } from "@/pages/session/helpers"
 import "@/pages/session/novelx-workspace.css"
 
@@ -59,6 +60,8 @@ export default function NewSessionPage() {
   const route = useSessionKey()
   const [searchParams, setSearchParams] = useSearchParams<{ draftId?: string; prompt?: string }>()
   const local = useLocal()
+  const layout = useLayout()
+  const novelx = layout.novelx.project(() => sdk().directory)
   const model = createPromptModelSelection({ agent: local.agent.current })
   const panelSize = createSizing()
 
@@ -141,10 +144,22 @@ export default function NewSessionPage() {
           </Portal>
         )}
       </Show>
-      <NovelXShellToolbar />
       <div class="flex-1 min-h-0 flex">
         <NovelXWorkspaceSidebar />
-        <div class="flex-1 min-w-0 min-h-0 flex flex-col">
+        <div
+          data-component="novelx-conversation-surface"
+          class="relative min-w-0 min-h-0 flex flex-col"
+          classList={{ "flex-1": !novelx.activeResource() || novelx.rightCollapsed(), "shrink-0": !!novelx.activeResource() }}
+          style={{
+            width:
+              novelx.activeResource() && !novelx.rightCollapsed()
+                ? novelx.conversationCollapsed()
+                  ? "0px"
+                  : "300px"
+                : undefined,
+          }}
+        >
+          <NovelXConversationToggle />
           <div class="@container relative flex flex-col min-h-0 h-full flex-1">
             <div class="flex-1 min-h-0 overflow-hidden">
               <NewSessionDesignView>
@@ -202,7 +217,6 @@ export default function NewSessionPage() {
           size={panelSize}
         />
       </div>
-      <NovelXStatusbar />
     </div>
   )
 }
