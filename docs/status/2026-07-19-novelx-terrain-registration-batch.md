@@ -3,6 +3,7 @@
 ## 来源与边界
 
 - 分支：`novelx-ui`。
+- 实现提交：`a5224d5`（`feat(novelx): register and render world terrain`）。
 - 唯一代码库：`D:\CodexW\NovelX_Desktop\work\opencode-novelx`；没有修改或接入旧 NovelX Runtime（运行时）。
 - 当前只完成 `/growth` 第一阶段：让真实 Provider（模型服务）规划一块主大陆及周边海域，由 Harness（智能体运行框架）校验并注册具名地形，再由正式桌面读取同一权威清单。
 - 明确没有进入国家、文明、组织、角色、故事、图片或多 Agent 派发阶段。
