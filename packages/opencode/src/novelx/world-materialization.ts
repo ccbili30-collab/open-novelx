@@ -17,7 +17,7 @@ export function createWorldMaterialization(input: {
 }): NovelXWorld.WorldMaterialization {
   const blueprint = verifyWorldBlueprint(input.blueprint)
   return withIntegrity({
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     stage: "world_materialization" as const,
     status: "running" as const,
     blueprintIntegritySha256: blueprint.integritySha256,
@@ -27,13 +27,17 @@ export function createWorldMaterialization(input: {
     stages: blueprint.stages.map((stage) => ({
       stageId: stage.id,
       status: "planned" as const,
+      editorSessionId: null,
+      sourceReads: [],
       preparedContextSha256: null,
       preparedAt: null,
       registeredAt: null,
       entities: [],
       relations: [],
+      handoff: null,
     })),
     documents: [],
+    memoryCheckpoints: [],
   })
 }
 
@@ -82,12 +86,38 @@ export function verifyWorldMaterialization(input: {
       )
     }
     if (
-      (record.status === "registered" || record.status === "completed") &&
+      (record.status === "registered" || record.status === "reviewing" || record.status === "completed") &&
       record.entities.length !== stage.itemCount
     ) {
       throw new WorldMaterializationError(
         "NOVELX_WORLD_STAGE_ENTITY_COUNT_INVALID",
         `World stage ${stage.label} does not contain its registered entity count.`,
+      )
+    }
+    if (record.status !== "planned" && !record.editorSessionId) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_STAGE_EDITOR_SESSION_INVALID",
+        `World stage ${stage.label} has work without a bound stage editor.`,
+      )
+    }
+    if (record.status === "completed") {
+      if (!record.handoff) {
+        throw new WorldMaterializationError(
+          "NOVELX_WORLD_STAGE_HANDOFF_REQUIRED",
+          `Completed world stage ${stage.label} has no sealed handoff.`,
+        )
+      }
+      const { integritySha256: handoffIntegrity, ...handoffDraft } = record.handoff
+      if (worldSha256(handoffDraft) !== handoffIntegrity || record.handoff.editorSessionId !== record.editorSessionId) {
+        throw new WorldMaterializationError(
+          "NOVELX_WORLD_STAGE_HANDOFF_INVALID",
+          `World stage ${stage.label} has an invalid sealed handoff.`,
+        )
+      }
+    } else if (record.handoff) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_STAGE_HANDOFF_PREMATURE",
+        `World stage ${stage.label} has a handoff before completion.`,
       )
     }
     if (
@@ -126,6 +156,57 @@ export function verifyWorldMaterialization(input: {
   ) {
     throw new WorldMaterializationError("NOVELX_WORLD_DOCUMENT_SET_INVALID", "World document set is invalid.")
   }
+  for (const stage of input.manifest.stages) {
+    const stageDocuments = input.manifest.documents.filter((document) => document.stageId === stage.stageId)
+    if (
+      (stage.status === "reviewing" || stage.status === "completed") &&
+      stageDocuments.some((document) => document.status !== "committed")
+    ) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_STAGE_REVIEW_INCOMPLETE",
+        `World stage ${stage.stageId} is reviewing or completed with unfinished dossiers.`,
+      )
+    }
+    for (const read of stage.sourceReads) {
+      const source = documents.get(read.entityId)
+      if (source?.status !== "committed" || source.committedSha256 !== read.sourceSha256) {
+        throw new WorldMaterializationError(
+          "NOVELX_WORLD_SOURCE_HASH_DRIFT",
+          `World stage ${stage.stageId} contains a stale source read.`,
+        )
+      }
+    }
+    for (const entity of stage.entities) {
+      for (const binding of entity.upstreamBindings) {
+        const source = documents.get(binding.entityId)
+        if (
+          source?.status !== "committed" ||
+          source.committedSha256 !== binding.sourceSha256 ||
+          !stage.sourceReads.some(
+            (read) => read.entityId === binding.entityId && read.sourceSha256 === binding.sourceSha256,
+          )
+        ) {
+          throw new WorldMaterializationError(
+            "NOVELX_WORLD_SOURCE_BINDING_INVALID",
+            `World entity ${entity.id} has an unverified upstream source binding.`,
+          )
+        }
+      }
+    }
+  }
+  unique(
+    input.manifest.memoryCheckpoints.map((checkpoint) => checkpoint.stageId),
+    "Growth memory checkpoint stage",
+  )
+  for (const checkpoint of input.manifest.memoryCheckpoints) {
+    const stage = requireStageRecord(input.manifest, checkpoint.stageId)
+    if (stage.status !== "completed" || stage.handoff?.integritySha256 !== checkpoint.handoffIntegritySha256) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_CHECKPOINT_INVALID",
+        `Growth memory checkpoint for ${checkpoint.stageId} does not match a sealed stage.`,
+      )
+    }
+  }
   return input.manifest
 }
 
@@ -134,13 +215,24 @@ export function prepareWorldStage(input: {
   blueprint: NovelXWorld.BlueprintManifest
   stageId: string
   ownerSessionId: string
-  committedDocuments: Record<string, string>
+  ownerParentSessionId: string | null
   now: number
 }) {
   const current = verifyWorldMaterialization(input)
-  assertEditor(current, input.ownerSessionId)
+  if (input.ownerParentSessionId !== current.growthSessionId || input.ownerSessionId === current.growthSessionId) {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_EDITOR_REQUIRED",
+      "A world stage must be prepared by a clean stage editor child of the owning Growth session.",
+    )
+  }
   const stage = requireBlueprintStage(input.blueprint, input.stageId)
   const record = requireStageRecord(current, stage.id)
+  if (record.editorSessionId && record.editorSessionId !== input.ownerSessionId) {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_EDITOR_CONFLICT",
+      `World stage ${stage.label} is already bound to another stage editor session.`,
+    )
+  }
   const dependencies = stage.dependsOnStageIds.map((dependencyId) => {
     const dependencyStage = requireBlueprintStage(input.blueprint, dependencyId)
     const dependencyRecord = requireStageRecord(current, dependencyId)
@@ -154,7 +246,8 @@ export function prepareWorldStage(input: {
       stage: dependencyStage,
       entities: dependencyRecord.entities.map((entity) => ({
         entity,
-        dossier: requireCommittedDocument(current, entity.id, input.committedDocuments),
+        targetPath: requireDocument(current, entity.id).targetPath,
+        sourceSha256: requireDocument(current, entity.id).committedSha256!,
       })),
     }
   })
@@ -168,14 +261,21 @@ export function prepareWorldStage(input: {
     dependencies,
   }
   const contextSha256 = worldSha256(context)
-  if (record.status === "registered" || record.status === "completed") {
-    return { manifest: current, stage: record, context, contextSha256, replayed: true }
+  const boundRecord = record.editorSessionId ? record : { ...record, editorSessionId: input.ownerSessionId }
+  if (
+    boundRecord.status === "registered" ||
+    boundRecord.status === "reviewing" ||
+    boundRecord.status === "completed"
+  ) {
+    const manifest = record.editorSessionId ? current : updateStage(current, boundRecord, input.now)
+    return { manifest, stage: boundRecord, context, contextSha256, replayed: true }
   }
-  if (record.status === "prepared" && record.preparedContextSha256 === contextSha256) {
-    return { manifest: current, stage: record, context, contextSha256, replayed: true }
+  if (boundRecord.status === "prepared" && boundRecord.preparedContextSha256 === contextSha256) {
+    const manifest = record.editorSessionId ? current : updateStage(current, boundRecord, input.now)
+    return { manifest, stage: boundRecord, context, contextSha256, replayed: true }
   }
   const nextRecord = {
-    ...record,
+    ...boundRecord,
     status: "prepared" as const,
     preparedContextSha256: contextSha256,
     preparedAt: input.now,
@@ -189,6 +289,58 @@ export function prepareWorldStage(input: {
   }
 }
 
+export function readWorldSources(input: {
+  manifest: NovelXWorld.WorldMaterialization
+  blueprint: NovelXWorld.BlueprintManifest
+  stageId: string
+  ownerSessionId: string
+  entityIds: readonly string[]
+  committedDocuments: Record<string, string>
+  now: number
+}) {
+  const current = verifyWorldMaterialization(input)
+  const blueprintStage = requireBlueprintStage(input.blueprint, input.stageId)
+  const stage = requireStageRecord(current, input.stageId)
+  assertStageEditor(stage, input.ownerSessionId)
+  if (stage.status !== "prepared") {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_PREPARE_REQUIRED",
+      `World stage ${blueprintStage.label} must be prepared before reading sources.`,
+    )
+  }
+  unique([...input.entityIds], "world source entity")
+  const allowed = new Set(
+    current.stages
+      .filter((record) => blueprintStage.dependsOnStageIds.includes(record.stageId) && record.status === "completed")
+      .flatMap((record) => record.entities.map((entity) => entity.id)),
+  )
+  const sources = input.entityIds.map((entityId) => {
+    if (!allowed.has(entityId)) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_SOURCE_INVALID",
+        `Source ${entityId} is not a completed dependency of stage ${blueprintStage.label}.`,
+      )
+    }
+    const located = requireEntity(current, input.blueprint, entityId)
+    const dossier = requireCommittedDocument(current, entityId, input.committedDocuments)
+    const sourceSha256 = worldSha256(dossier)
+    return { entity: located.entity, sourceSha256, dossier }
+  })
+  const reads = new Map(stage.sourceReads.map((read) => [read.entityId, read]))
+  for (const source of sources) {
+    const existing = reads.get(source.entity.id)
+    if (existing && existing.sourceSha256 !== source.sourceSha256) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_SOURCE_HASH_DRIFT",
+        `Source ${source.entity.id} changed after this stage editor read it.`,
+      )
+    }
+    reads.set(source.entity.id, existing ?? { entityId: source.entity.id, sourceSha256: source.sourceSha256, readAt: input.now })
+  }
+  const nextStage = { ...stage, sourceReads: [...reads.values()] }
+  return { manifest: updateStage(current, nextStage, input.now), stage: nextStage, sources }
+}
+
 export function registerWorldStage(input: {
   manifest: NovelXWorld.WorldMaterialization
   blueprint: NovelXWorld.BlueprintManifest
@@ -197,10 +349,10 @@ export function registerWorldStage(input: {
   now: number
 }) {
   const current = verifyWorldMaterialization(input)
-  assertEditor(current, input.ownerSessionId)
   const blueprintStage = requireBlueprintStage(input.blueprint, input.profile.stageId)
   const stage = requireStageRecord(current, blueprintStage.id)
-  if (stage.status === "registered" || stage.status === "completed") {
+  assertStageEditor(stage, input.ownerSessionId)
+  if (stage.status === "registered" || stage.status === "reviewing" || stage.status === "completed") {
     const profile = normalizeStageRegistration(input.profile, blueprintStage, current)
     if (stage.preparedContextSha256 === input.profile.contextSha256 && stageMatchesProfile(stage, profile)) {
       return { manifest: current, stage, replayed: true }
@@ -226,7 +378,10 @@ export function registerWorldStage(input: {
     summary: entity.summary,
     facts: entity.facts,
     constraints: entity.constraints,
-    dependencyEntityIds: entity.dependencyEntityIds,
+    upstreamBindings: entity.upstreamBindings.map((binding) => ({
+      ...binding,
+      sourceSha256: requireDocument(current, binding.entityId).committedSha256!,
+    })),
     status: "registered" as const,
   }))
   const relations = profile.relations.map((relation, index) => ({
@@ -281,8 +436,8 @@ export function prepareWorldDocument(input: {
   now: number
 }) {
   const current = verifyWorldMaterialization(input)
-  assertEditor(current, input.ownerSessionId)
   const located = requireEntity(current, input.blueprint, input.entityId)
+  assertStageEditor(requireStageRecord(current, located.stage.id), input.ownerSessionId)
   const record = requireDocument(current, input.entityId)
   const context = worldDocumentContext(
     current,
@@ -325,8 +480,8 @@ export function commitWorldDocument(input: {
   now: number
 }) {
   const current = verifyWorldMaterialization(input)
-  assertEditor(current, input.ownerSessionId)
   const located = requireEntity(current, input.blueprint, input.entityId)
+  assertStageEditor(requireStageRecord(current, located.stage.id), input.ownerSessionId)
   const record = requireDocument(current, input.entityId)
   const draft = normalizeWorldDraft(located.entity.name, located.stage.documentSections, input.draft)
   const hash = worldSha256(draft)
@@ -359,9 +514,98 @@ export function commitWorldDocument(input: {
   const stageDocuments = withDocument.documents.filter((document) => document.stageId === located.stage.id)
   const stageRecord = requireStageRecord(withDocument, located.stage.id)
   const next = stageDocuments.every((document) => document.status === "committed")
-    ? updateStage(withDocument, { ...stageRecord, status: "completed" as const }, input.now)
+    ? updateStage(withDocument, { ...stageRecord, status: "reviewing" as const }, input.now)
     : withDocument
   return { manifest: next, record: nextRecord, draft, replayed: false }
+}
+
+export function finishWorldStage(input: {
+  manifest: NovelXWorld.WorldMaterialization
+  blueprint: NovelXWorld.BlueprintManifest
+  stageId: string
+  ownerSessionId: string
+  navigationSummary: string
+  now: number
+}) {
+  const current = verifyWorldMaterialization(input)
+  const blueprintStage = requireBlueprintStage(input.blueprint, input.stageId)
+  const stage = requireStageRecord(current, input.stageId)
+  assertStageEditor(stage, input.ownerSessionId)
+  if (stage.status === "completed" && stage.handoff) return { manifest: current, stage, replayed: true }
+  const documents = current.documents.filter((document) => document.stageId === stage.stageId)
+  if (stage.status !== "reviewing" || !documents.length || documents.some((document) => document.status !== "committed")) {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_REVIEW_INCOMPLETE",
+      `World stage ${blueprintStage.label} can only be sealed after every dossier is committed and under review.`,
+    )
+  }
+  const summary = detail(input.navigationSummary, "navigationSummary")
+  const missingSummaryEntities = stage.entities.filter(
+    (entity) => !summary.includes(entity.id) && !summary.includes(entity.name),
+  )
+  if (missingSummaryEntities.length) {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_SUMMARY_UNANCHORED",
+      `Stage navigation summary must name every registered entity: ${missingSummaryEntities.map((entity) => entity.name).join(", ")}.`,
+    )
+  }
+  const sourceEntityIds = [...new Set(stage.entities.flatMap((entity) => entity.upstreamBindings.map((item) => item.entityId)))]
+  const handoffDraft = {
+    sealedAt: input.now,
+    editorSessionId: input.ownerSessionId,
+    entityIds: stage.entities.map((entity) => entity.id),
+    sourceEntityIds,
+    documents: documents.map((document) => ({ entityId: document.entityId, sha256: document.committedSha256! })),
+    navigationSummary: summary,
+  }
+  const handoff = { ...handoffDraft, integritySha256: worldSha256(handoffDraft) }
+  const nextStage = { ...stage, status: "completed" as const, handoff }
+  return { manifest: updateStage(current, nextStage, input.now), stage: nextStage, replayed: false }
+}
+
+export function checkpointGrowthMemory(input: {
+  manifest: NovelXWorld.WorldMaterialization
+  blueprint: NovelXWorld.BlueprintManifest
+  stageId: string
+  ownerSessionId: string
+  compactionMessageId: string
+  now: number
+}) {
+  const current = verifyWorldMaterialization(input)
+  assertEditor(current, input.ownerSessionId)
+  const stage = requireStageRecord(current, input.stageId)
+  if (stage.status !== "completed" || !stage.handoff) {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_HANDOFF_REQUIRED",
+      "Growth memory can only checkpoint a sealed stage handoff.",
+    )
+  }
+  const existing = current.memoryCheckpoints.find((checkpoint) => checkpoint.stageId === input.stageId)
+  if (existing) {
+    if (
+      existing.handoffIntegritySha256 !== stage.handoff.integritySha256 ||
+      existing.compactionMessageId !== input.compactionMessageId
+    ) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_CHECKPOINT_CONFLICT",
+        "The sealed stage handoff changed after its Growth memory checkpoint.",
+      )
+    }
+    return { manifest: current, checkpoint: existing, replayed: true }
+  }
+  const checkpoint = {
+    stageId: input.stageId,
+    handoffIntegritySha256: stage.handoff.integritySha256,
+    contextEpoch: current.memoryCheckpoints.length + 1,
+    compactionMessageId: input.compactionMessageId,
+    createdAt: input.now,
+  }
+  const manifest = withIntegrity({
+    ...withoutIntegrity(current),
+    updatedAt: input.now,
+    memoryCheckpoints: [...current.memoryCheckpoints, checkpoint],
+  })
+  return { manifest, checkpoint, replayed: false }
 }
 
 export function abortWorldDocument(input: {
@@ -374,8 +618,8 @@ export function abortWorldDocument(input: {
   errorCode?: string
 }) {
   const current = verifyWorldMaterialization(input)
-  assertEditor(current, input.ownerSessionId)
   const located = requireEntity(current, input.blueprint, input.entityId)
+  assertStageEditor(requireStageRecord(current, located.stage.id), input.ownerSessionId)
   const record = requireDocument(current, input.entityId)
   if (record.status === "committed") return current
   const withDocument = updateDocument(
@@ -405,10 +649,12 @@ export function finishWorld(input: {
   assertEditor(current, input.ownerSessionId)
   const incompleteStages = current.stages.filter((stage) => stage.status !== "completed")
   const incompleteDocuments = current.documents.filter((document) => document.status !== "committed")
-  if (incompleteStages.length || incompleteDocuments.length || !current.documents.length) {
+  const checkpointed = new Set(current.memoryCheckpoints.map((checkpoint) => checkpoint.stageId))
+  const uncheckpointedStages = current.stages.filter((stage) => !checkpointed.has(stage.stageId))
+  if (incompleteStages.length || incompleteDocuments.length || uncheckpointedStages.length || !current.documents.length) {
     throw new WorldMaterializationError(
       "NOVELX_WORLD_INCOMPLETE",
-      `${incompleteStages.length} world stages and ${incompleteDocuments.length} documents are incomplete.`,
+      `${incompleteStages.length} world stages, ${incompleteDocuments.length} documents, and ${uncheckpointedStages.length} memory checkpoints are incomplete.`,
     )
   }
   return withIntegrity({ ...withoutIntegrity(current), status: "completed" as const, updatedAt: input.now })
@@ -463,6 +709,8 @@ function normalizeStageRegistration(
       .filter((record) => stage.dependsOnStageIds.includes(record.stageId) && record.status === "completed")
       .flatMap((record) => record.entities.map((entity) => [entity.id, entity.stageId])),
   )
+  const stageRecord = requireStageRecord(current, stage.id)
+  const readSources = new Map(stageRecord.sourceReads.map((read) => [read.entityId, read.sourceSha256]))
   const entities = profile.entities.map((entity, index) => ({
     name: entityName(entity.name, `entities[${index}].name`),
     typeLabel: text(entity.typeLabel, `entities[${index}].typeLabel`),
@@ -474,7 +722,17 @@ function normalizeStageRegistration(
     constraints: entity.constraints.map((constraint, constraintIndex) =>
       detail(constraint, `entities[${index}].constraints[${constraintIndex}]`),
     ),
-    dependencyEntityIds: [...entity.dependencyEntityIds],
+    upstreamBindings: entity.upstreamBindings.map((binding, bindingIndex) => ({
+      entityId: binding.entityId,
+      relation: text(binding.relation, `entities[${index}].upstreamBindings[${bindingIndex}].relation`),
+      impact: detail(binding.impact, `entities[${index}].upstreamBindings[${bindingIndex}].impact`),
+      constraints: binding.constraints.map((constraint, constraintIndex) =>
+        detail(
+          constraint,
+          `entities[${index}].upstreamBindings[${bindingIndex}].constraints[${constraintIndex}]`,
+        ),
+      ),
+    })),
   }))
   unique(
     entities.map((entity) => entity.name),
@@ -485,18 +743,31 @@ function normalizeStageRegistration(
       entity.facts.map((fact) => fact.label),
       `fact label in entity ${index + 1}`,
     )
-    unique(entity.dependencyEntityIds, `dependency entity in entity ${index + 1}`)
-    if (entity.dependencyEntityIds.some((id) => !allowedDependencies.has(id))) {
+    unique(
+      entity.upstreamBindings.map((binding) => binding.entityId),
+      `dependency entity in entity ${index + 1}`,
+    )
+    if (entity.upstreamBindings.some((binding) => !allowedDependencies.has(binding.entityId))) {
       throw new WorldMaterializationError(
         "NOVELX_WORLD_ENTITY_DEPENDENCY_INVALID",
         `Entity ${entity.name} references an unknown or uncommitted dependency.`,
+      )
+    }
+    if (
+      entity.upstreamBindings.some(
+        (binding) => readSources.get(binding.entityId) !== requireDocument(current, binding.entityId).committedSha256,
+      )
+    ) {
+      throw new WorldMaterializationError(
+        "NOVELX_WORLD_SOURCE_NOT_READ",
+        `Entity ${entity.name} references an upstream source the bound stage editor did not read exactly.`,
       )
     }
   })
   for (const dependencyStageId of stage.dependsOnStageIds) {
     if (
       !entities.some((entity) =>
-        entity.dependencyEntityIds.some((id) => allowedDependencies.get(id) === dependencyStageId),
+        entity.upstreamBindings.some((binding) => allowedDependencies.get(binding.entityId) === dependencyStageId),
       )
     ) {
       throw new WorldMaterializationError(
@@ -552,9 +823,10 @@ function worldDocumentContext(
       const other = entities.get(relation.fromEntityId === entity.id ? relation.toEntityId : relation.fromEntityId)
       return other ? [{ relation, other }] : []
     }),
-    dependencies: entity.dependencyEntityIds.map((id) => ({
-      entity: entities.get(id)!,
-      dossier: requireCommittedDocument(current, id, committedDocuments),
+    dependencies: entity.upstreamBindings.map((binding) => ({
+      binding,
+      entity: entities.get(binding.entityId)!,
+      dossier: requireCommittedDocument(current, binding.entityId, committedDocuments),
     })),
   }
 }
@@ -566,7 +838,7 @@ function stageMatchesProfile(stage: NovelXWorld.WorldStageRecord, profile: Novel
     summary: entity.summary,
     facts: entity.facts,
     constraints: entity.constraints,
-    dependencyEntityIds: entity.dependencyEntityIds,
+    upstreamBindings: entity.upstreamBindings.map(({ sourceSha256: _, ...binding }) => binding),
   }))
   const indices = new Map(stage.entities.map((entity, index) => [entity.id, index]))
   const relations = stage.relations.map((relation) => ({
@@ -631,6 +903,15 @@ function assertEditor(current: NovelXWorld.WorldMaterialization, ownerSessionId:
     throw new WorldMaterializationError(
       "NOVELX_WORLD_EDITOR_SESSION_INVALID",
       "Only the Growth editor session that owns this run may mutate the world.",
+    )
+  }
+}
+
+function assertStageEditor(stage: NovelXWorld.WorldStageRecord, ownerSessionId: string) {
+  if (!stage.editorSessionId || stage.editorSessionId !== ownerSessionId) {
+    throw new WorldMaterializationError(
+      "NOVELX_WORLD_STAGE_EDITOR_SESSION_INVALID",
+      "Only the stage editor session bound to this stage may mutate its registrations or dossiers.",
     )
   }
 }

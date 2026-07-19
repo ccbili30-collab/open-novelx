@@ -146,7 +146,7 @@ export interface Interface {
     model: { providerID: ProviderV2.ID; modelID: ModelV2.ID }
     auto: boolean
     overflow?: boolean
-  }) => Effect.Effect<void>
+  }) => Effect.Effect<MessageID>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionCompaction") {}
@@ -533,6 +533,7 @@ const layer = Layer.effect(
         auto: input.auto,
         overflow: input.overflow,
       })
+      return msg.id
     })
 
     return Service.of({

@@ -5,7 +5,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { prepareWorldDocument } from "@/novelx/world-materialization"
 import { Tool } from "@/tool/tool"
 import {
-  assertWorldGrowthEditor,
+  assertWorldStageEditor,
   loadCommittedWorldDocuments,
   loadWorldRuntime,
   persistWorldMaterialization,
@@ -32,7 +32,7 @@ export const NovelXPrepareWorldDocumentTool = Tool.define<
       execute: (params, ctx) =>
         withWorldMutation(
           Effect.gen(function* () {
-            assertWorldGrowthEditor(ctx)
+            assertWorldStageEditor(ctx)
             const runtime = yield* loadWorldRuntime(fs)
             const documents = yield* loadCommittedWorldDocuments(fs, runtime)
             const prepared = prepareWorldDocument({

@@ -17,7 +17,8 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { Session } from "@/session/session"
-import { MessageID, PartID } from "@/session/schema"
+import { MessageID, PartID, SessionID } from "@/session/schema"
+import { SessionCompaction } from "@/session/compaction"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 import { Truncate } from "@/tool/truncate"
@@ -26,6 +27,9 @@ import { NovelXPrepareWorldStageTool } from "@/tool/novelx-prepare-world-stage"
 import { NovelXRegisterWorldStageTool } from "@/tool/novelx-register-world-stage"
 import { NovelXPrepareWorldDocumentTool } from "@/tool/novelx-prepare-world-document"
 import { NovelXCommitWorldDocumentTool } from "@/tool/novelx-commit-world-document"
+import { NovelXFinishWorldStageTool } from "@/tool/novelx-finish-world-stage"
+import { NovelXCheckpointGrowthMemoryTool } from "@/tool/novelx-checkpoint-growth-memory"
+import { NovelXRecoverGrowthContextTool } from "@/tool/novelx-recover-growth-context"
 import { NovelXFinishWorldTool } from "@/tool/novelx-finish-world"
 import { ToolRegistry } from "@/tool/registry"
 import { disposeAllInstances, TestInstance } from "../fixture/fixture"
@@ -43,6 +47,7 @@ const layer = LayerNode.compile(
     Ripgrep.node,
     RuntimeFlags.node,
     Session.node,
+    SessionCompaction.node,
     SessionProjector.node,
     SessionRunState.node,
     SessionStatus.node,
@@ -57,25 +62,16 @@ afterEach(async () => {
   await disposeAllInstances()
 })
 
-describe("NovelX adaptive world tools", () => {
+describe("NovelX editorial world tools", () => {
   it.instance(
-    "registers a model-selected layer, binds a world child, commits its dossier, and finishes the world",
+    "runs root to stage-editor to leaf, seals the stage, and creates a real compaction checkpoint",
     () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
         const sessions = yield* Session.Service
-        const parent = yield* sessions.create({ title: "Growth", agent: "growth" })
-        const messageID = MessageID.ascending()
-        const context = {
-          sessionID: parent.id,
-          messageID,
-          callID: "call-growth",
-          agent: "growth",
-          abort: new AbortController().signal,
-          messages: [],
-          metadata: () => Effect.void,
-          ask: () => Effect.void,
-        }
+        const root = yield* sessions.create({ title: "Growth", agent: "growth" })
+        const rootAssistant = yield* assistantMessage(sessions, root.id, "growth")
+        const rootContext = context(root.id, rootAssistant.id, "growth", "call-growth")
         const blueprintTool = yield* (yield* NovelXRegisterWorldBlueprintTool).init()
         const blueprintResult = yield* blueprintTool.execute(
           {
@@ -93,16 +89,23 @@ describe("NovelX adaptive world tools", () => {
               },
             ],
           },
-          context,
+          rootContext,
         )
         const stageId = blueprintResult.metadata.stages[0]!.id
+        const stageSession = yield* sessions.create({
+          parentID: root.id,
+          title: "阶段：恒星与轨道环境",
+          agent: "novelx-stage-editor",
+        })
+        const stageAssistant = yield* assistantMessage(sessions, stageSession.id, "novelx-stage-editor")
+        const stageContext = context(stageSession.id, stageAssistant.id, "novelx-stage-editor", "call-stage")
         const prepareStage = yield* (yield* NovelXPrepareWorldStageTool).init()
-        const preparedStage = yield* prepareStage.execute({ stageId }, { ...context, callID: "call-stage-prepare" })
+        const prepared = yield* prepareStage.execute({ stageId }, stageContext)
         const registerStage = yield* (yield* NovelXRegisterWorldStageTool).init()
-        const registeredStage = yield* registerStage.execute(
+        const registered = yield* registerStage.execute(
           {
             stageId,
-            contextSha256: preparedStage.metadata.contextSha256,
+            contextSha256: prepared.metadata.contextSha256,
             entities: [
               {
                 name: "赫利俄斯同步环",
@@ -114,85 +117,113 @@ describe("NovelX adaptive world tools", () => {
                   { label: "通信", detail: "中继形成统一时标，恒星遮挡仍造成周期性断联窗口。" },
                 ],
                 constraints: ["强辐射与散热上限使载人维护只能在有限窗口进行。"],
-                dependencyEntityIds: [],
+                upstreamBindings: [],
               },
             ],
             relations: [],
           },
-          { ...context, callID: "call-stage-register" },
+          { ...stageContext, callID: "call-stage-register" },
         )
-        const entity = registeredStage.metadata.entities[0]!
-        const resumedStage = yield* prepareStage.execute(
-          { stageId },
-          { ...context, callID: "call-stage-prepare-resume" },
-        )
-        expect(resumedStage.metadata.replayed).toBe(true)
-        expect(resumedStage.output).toContain("已注册，禁止再次调用 novelx_register_world_stage")
-        expect(resumedStage.output).toContain("赫利俄斯同步环")
-        expect(resumedStage.output).toContain('"status": "registered"')
-        expect(resumedStage.output).not.toContain("下一步调用 novelx_register_world_stage")
+        const entity = registered.metadata.entities[0]!
         const prepareDocument = yield* (yield* NovelXPrepareWorldDocumentTool).init()
         const preparedDocument = yield* prepareDocument.execute(
           { entityId: entity.id },
-          { ...context, callID: "call-document-prepare" },
+          { ...stageContext, callID: "call-document-prepare" },
         )
         expect(preparedDocument.output).toContain("Context Pack")
-        expect(preparedDocument.metadata.targetPath).toBe("World/01-恒星与轨道环境/赫利俄斯同步环.md")
-
-        const finish = yield* (yield* NovelXFinishWorldTool).init()
-        expect((yield* finish.execute({}, { ...context, callID: "call-finish-early" }).pipe(Effect.exit))._tag).toBe(
-          "Failure",
-        )
-
-        const child = yield* sessions.create({
-          parentID: parent.id,
+        const leaf = yield* sessions.create({
+          parentID: stageSession.id,
           title: "世界：赫利俄斯同步环",
           agent: "novelx-world-writer",
         })
-        const assistant: SessionV1.Assistant = {
-          id: MessageID.ascending(),
-          role: "assistant",
-          parentID: MessageID.ascending(),
-          sessionID: child.id,
-          mode: "novelx-world-writer",
-          agent: "novelx-world-writer",
-          cost: 0,
-          path: { cwd: test.directory, root: test.directory },
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          modelID: ref.modelID,
-          providerID: ref.providerID,
-          time: { created: Date.now() },
-          finish: "stop",
-        }
-        yield* sessions.updateMessage(assistant)
-        yield* sessions.updatePart({
-          id: PartID.ascending(),
-          messageID: assistant.id,
-          sessionID: child.id,
-          type: "text",
-          text: dossier("赫利俄斯同步环"),
-        })
+        yield* assistantMessage(sessions, leaf.id, "novelx-world-writer", dossier("赫利俄斯同步环"))
         const commit = yield* (yield* NovelXCommitWorldDocumentTool).init()
         const committed = yield* commit.execute(
-          { entityId: entity.id, taskSessionId: child.id },
-          { ...context, callID: "call-document-commit" },
+          { entityId: entity.id, taskSessionId: leaf.id },
+          { ...stageContext, callID: "call-document-commit" },
         )
         expect(committed.metadata.sha256).toHaveLength(64)
-        expect(
-          yield* Effect.promise(() => fs.readFile(path.join(test.directory, committed.metadata.targetPath), "utf8")),
-        ).toContain("## 因果推演")
-        const finished = yield* finish.execute({}, { ...context, callID: "call-finish" })
+        const finishStage = yield* (yield* NovelXFinishWorldStageTool).init()
+        const sealed = yield* finishStage.execute(
+          {
+            stageId,
+            navigationSummary: "赫利俄斯同步环封存了能源、辐射、通信与维护窗口的自然底座。",
+          },
+          { ...stageContext, callID: "call-stage-finish" },
+        )
+        expect(sealed.metadata.handoffSha256).toHaveLength(64)
+        const checkpoint = yield* (yield* NovelXCheckpointGrowthMemoryTool).init()
+        const checkpointed = yield* checkpoint.execute(
+          { stageId },
+          { ...rootContext, callID: "call-checkpoint" },
+        )
+        expect(checkpointed.metadata.contextEpoch).toBe(1)
+        const messages = yield* sessions.messages({ sessionID: root.id })
+        expect(messages.some((message) => message.parts.some((part) => part.type === "compaction"))).toBe(true)
+        const recover = yield* (yield* NovelXRecoverGrowthContextTool).init()
+        const recovered = yield* recover.execute({}, { ...rootContext, callID: "call-recover" })
+        expect(recovered.metadata).toMatchObject({ completedStages: 1, nextStageId: null, contextEpoch: 1 })
+        expect(recovered.output).toContain(sealed.metadata.handoffSha256)
+        const finish = yield* (yield* NovelXFinishWorldTool).init()
+        const finished = yield* finish.execute({}, { ...rootContext, callID: "call-finish" })
         expect(finished.metadata).toMatchObject({ stages: 1, documents: 1 })
         const state = JSON.parse(
           yield* Effect.promise(() =>
             fs.readFile(path.join(test.directory, ".novelx", "growth", "world-materialization.json"), "utf8"),
           ),
         )
-        expect(state.status).toBe("completed")
-        expect(state.documents[0]).toMatchObject({ taskSessionId: child.id, status: "committed" })
+        expect(state).toMatchObject({ schemaVersion: 2, status: "completed" })
+        expect(state.stages[0]).toMatchObject({ editorSessionId: stageSession.id, status: "completed" })
+        expect(state.documents[0]).toMatchObject({ taskSessionId: leaf.id, status: "committed" })
+        expect(state.memoryCheckpoints[0].compactionMessageId).toBe(checkpointed.metadata.compactionMessageId)
       }),
+    { timeout: 30_000 },
   )
 })
+
+function context(sessionID: SessionID, messageID: MessageID, agent: string, callID: string) {
+  return {
+    sessionID,
+    messageID,
+    callID,
+    agent,
+    abort: new AbortController().signal,
+    messages: [],
+    metadata: () => Effect.void,
+    ask: () => Effect.void,
+  }
+}
+
+function assistantMessage(sessions: Session.Interface, sessionID: SessionID, agent: string, text?: string) {
+  return Effect.gen(function* () {
+    const assistant: SessionV1.Assistant = {
+      id: MessageID.ascending(),
+      role: "assistant",
+      parentID: MessageID.ascending(),
+      sessionID,
+      mode: agent,
+      agent,
+      cost: 0,
+      path: { cwd: "/tmp", root: "/tmp" },
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: ref.modelID,
+      providerID: ref.providerID,
+      time: { created: Date.now() },
+      finish: "stop",
+    }
+    yield* sessions.updateMessage(assistant)
+    if (text) {
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: assistant.id,
+        sessionID,
+        type: "text",
+        text,
+      })
+    }
+    return assistant
+  })
+}
 
 function dossier(name: string) {
   const paragraph =

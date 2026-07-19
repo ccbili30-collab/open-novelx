@@ -9,7 +9,7 @@ import { commitWorldDocument } from "@/novelx/world-materialization"
 import { Tool } from "@/tool/tool"
 import {
   absoluteWorldPath,
-  assertWorldGrowthEditor,
+  assertWorldStageEditor,
   loadWorldRuntime,
   persistWorldMaterialization,
   publishWorldFile,
@@ -41,7 +41,7 @@ export const NovelXCommitWorldDocumentTool = Tool.define<
       parameters: Parameters,
       execute: (params, ctx) =>
         Effect.gen(function* () {
-          assertWorldGrowthEditor(ctx)
+          assertWorldStageEditor(ctx)
           const taskSessionID = SessionID.make(params.taskSessionId)
           const child = yield* sessions.get(taskSessionID)
           if (child.parentID !== ctx.sessionID || child.agent !== "novelx-world-writer") {

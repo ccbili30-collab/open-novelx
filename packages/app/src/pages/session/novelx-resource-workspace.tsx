@@ -214,6 +214,11 @@ export function NovelXResourceWorkspace(props: {
   const worldDocumentRecords = createMemo(
     () => new Map(worldMaterialization()?.documents.map((record) => [record.entityId, record]) ?? []),
   )
+  createEffect(() => {
+    for (const stage of worldMaterialization()?.stages ?? []) {
+      if (stage.editorSessionId) void sync().session.sync(stage.editorSessionId, { force: true })
+    }
+  })
   const worldProgress = createMemo(() => ({
     committed: worldMaterialization()?.documents.filter((record) => record.status === "committed").length ?? 0,
     registered: worldMaterialization()?.documents.length ?? 0,
@@ -296,12 +301,10 @@ export function NovelXResourceWorkspace(props: {
       })
   }
   const taskPartForWorldEntity = (entityId: string) => {
-    const root = params.id
-    const entity = worldMaterialization()
-      ?.stages.flatMap((stage) => stage.entities)
-      .find((item) => item.id === entityId)
-    if (!root || !entity) return
-    return (sync().data.message[root] ?? [])
+    const stage = worldMaterialization()?.stages.find((item) => item.entities.some((entity) => entity.id === entityId))
+    const entity = stage?.entities.find((item) => item.id === entityId)
+    if (!stage?.editorSessionId || !entity) return
+    return (sync().data.message[stage.editorSessionId] ?? [])
       .flatMap((message) => sync().data.part[message.id] ?? [])
       .findLast((part) => {
         if (part.type !== "tool" || part.tool !== "task") return false

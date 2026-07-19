@@ -61,11 +61,11 @@ test("parses adaptive world state and projects model-selected layers and entitie
       { label: "通信", detail: "恒星遮挡造成周期性断联。" },
     ],
     constraints: ["载人维护只能在有限窗口进行。"],
-    dependencyEntityIds: [],
+    upstreamBindings: [],
     status: "registered" as const,
   }
   const materializationDraft = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     stage: "world_materialization" as const,
     status: "running" as const,
     blueprintIntegritySha256: blueprint.integritySha256,
@@ -76,11 +76,14 @@ test("parses adaptive world state and projects model-selected layers and entitie
       {
         stageId: stage.id,
         status: "registered" as const,
+        editorSessionId: "ses-stage-editor",
+        sourceReads: [],
         preparedContextSha256: "a".repeat(64),
         preparedAt: 2,
         registeredAt: 3,
         entities: [entity],
         relations: [],
+        handoff: null,
       },
     ],
     documents: [
@@ -98,13 +101,16 @@ test("parses adaptive world state and projects model-selected layers and entitie
         errorCode: null,
       },
     ],
+    memoryCheckpoints: [],
   }
   const materialization = { ...materializationDraft, integritySha256: sha256(materializationDraft) }
   expect(await parseNovelXWorldMaterialization(JSON.stringify(materialization), blueprint.integritySha256)).toEqual(
     materialization,
   )
   expect(novelXWorldNavigationItems(blueprint, materialization).map((item) => [item.kind, item.label])).toEqual([
+    ["root", "Growth 总主编"],
     ["stage", "轨道环境"],
+    ["editor", "阶段主编"],
     ["entity", "赫利俄斯同步环"],
   ])
 })

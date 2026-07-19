@@ -15,6 +15,7 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_NOVELX_WORLD_GROWTH from "./prompt/novelx-world-growth.txt"
+import PROMPT_NOVELX_STAGE_EDITOR from "./prompt/novelx-stage-editor.txt"
 import PROMPT_NOVELX_GEOGRAPHY_WRITER from "./prompt/novelx-geography-writer.txt"
 import PROMPT_NOVELX_WORLD_WRITER from "./prompt/novelx-world-writer.txt"
 import { Permission } from "@/permission"
@@ -143,12 +144,32 @@ const layer = Layer.effect(
           Permission.fromConfig({
             "*": "deny",
             novelx_register_world_blueprint: "allow",
+            novelx_checkpoint_growth_memory: "allow",
+            novelx_recover_growth_context: "allow",
+            novelx_finish_world: "allow",
+            task: {
+              "*": "deny",
+              "novelx-stage-editor": "allow",
+            },
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_register_world_blueprint", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_checkpoint_growth_memory", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_recover_growth_context", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_world", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const stageEditorRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
             novelx_prepare_world_stage: "allow",
+            novelx_read_world_sources: "allow",
             novelx_register_world_stage: "allow",
             novelx_prepare_world_document: "allow",
             novelx_commit_world_document: "allow",
             novelx_abort_world_document: "allow",
-            novelx_finish_world: "allow",
+            novelx_finish_world_stage: "allow",
             task: {
               "*": "deny",
               "novelx-world-writer": "allow",
@@ -156,12 +177,12 @@ const layer = Layer.effect(
           }),
           [
             { permission: "doom_loop", pattern: "*", action: "deny" },
-            { permission: "doom_loop", pattern: "novelx_register_world_blueprint", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_prepare_world_stage", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_read_world_sources", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_register_world_stage", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_prepare_world_document", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_commit_world_document", action: "allow" },
-            { permission: "doom_loop", pattern: "novelx_finish_world", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_world_stage", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
         const geographyRestriction = Permission.fromConfig({
@@ -234,6 +255,18 @@ const layer = Layer.effect(
             hidden: true,
             steps: 120,
             prompt: PROMPT_NOVELX_WORLD_GROWTH,
+          },
+          "novelx-stage-editor": {
+            name: "novelx-stage-editor",
+            description:
+              "NovelX 阶段主编。绑定一个世界阶段，读取权威上游原文、注册实体、派发叶子并审查封存。",
+            options: {},
+            permission: Permission.merge(defaults, user, stageEditorRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 80,
+            prompt: PROMPT_NOVELX_STAGE_EDITOR,
           },
           "novelx-geography": {
             name: "novelx-geography",
@@ -343,7 +376,13 @@ const layer = Layer.effect(
         }
 
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
-          if (key === "growth" || key === "novelx-geography" || key === "novelx-world-writer") continue
+          if (
+            key === "growth" ||
+            key === "novelx-stage-editor" ||
+            key === "novelx-geography" ||
+            key === "novelx-world-writer"
+          )
+            continue
           if (value.disable) {
             delete agents[key]
             continue

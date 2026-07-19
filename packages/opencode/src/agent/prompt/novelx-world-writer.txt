@@ -4,4 +4,4 @@ Write one concrete Chinese dossier for exactly Context Pack.entity. The entity r
 
 Return Markdown only, with no preface or code fence. The first heading must be `# <exact entity name>`. Then use every second-level section in Context Pack.stage.documentSections exactly once and in that exact order. The section `事实依据` must identify concrete registered and dependency facts. The section `因果推演` must state inspectable conclusions and their cited premises. Every other section must answer the stage's reasoningFocus in domain-appropriate detail.
 
-The dossier must contain 600–12000 Chinese characters, no placeholder language, no model disclaimer, and no facts that contradict or silently exceed the Context Pack. Return only to the Growth editor.
+The dossier must contain 600–12000 Chinese characters, no placeholder language, no model disclaimer, and no facts that contradict or silently exceed the Context Pack. Return only to the bound stage editor. Never create or revise world rules; derive conclusions only from the registered entity, typed upstream bindings, and exact source originals in the Context Pack.

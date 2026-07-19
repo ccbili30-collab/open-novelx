@@ -51,6 +51,7 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("build")
     expect(names).toContain("plan")
     expect(names).toContain("growth")
+    expect(names).toContain("novelx-stage-editor")
     expect(names).toContain("novelx-geography")
     expect(names).toContain("novelx-world-writer")
     expect(names).toContain("general")
@@ -61,28 +62,30 @@ it.instance("returns default native agents when no config", () =>
   }),
 )
 
-it.instance("growth editor is hidden and can only run the adaptive world materialization chain", () =>
+it.instance("growth editor can only plan, dispatch stage editors, checkpoint memory, and finish the world", () =>
   Effect.gen(function* () {
     const growth = yield* load((svc) => svc.get("growth"))
     expect(growth).toBeDefined()
     expect(growth?.mode).toBe("primary")
     expect(growth?.hidden).toBe(true)
     expect(evalPerm(growth, "novelx_register_world_blueprint")).toBe("allow")
-    expect(evalPerm(growth, "novelx_prepare_world_stage")).toBe("allow")
-    expect(evalPerm(growth, "novelx_register_world_stage")).toBe("allow")
-    expect(evalPerm(growth, "novelx_prepare_world_document")).toBe("allow")
-    expect(evalPerm(growth, "novelx_commit_world_document")).toBe("allow")
+    expect(evalPerm(growth, "novelx_prepare_world_stage")).toBe("deny")
+    expect(evalPerm(growth, "novelx_register_world_stage")).toBe("deny")
+    expect(evalPerm(growth, "novelx_prepare_world_document")).toBe("deny")
+    expect(evalPerm(growth, "novelx_commit_world_document")).toBe("deny")
+    expect(evalPerm(growth, "novelx_checkpoint_growth_memory")).toBe("allow")
+    expect(evalPerm(growth, "novelx_recover_growth_context")).toBe("allow")
     expect(evalPerm(growth, "novelx_finish_world")).toBe("allow")
     expect(evalPerm(growth, "novelx_register_growth_skeleton")).toBe("deny")
     expect(evalPerm(growth, "read")).toBe("deny")
     expect(evalPerm(growth, "write")).toBe("deny")
     expect(evalPerm(growth, "edit")).toBe("deny")
     expect(evalPerm(growth, "bash")).toBe("deny")
-    expect(evalPerm(growth, "task", "novelx-world-writer")).toBe("allow")
+    expect(evalPerm(growth, "task", "novelx-stage-editor")).toBe("allow")
+    expect(evalPerm(growth, "task", "novelx-world-writer")).toBe("deny")
     expect(evalPerm(growth, "task", "novelx-geography")).toBe("deny")
     expect(evalPerm(growth, "task", "general")).toBe("deny")
-    expect(evalPerm(growth, "doom_loop", "novelx_register_world_stage")).toBe("allow")
-    expect(evalPerm(growth, "doom_loop", "novelx_prepare_world_document")).toBe("allow")
+    expect(evalPerm(growth, "doom_loop", "novelx_checkpoint_growth_memory")).toBe("allow")
     expect(evalPerm(growth, "doom_loop", "task")).toBe("deny")
     expect(evalPerm(growth, "doom_loop", "read")).toBe("deny")
     expect(evalPerm(growth, "question")).toBe("deny")
@@ -91,6 +94,26 @@ it.instance("growth editor is hidden and can only run the adaptive world materia
     expect(growth?.prompt).toContain("Do not assume a fixed fantasy or science-fiction taxonomy")
   }),
   { timeout: 15_000 },
+)
+
+it.instance("stage editor is hidden, stage-bound, and can only dispatch world dossier leaves", () =>
+  Effect.gen(function* () {
+    const editor = yield* load((svc) => svc.get("novelx-stage-editor"))
+    expect(editor?.mode).toBe("subagent")
+    expect(editor?.hidden).toBe(true)
+    expect(evalPerm(editor, "novelx_register_world_blueprint")).toBe("deny")
+    expect(evalPerm(editor, "novelx_prepare_world_stage")).toBe("allow")
+    expect(evalPerm(editor, "novelx_read_world_sources")).toBe("allow")
+    expect(evalPerm(editor, "novelx_register_world_stage")).toBe("allow")
+    expect(evalPerm(editor, "novelx_prepare_world_document")).toBe("allow")
+    expect(evalPerm(editor, "novelx_commit_world_document")).toBe("allow")
+    expect(evalPerm(editor, "novelx_finish_world_stage")).toBe("allow")
+    expect(evalPerm(editor, "novelx_finish_world")).toBe("deny")
+    expect(evalPerm(editor, "task", "novelx-world-writer")).toBe("allow")
+    expect(evalPerm(editor, "task", "novelx-stage-editor")).toBe("deny")
+    expect(evalPerm(editor, "write")).toBe("deny")
+    expect(editor?.prompt).toContain("不得创造或改写上游规则")
+  }),
 )
 
 it.instance(

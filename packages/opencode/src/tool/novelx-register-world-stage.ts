@@ -5,7 +5,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { registerWorldStage } from "@/novelx/world-materialization"
 import { Tool } from "@/tool/tool"
 import {
-  assertWorldGrowthEditor,
+  assertWorldStageEditor,
   loadWorldRuntime,
   persistWorldMaterialization,
   withWorldMutation,
@@ -35,7 +35,7 @@ export const NovelXRegisterWorldStageTool = Tool.define<
       execute: (profile, ctx) =>
         withWorldMutation(
           Effect.gen(function* () {
-            assertWorldGrowthEditor(ctx)
+            assertWorldStageEditor(ctx)
             const runtime = yield* loadWorldRuntime(fs)
             const registered = registerWorldStage({
               manifest: runtime.materialization,

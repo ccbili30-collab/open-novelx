@@ -327,18 +327,31 @@ describe("tool.task", () => {
     }),
   )
 
-  it.instance("NovelX world writer is Growth-owned and replays the same call ID once", () =>
+  it.instance("NovelX world writer is stage-editor-owned and replays the same call ID once", () =>
     Effect.gen(function* () {
       const sessions = yield* Session.Service
       const { chat, assistant } = yield* seed("Growth", "growth")
+      const stage = yield* sessions.create({
+        parentID: chat.id,
+        title: "阶段：轨道环境",
+        agent: "novelx-stage-editor",
+      })
+      const stageAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: stage.id,
+        mode: "novelx-stage-editor",
+        agent: "novelx-stage-editor",
+      })
       const def = yield* (yield* TaskTool).init()
       let prompts = 0
       const promptOps = stubOps({ onPrompt: () => prompts++ })
       const ctx = {
-        sessionID: chat.id,
-        messageID: assistant.id,
+        sessionID: stage.id,
+        messageID: stageAssistant.id,
         callID: "call-world-once",
-        agent: "growth",
+        agent: "novelx-stage-editor",
         abort: new AbortController().signal,
         extra: { promptOps },
         messages: [],
@@ -355,11 +368,17 @@ describe("tool.task", () => {
         concurrency: "unbounded",
       })
       const unauthorized = yield* def
-        .execute(input, { ...ctx, callID: "call-world-build", agent: "build" })
+        .execute(input, {
+          ...ctx,
+          sessionID: chat.id,
+          messageID: assistant.id,
+          callID: "call-world-growth",
+          agent: "growth",
+        })
         .pipe(Effect.exit)
 
       expect(first.metadata.sessionId).toBe(replay.metadata.sessionId)
-      expect(yield* sessions.children(chat.id)).toHaveLength(1)
+      expect(yield* sessions.children(stage.id)).toHaveLength(1)
       expect(prompts).toBe(1)
       expect(unauthorized._tag).toBe("Failure")
     }),
@@ -536,6 +555,74 @@ describe("tool.task", () => {
       expect(Exit.isFailure(exit)).toBe(true)
       expect(asked).toBe(false)
       expect(yield* sessions.children(child.id)).toHaveLength(0)
+    }),
+  )
+
+  it.instance("allows only the built-in NovelX root to stage-editor to dossier-leaf chain", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const def = yield* (yield* TaskTool).init()
+      const rootContext = {
+        sessionID: chat.id,
+        messageID: assistant.id,
+        agent: "growth",
+        abort: new AbortController().signal,
+        extra: { promptOps: stubOps() },
+        messages: [],
+        metadata: () => Effect.void,
+        ask: () => Effect.void,
+      }
+      const stage = yield* def.execute(
+        {
+          description: "阶段：自然底座",
+          prompt: "Frozen blueprint and ledger",
+          subagent_type: "novelx-stage-editor",
+        },
+        rootContext,
+      )
+      const stageSession = yield* sessions.get(stage.metadata.sessionId)
+      const stageAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: stageSession.id,
+        mode: "novelx-stage-editor",
+        agent: "novelx-stage-editor",
+      })
+      const leaf = yield* def.execute(
+        {
+          description: "世界：北境冰原",
+          prompt: "Exact source-bound Context Pack",
+          subagent_type: "novelx-world-writer",
+        },
+        { ...rootContext, sessionID: stageSession.id, messageID: stageAssistant.id, agent: "novelx-stage-editor" },
+      )
+      const rootToLeaf = yield* def
+        .execute(
+          {
+            description: "越权叶子",
+            prompt: "invalid",
+            subagent_type: "novelx-world-writer",
+          },
+          rootContext,
+        )
+        .pipe(Effect.exit)
+      const stageToStage = yield* def
+        .execute(
+          {
+            description: "越权阶段",
+            prompt: "invalid",
+            subagent_type: "novelx-stage-editor",
+          },
+          { ...rootContext, sessionID: stageSession.id, messageID: stageAssistant.id, agent: "novelx-stage-editor" },
+        )
+        .pipe(Effect.exit)
+
+      expect(stageSession.parentID).toBe(chat.id)
+      expect((yield* sessions.get(leaf.metadata.sessionId)).parentID).toBe(stageSession.id)
+      expect(rootToLeaf._tag).toBe("Failure")
+      expect(stageToStage._tag).toBe("Failure")
     }),
   )
 

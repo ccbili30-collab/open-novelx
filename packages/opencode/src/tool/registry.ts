@@ -66,6 +66,11 @@ import { NovelXPrepareWorldDocumentTool } from "./novelx-prepare-world-document"
 import { NovelXCommitWorldDocumentTool } from "./novelx-commit-world-document"
 import { NovelXAbortWorldDocumentTool } from "./novelx-abort-world-document"
 import { NovelXFinishWorldTool } from "./novelx-finish-world"
+import { NovelXReadWorldSourcesTool } from "./novelx-read-world-sources"
+import { NovelXFinishWorldStageTool } from "./novelx-finish-world-stage"
+import { NovelXCheckpointGrowthMemoryTool } from "./novelx-checkpoint-growth-memory"
+import { NovelXRecoverGrowthContextTool } from "./novelx-recover-growth-context"
+import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
   return providerID === ProviderV2.ID.opencode || flags.exa || flags.parallel
@@ -133,6 +138,10 @@ const layer = Layer.effect(
     const commitWorldDocument = yield* NovelXCommitWorldDocumentTool
     const abortWorldDocument = yield* NovelXAbortWorldDocumentTool
     const finishWorld = yield* NovelXFinishWorldTool
+    const readWorldSources = yield* NovelXReadWorldSourcesTool
+    const finishWorldStage = yield* NovelXFinishWorldStageTool
+    const checkpointGrowthMemory = yield* NovelXCheckpointGrowthMemoryTool
+    const recoverGrowthContext = yield* NovelXRecoverGrowthContextTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -252,6 +261,10 @@ const layer = Layer.effect(
           commitWorldDocument: Tool.init(commitWorldDocument),
           abortWorldDocument: Tool.init(abortWorldDocument),
           finishWorld: Tool.init(finishWorld),
+          readWorldSources: Tool.init(readWorldSources),
+          finishWorldStage: Tool.init(finishWorldStage),
+          checkpointGrowthMemory: Tool.init(checkpointGrowthMemory),
+          recoverGrowthContext: Tool.init(recoverGrowthContext),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -286,6 +299,10 @@ const layer = Layer.effect(
             tool.commitWorldDocument,
             tool.abortWorldDocument,
             tool.finishWorld,
+            tool.readWorldSources,
+            tool.finishWorldStage,
+            tool.checkpointGrowthMemory,
+            tool.recoverGrowthContext,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
@@ -492,6 +509,7 @@ export const node = LayerNode.make({
     MCP.node,
     Database.node,
     Ripgrep.node,
+    SessionCompaction.node,
   ],
 })
 

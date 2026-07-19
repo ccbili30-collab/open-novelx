@@ -6,6 +6,7 @@ import { expectSessionTitle } from "../utils/waits"
 const directory = "C:/NovelX/MiddleEarth"
 const projectID = "proj_novelx_middle_earth"
 const currentID = "ses_novelx_current"
+const stageEditorID = "ses_novelx_stage_editor"
 const olderID = "ses_novelx_older"
 const assistantID = "msg_novelx_geography_agent"
 const userMessageID = "msg_novelx_user"
@@ -50,7 +51,8 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     sessions: [
       session(currentID, "构建地理", 4),
       session(olderID, "建立第一批王国", 2),
-      { ...session("ses_child", "世界：赫利俄斯同步环", 5), parentID: currentID, agent: "novelx-world-writer" },
+      { ...session(stageEditorID, "阶段：恒星与轨道环境", 4.5), parentID: currentID, agent: "novelx-stage-editor" },
+      { ...session("ses_child", "世界：赫利俄斯同步环", 5), parentID: stageEditorID, agent: "novelx-world-writer" },
       { ...session("ses_archived", "已归档草稿", 6), time: { created: 6, updated: 6, archived: 7 } },
     ],
     vcsDiff: [],
@@ -89,7 +91,14 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       return { body: { type: "text", content: write.content, bom: write.expectedBom } }
     },
     pageMessages: (sessionID) => ({
-      items: sessionID === currentID ? agentMessages() : sessionID === "ses_child" ? worldChildMessages() : [],
+      items:
+        sessionID === currentID
+          ? agentMessages()
+          : sessionID === stageEditorID
+            ? stageEditorMessages()
+            : sessionID === "ses_child"
+              ? worldChildMessages()
+              : [],
     }),
     onMessages: ({ sessionID, phase }) => {
       messageRequests.push({ sessionID, phase })
@@ -154,6 +163,8 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(resources.getByText("日环档案 · 0/1 份世界档案已提交", { exact: true })).toBeVisible()
   await expect(resources.locator(".novelx-terrain-atlas")).toBeVisible()
   await expect(resources.getByText("世界正在生长", { exact: true })).toBeVisible()
+  await expect(resources.getByRole("button", { name: "Growth 总主编", exact: true })).toBeVisible()
+  await expect(resources.getByRole("button", { name: "阶段主编", exact: true })).toBeVisible()
   await resources.getByRole("button", { name: "赫利俄斯同步环", exact: true }).click()
   await expect
     .poll(() => messageRequests.filter((item) => item.sessionID === "ses_child" && item.phase === "end").length)
@@ -331,11 +342,64 @@ function agentMessages() {
           state: {
             status: "running",
             input: {
+              description: "阶段：恒星与轨道环境",
+              prompt: "Frozen blueprint and ledger",
+              subagent_type: "novelx-stage-editor",
+            },
+            metadata: { sessionId: stageEditorID, parentSessionId: currentID },
+            time: { start: 1700000002000 },
+          },
+        },
+      ],
+    },
+  ]
+}
+
+function stageEditorMessages() {
+  return [
+    {
+      info: {
+        id: "msg_stage_editor_user",
+        sessionID: stageEditorID,
+        role: "user",
+        time: { created: 1700000001500 },
+        summary: { diffs: [] },
+        agent: "novelx-stage-editor",
+        model: { providerID: "opencode", modelID: "test" },
+      },
+      parts: [],
+    },
+    {
+      info: {
+        id: "msg_stage_editor_assistant",
+        sessionID: stageEditorID,
+        role: "assistant",
+        time: { created: 1700000001800 },
+        parentID: "msg_stage_editor_user",
+        modelID: "test",
+        providerID: "opencode",
+        mode: "novelx-stage-editor",
+        agent: "novelx-stage-editor",
+        path: { cwd: directory, root: directory },
+        cost: 0,
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+      parts: [
+        {
+          id: "prt_stage_world_task",
+          sessionID: stageEditorID,
+          messageID: "msg_stage_editor_assistant",
+          type: "tool",
+          callID: "call_stage_world_task",
+          tool: "task",
+          state: {
+            status: "running",
+            input: {
               description: "世界：赫利俄斯同步环",
-              prompt: "Context Pack",
+              prompt: "Exact source-bound Context Pack",
               subagent_type: "novelx-world-writer",
             },
-            metadata: { sessionId: "ses_child", parentSessionId: currentID },
+            metadata: { sessionId: "ses_child", parentSessionId: stageEditorID },
             time: { start: 1700000002000 },
           },
         },
@@ -692,11 +756,11 @@ async function worldMaterializationFixture(blueprint: Awaited<ReturnType<typeof 
       { label: "通信", detail: "恒星遮挡造成周期性断联窗口。" },
     ],
     constraints: ["强辐射与散热上限使载人维护只能在有限窗口进行。"],
-    dependencyEntityIds: [],
+    upstreamBindings: [],
     status: "registered",
   }
   const draft = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     stage: "world_materialization",
     status: "running",
     blueprintIntegritySha256: blueprint.integritySha256,
@@ -707,11 +771,14 @@ async function worldMaterializationFixture(blueprint: Awaited<ReturnType<typeof 
       {
         stageId: stage.id,
         status: "registered",
+        editorSessionId: stageEditorID,
+        sourceReads: [],
         preparedContextSha256: "a".repeat(64),
         preparedAt: 1700000002000,
         registeredAt: 1700000002100,
         entities: [entity],
         relations: [],
+        handoff: null,
       },
     ],
     documents: [
@@ -723,7 +790,7 @@ async function worldMaterializationFixture(blueprint: Awaited<ReturnType<typeof 
         status: "leased",
         lease: {
           id: "lease-helios",
-          ownerSessionId: currentID,
+          ownerSessionId: stageEditorID,
           ownerMessageId: userMessageID,
           acquiredAt: 1700000002200,
         },
@@ -734,6 +801,7 @@ async function worldMaterializationFixture(blueprint: Awaited<ReturnType<typeof 
         errorCode: null,
       },
     ],
+    memoryCheckpoints: [],
   }
   return { ...draft, integritySha256: await sha256(draft) }
 }

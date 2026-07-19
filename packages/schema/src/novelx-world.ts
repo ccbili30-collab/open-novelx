@@ -65,13 +65,21 @@ export interface BlueprintManifest extends Schema.Schema.Type<typeof BlueprintMa
 export const EntityFactProfile = Schema.Struct({ label: Label, detail: Summary })
 export interface EntityFactProfile extends Schema.Schema.Type<typeof EntityFactProfile> {}
 
+export const UpstreamBindingProfile = Schema.Struct({
+  entityId: Schema.String,
+  relation: Label.annotate({ description: "How the upstream entity constrains or enables this entity" }),
+  impact: Summary.annotate({ description: "The concrete causal effect inherited from the upstream source" }),
+  constraints: Schema.Array(Summary).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
+})
+export interface UpstreamBindingProfile extends Schema.Schema.Type<typeof UpstreamBindingProfile> {}
+
 export const EntityProfile = Schema.Struct({
   name: Label.annotate({ description: "A specific named world entity, never a numbered placeholder" }),
   typeLabel: Label.annotate({ description: "A genre-specific entity type within this freely named world layer" }),
   summary: Summary,
   facts: Schema.Array(EntityFactProfile).check(Schema.isMinLength(3), Schema.isMaxLength(12)),
   constraints: Schema.Array(Summary).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
-  dependencyEntityIds: Schema.Array(Schema.String).check(Schema.isMaxLength(24)),
+  upstreamBindings: Schema.Array(UpstreamBindingProfile).check(Schema.isMaxLength(24)),
 })
 export interface EntityProfile extends Schema.Schema.Type<typeof EntityProfile> {}
 
@@ -100,7 +108,15 @@ export const RegisteredEntity = Schema.Struct({
   summary: Summary,
   facts: Schema.Array(EntityFactProfile),
   constraints: Schema.Array(Summary),
-  dependencyEntityIds: Schema.Array(Schema.String),
+  upstreamBindings: Schema.Array(
+    Schema.Struct({
+      entityId: Schema.String,
+      relation: Label,
+      impact: Summary,
+      constraints: Schema.Array(Summary),
+      sourceSha256: Sha256,
+    }),
+  ),
   status: Schema.Literal("registered"),
 })
 export interface RegisteredEntity extends Schema.Schema.Type<typeof RegisteredEntity> {}
@@ -152,17 +168,44 @@ export interface WorldDocumentRecord extends Schema.Schema.Type<typeof WorldDocu
 
 export const WorldStageRecord = Schema.Struct({
   stageId: Schema.String,
-  status: Schema.Literals(["planned", "prepared", "registered", "completed", "waiting_user", "failed"]),
+  status: Schema.Literals([
+    "planned",
+    "prepared",
+    "registered",
+    "reviewing",
+    "completed",
+    "waiting_user",
+    "failed",
+  ]),
+  editorSessionId: Schema.NullOr(Schema.String),
+  sourceReads: Schema.Array(
+    Schema.Struct({
+      entityId: Schema.String,
+      sourceSha256: Sha256,
+      readAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+  ),
   preparedContextSha256: Schema.NullOr(Sha256),
   preparedAt: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   registeredAt: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   entities: Schema.Array(RegisteredEntity),
   relations: Schema.Array(RegisteredEntityRelation),
+  handoff: Schema.NullOr(
+    Schema.Struct({
+      sealedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+      editorSessionId: Schema.String,
+      entityIds: Schema.Array(Schema.String),
+      sourceEntityIds: Schema.Array(Schema.String),
+      documents: Schema.Array(Schema.Struct({ entityId: Schema.String, sha256: Sha256 })),
+      navigationSummary: Summary,
+      integritySha256: Sha256,
+    }),
+  ),
 })
 export interface WorldStageRecord extends Schema.Schema.Type<typeof WorldStageRecord> {}
 
 export const WorldMaterialization = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+  schemaVersion: Schema.Literal(2),
   stage: Schema.Literal("world_materialization"),
   status: Schema.Literals(["running", "waiting_user", "completed", "failed"]),
   blueprintIntegritySha256: Sha256,
@@ -171,6 +214,15 @@ export const WorldMaterialization = Schema.Struct({
   updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   stages: Schema.Array(WorldStageRecord),
   documents: Schema.Array(WorldDocumentRecord),
+  memoryCheckpoints: Schema.Array(
+    Schema.Struct({
+      stageId: Schema.String,
+      handoffIntegritySha256: Sha256,
+      contextEpoch: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+      compactionMessageId: Schema.String,
+      createdAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    }),
+  ),
   integritySha256: Sha256,
 })
 export interface WorldMaterialization extends Schema.Schema.Type<typeof WorldMaterialization> {}

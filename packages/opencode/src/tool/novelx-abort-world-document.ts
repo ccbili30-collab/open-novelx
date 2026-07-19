@@ -4,7 +4,7 @@ import { EventV2Bridge } from "@/event-v2-bridge"
 import { abortWorldDocument } from "@/novelx/world-materialization"
 import { Tool } from "@/tool/tool"
 import {
-  assertWorldGrowthEditor,
+  assertWorldStageEditor,
   loadWorldRuntime,
   persistWorldMaterialization,
   withWorldMutation,
@@ -33,7 +33,7 @@ export const NovelXAbortWorldDocumentTool = Tool.define<
       execute: (params, ctx) =>
         withWorldMutation(
           Effect.gen(function* () {
-            assertWorldGrowthEditor(ctx)
+            assertWorldStageEditor(ctx)
             const runtime = yield* loadWorldRuntime(fs)
             const next = abortWorldDocument({
               manifest: runtime.materialization,

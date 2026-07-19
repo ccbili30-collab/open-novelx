@@ -14,8 +14,10 @@ export type NovelXWorldGrowthState =
   | { status: "error"; message: string }
 
 export type NovelXWorldNavigationItem =
-  | { id: string; kind: "stage"; label: string; depth: 0; stageId: string }
-  | { id: string; kind: "entity"; label: string; depth: 1; stageId: string; typeLabel: string }
+  | { id: string; kind: "root"; label: string; depth: 0; stageId: "" }
+  | { id: string; kind: "stage"; label: string; depth: 1; stageId: string }
+  | { id: string; kind: "editor"; label: string; depth: 2; stageId: string; sessionId: string }
+  | { id: string; kind: "entity"; label: string; depth: 3; stageId: string; typeLabel: string }
 
 const errorMessage = (error: unknown) => {
   if (error instanceof Error && error.message) return error.message
@@ -136,17 +138,38 @@ export function novelXWorldNavigationItems(
   materialization?: NovelXWorld.WorldMaterialization,
 ): NovelXWorldNavigationItem[] {
   const records = new Map(materialization?.stages.map((stage) => [stage.stageId, stage]) ?? [])
-  return blueprint.stages.flatMap((stage) => [
-    { id: stage.id, kind: "stage" as const, label: stage.label, depth: 0 as const, stageId: stage.id },
-    ...(records.get(stage.id)?.entities.map((entity) => ({
+  return [
+    {
+      id: `growth:${materialization?.growthSessionId ?? blueprint.source.sessionId}`,
+      kind: "root" as const,
+      label: "Growth 总主编",
+      depth: 0 as const,
+      stageId: "" as const,
+    },
+    ...blueprint.stages.flatMap((stage) => [
+      { id: stage.id, kind: "stage" as const, label: stage.label, depth: 1 as const, stageId: stage.id },
+      ...(records.get(stage.id)?.editorSessionId
+        ? [
+            {
+              id: records.get(stage.id)!.editorSessionId!,
+              kind: "editor" as const,
+              label: "阶段主编",
+              depth: 2 as const,
+              stageId: stage.id,
+              sessionId: records.get(stage.id)!.editorSessionId!,
+            },
+          ]
+        : []),
+      ...(records.get(stage.id)?.entities.map((entity) => ({
       id: entity.id,
       kind: "entity" as const,
       label: entity.name,
-      depth: 1 as const,
+      depth: 3 as const,
       stageId: stage.id,
       typeLabel: entity.typeLabel,
-    })) ?? []),
-  ])
+      })) ?? []),
+    ]),
+  ]
 }
 
 export const novelXWorldStatusLabel = (status: NovelXWorld.WorldDocumentStatus | undefined) =>

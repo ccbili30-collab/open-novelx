@@ -25,6 +25,10 @@ const id = "task"
 const novelXLeafInvocations = new Map<string, number>()
 
 const isNovelXOwnedLeaf = (name: string) => name === "novelx-geography" || name === "novelx-world-writer"
+const isNovelXOwnedChild = (name: string) => name === "novelx-stage-editor" || isNovelXOwnedLeaf(name)
+const isNovelXEditorialDispatch = (parent: string, child: string) =>
+  (parent === "growth" && child === "novelx-stage-editor") ||
+  (parent === "novelx-stage-editor" && child === "novelx-world-writer")
 const BACKGROUND_DESCRIPTION = [
   "Background mode: background=true launches the subagent asynchronously and returns immediately.",
   "Foreground is the default; use it when you need the result before continuing.",
@@ -111,7 +115,9 @@ export const TaskTool = Tool.define(
         depth++
         current = yield* sessions.get(current.parentID)
       }
-      if (depth >= (cfg.subagent_depth ?? 1)) {
+      const editorialNestedLeaf =
+        depth === 1 && isNovelXEditorialDispatch(ctx.agent, params.subagent_type) && ctx.agent === "novelx-stage-editor"
+      if (depth >= (cfg.subagent_depth ?? 1) && !editorialNestedLeaf) {
         return yield* Effect.fail(
           new Error(
             `Subagent depth limit reached (${cfg.subagent_depth ?? 1}). Increase "subagent_depth" to allow nested subagents.`,
@@ -135,14 +141,19 @@ export const TaskTool = Tool.define(
       if (!next) {
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
-      if (isNovelXOwnedLeaf(next.name) && ctx.agent !== "growth") {
-        return yield* Effect.fail(new Error(`${next.name} may only be dispatched by the NovelX Growth editor.`))
+      if (
+        (next.name === "novelx-stage-editor" || next.name === "novelx-world-writer") &&
+        !isNovelXEditorialDispatch(ctx.agent, next.name)
+      ) {
+        return yield* Effect.fail(
+          new Error(`NOVELX_EDITORIAL_DISPATCH_INVALID: ${ctx.agent} may not dispatch ${next.name}.`),
+        )
       }
 
       const requestedSession = params.task_id
         ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
         : undefined
-      if (isNovelXOwnedLeaf(next.name) && requestedSession) {
+      if (isNovelXOwnedChild(next.name) && requestedSession) {
         if (requestedSession.parentID !== ctx.sessionID || requestedSession.agent !== next.name) {
           return yield* Effect.fail(
             new Error(`NOVELX_CHILD_SESSION_INVALID: Can only resume an owned ${next.name} child.`),
@@ -163,7 +174,7 @@ export const TaskTool = Tool.define(
         }
       }
       const duplicate =
-        isNovelXOwnedLeaf(next.name) && !params.task_id
+        isNovelXOwnedChild(next.name) && !params.task_id
           ? (yield* sessions.children(ctx.sessionID)).find(
               (child) => child.agent === next.name && child.title === `${params.description} (@${next.name} subagent)`,
             )
@@ -391,7 +402,7 @@ export const TaskTool = Tool.define(
 
     const execute = (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) => {
       const effect = run(params, ctx).pipe(Effect.orDie)
-      if (!isNovelXOwnedLeaf(params.subagent_type) || !ctx.callID) return effect
+      if (!isNovelXOwnedChild(params.subagent_type) || !ctx.callID) return effect
       return Effect.gen(function* () {
         const key = `${ctx.sessionID}\0${ctx.callID}`
         const memoized = yield* novelXLeafCallLock.withPermits(1)(

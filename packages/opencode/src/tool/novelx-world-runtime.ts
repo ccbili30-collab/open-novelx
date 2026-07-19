@@ -119,3 +119,11 @@ export function assertWorldGrowthEditor(ctx: Tool.Context) {
     throw new Error("NOVELX_GROWTH_EDITOR_REQUIRED: This internal tool may only run in the Growth editor session.")
   }
 }
+
+export function assertWorldStageEditor(ctx: Tool.Context) {
+  if (ctx.agent !== "novelx-stage-editor") {
+    throw new Error(
+      "NOVELX_STAGE_EDITOR_REQUIRED: This internal tool may only run in a bound NovelX stage editor session.",
+    )
+  }
+}

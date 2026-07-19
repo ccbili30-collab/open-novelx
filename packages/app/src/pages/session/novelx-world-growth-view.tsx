@@ -54,9 +54,14 @@ export function NovelXWorldGrowthTree(
           const stageRecord = () => records().get(item.stageId)
           const documentStatus = () => (item.kind === "entity" ? props.status(item.id) : undefined)
           const stageLabel = () => {
+            if (item.kind === "root") {
+              return props.materialization?.status === "completed" ? "世界已完成" : "统筹中"
+            }
+            if (item.kind === "editor") return stageRecord()?.status === "completed" ? "已返回" : "工作中"
             const record = stageRecord()
             if (!record || record.status === "planned") return "待规划"
             if (record.status === "prepared") return "主编注册中"
+            if (record.status === "reviewing") return "主编审核中"
             if (record.status === "completed") return "已完成"
             if (record.status === "waiting_user") return "等待用户"
             if (record.status === "failed") return "失败"
@@ -66,7 +71,10 @@ export function NovelXWorldGrowthTree(
             <button
               type="button"
               class="novelx-growth-tree-item"
-              classList={{ "is-selected": props.selectedId === item.id, "is-world-stage": item.kind === "stage" }}
+              classList={{
+                "is-selected": props.selectedId === item.id,
+                "is-world-stage": item.kind === "stage" || item.kind === "root",
+              }}
               style={{ "--novelx-growth-depth": item.depth }}
               aria-pressed={props.selectedId === item.id}
               aria-label={item.label}
@@ -132,6 +140,8 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
                     <i aria-hidden="true" />
                     {record()?.status === "completed"
                       ? "已完成"
+                      : record()?.status === "reviewing"
+                        ? "阶段主编审核中"
                       : record()?.status === "prepared"
                         ? "主编注册中"
                         : record()?.status === "registered"
@@ -148,6 +158,16 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
                     <dd>{dependencies().length ? dependencies().join("、") : "无，作为世界事实地基"}</dd>
                     <dt>已注册</dt>
                     <dd>{record()?.entities.length ?? 0} 项</dd>
+                    <dt>阶段主编</dt>
+                    <dd>{record()?.editorSessionId ?? "尚未分配"}</dd>
+                    <dt>来源原文</dt>
+                    <dd>{record()?.sourceReads.length ?? 0} 份已核验</dd>
+                    <dt>记忆检查点</dt>
+                    <dd>
+                      {props.materialization?.memoryCheckpoints.find((item) => item.stageId === stage.id)
+                        ? "已压缩并可恢复"
+                        : "尚未建立"}
+                    </dd>
                   </dl>
                   <section>
                     <strong>推演重点</strong>
@@ -229,6 +249,17 @@ export function NovelXWorldGrowthInspector(props: WorldProps) {
                     <dd>{stageRecord()?.status ?? "planned"}</dd>
                     <dt>档案章节</dt>
                     <dd>{stage.documentSections.join("、")}</dd>
+                    <dt>阶段主编</dt>
+                    <dd>{stageRecord()?.editorSessionId ?? "尚未分配"}</dd>
+                    <dt>来源读取</dt>
+                    <dd>{stageRecord()?.sourceReads.length ?? 0} 份原文</dd>
+                    <dt>阶段交接</dt>
+                    <dd>{stageRecord()?.handoff ? "已封存" : "尚未封存"}</dd>
+                    <dt>Context Epoch</dt>
+                    <dd>
+                      {props.materialization?.memoryCheckpoints.find((item) => item.stageId === stage.id)
+                        ?.contextEpoch ?? "尚未压缩"}
+                    </dd>
                   </dl>
                 </section>
               </div>
@@ -278,12 +309,21 @@ export function NovelXWorldGrowthInspector(props: WorldProps) {
                       <For each={entity.constraints}>{(constraint) => <li>{constraint}</li>}</For>
                     </ul>
                   </section>
-                  <Show when={entity.dependencyEntityIds.length}>
+                  <Show when={entity.upstreamBindings.length}>
                     <section>
                       <strong>前序事实来源</strong>
                       <ul>
-                        <For each={entity.dependencyEntityIds}>
-                          {(id) => <li>{allEntities().find((item) => item.id === id)?.name ?? id}</li>}
+                        <For each={entity.upstreamBindings}>
+                          {(binding) => (
+                            <li>
+                              <b>
+                                {binding.relation} ·
+                                {allEntities().find((item) => item.id === binding.entityId)?.name ?? binding.entityId}
+                              </b>
+                              <span>{binding.impact}</span>
+                              <small>来源 {binding.sourceSha256.slice(0, 12)}…</small>
+                            </li>
+                          )}
                         </For>
                       </ul>
                     </section>
