@@ -53,7 +53,11 @@ function NovelXWorldAtlas(props: WorldProps) {
     const current = selection()
     return current.state === "idle"
       ? undefined
-      : props.visual?.atlas.features.find((feature) => feature.entityId === current.entityId)
+      : props.visual?.atlas.features.find(
+          (feature) =>
+            feature.entityId === current.entityId &&
+            feature.layer === (mode() === "geography" ? "geography" : "human"),
+        )
   })
   const scenery = createMemo(() => {
     const selected = selectedFeature()

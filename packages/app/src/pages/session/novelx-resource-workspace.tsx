@@ -303,6 +303,7 @@ export function NovelXResourceWorkspace(props: {
   })
   const selectedTerrain = createMemo(() => {
     if (active() !== "world") return
+    if (worldBlueprint()) return
     const manifest = growthManifest()
     if (!manifest) return
     const selected = selectedPlanned()?.id

@@ -2,6 +2,7 @@ import { base64Encode } from "@opencode-ai/core/util/encode"
 import { expect, test } from "@playwright/test"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectSessionTitle } from "../utils/waits"
+import { completedWorldFixtures } from "../fixtures/novelx-world-publication"
 
 const directory = "C:/NovelX/MiddleEarth"
 const projectID = "proj_novelx_middle_earth"
@@ -20,6 +21,8 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const geographyMaterialization = await geographyMaterializationFixture(growthManifest)
   const worldBlueprint = await worldBlueprintFixture()
   const worldMaterialization = await worldMaterializationFixture(worldBlueprint)
+  const completedFixtures = await completedWorldFixtures(worldMaterialization)
+  let completedWorld = false
   let editable = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n"
   let saved: { content: string; expectedContent: string; expectedBom: boolean } | undefined
   let conflictNext = false
@@ -62,21 +65,44 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       if (path === "World/geography") return [node("World/geography/misty-mountains.md", "file")]
       return []
     },
-    fileContent: (path) => ({ type: "text", content: `真实内容：${path}` }),
+    fileContent: (path) =>
+      path === "World/Media/world-map.png" || path === "World/Media/scenery/helios-ring.png"
+        ? {
+            type: "binary",
+            content:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            encoding: "base64",
+            mimeType: "image/png",
+          }
+        : { type: "text", content: `真实内容：${path}` },
     fileEditable: (path) =>
       path === ".novelx/growth/skeleton.json"
         ? { type: "text", content: JSON.stringify(growthManifest), bom: false }
         : path === ".novelx/growth/world-blueprint.json"
           ? { type: "text", content: JSON.stringify(worldBlueprint), bom: false }
           : path === ".novelx/growth/world-materialization.json"
-            ? { type: "text", content: JSON.stringify(worldMaterialization), bom: false }
+            ? {
+                type: "text",
+                content: JSON.stringify(completedWorld ? completedFixtures.materialization : worldMaterialization),
+                bom: false,
+              }
             : path === ".novelx/growth/geography-materialization.json"
               ? { type: "text", content: JSON.stringify(geographyMaterialization), bom: false }
               : path === ".novelx/visuals/world-visuals.json"
-                ? undefined
-                : path === "README.md"
-                  ? { type: "text", content: editable, bom: true }
-                  : { type: "text", content: `# ${path}\n`, bom: false },
+                ? completedWorld
+                  ? { type: "text", content: JSON.stringify(completedFixtures.visual), bom: false }
+                  : undefined
+                : path === ".novelx/publication/world-publication.json"
+                  ? completedWorld
+                    ? { type: "text", content: JSON.stringify(completedFixtures.publication), bom: false }
+                    : undefined
+                  : path === "World/Atlas/entity-helios-ring/图志.md"
+                    ? { type: "text", content: completedFixtures.atlasText, bom: false }
+                    : path === "World/Atlas/entity-helios-ring/纪行.md"
+                      ? { type: "text", content: completedFixtures.travelogueText, bom: false }
+                      : path === "README.md"
+                        ? { type: "text", content: editable, bom: true }
+                        : { type: "text", content: `# ${path}\n`, bom: false },
     fileWrite: ({ path, body }) => {
       const write = body as { content: string; expectedContent: string; expectedBom: boolean }
       if (conflictNext) {
@@ -209,6 +235,56 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   await page.locator('[aria-label="开发性能诊断"]').evaluate((element) => element.remove())
   await page.screenshot({ path: testInfo.outputPath("novelx-world-expanded.png") })
+
+  completedWorld = true
+  events.push({
+    directory,
+    payload: {
+      type: "file.watcher.updated",
+      properties: { file: ".novelx/growth/world-materialization.json" },
+    },
+  })
+  await expect(resources.getByText("1 项", { exact: true })).toBeVisible()
+  await expect(resources.getByText("Growth 总主编", { exact: true })).toHaveCount(0)
+  await expect(resources.getByText("阶段主编", { exact: true })).toHaveCount(0)
+
+  await page.reload()
+  await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
+  await expect(resources.locator(".novelx-world-atlas image")).toHaveCount(1)
+  await expect(resources.getByText(/Growth 总主编|阶段主编|执行 Agent|注册事实|事实依据|因果推演/u)).toHaveCount(0)
+
+  const mapMain = resources.locator(".novelx-world-atlas-main")
+  const geographyRegion = resources.locator(".novelx-world-map-region").first()
+  const geographyLabel = resources.locator(".novelx-world-map-label").first()
+  await geographyLabel.click()
+  await expect(geographyRegion.locator("..")).toHaveClass(/is-selected/u)
+  await expect(mapMain).not.toHaveClass(/is-focused/u)
+  await expect(resources.locator(".novelx-world-map-details")).toHaveCount(0)
+
+  await geographyLabel.click()
+  await expect(mapMain).toHaveClass(/is-focused/u)
+  const mapDetails = resources.getByRole("complementary", { name: "赫利俄斯同步环详细内容" })
+  await expect(mapDetails).toBeVisible()
+  await expect(mapDetails.getByText("地理", { exact: true })).toBeVisible()
+  await expect(mapDetails).toContainText("环带在晨昏线外侧收拢成一条冷亮弧线")
+  await mapDetails.getByRole("button", { name: "纪行", exact: true }).click()
+  await expect(mapDetails).toContainText("署名：无名驿路抄写员")
+  await expect(mapDetails).toContainText("我是在第三次警报之后看见那道弧光的")
+
+  await geographyLabel.click()
+  await expect(mapMain).not.toHaveClass(/is-focused/u)
+  await expect(resources.locator(".novelx-world-map-details")).toHaveCount(0)
+  await expect(geographyRegion.locator("..")).not.toHaveClass(/is-selected/u)
+
+  await resources.getByRole("button", { name: "国家", exact: true }).click()
+  const humanRegion = resources.locator(".novelx-world-map-region").first()
+  const humanLabel = resources.locator(".novelx-world-map-label").first()
+  await humanLabel.click()
+  await expect(humanRegion.locator("..")).toHaveClass(/is-selected/u)
+  await humanLabel.click()
+  await expect(resources.getByRole("complementary", { name: "赫利俄斯同步环详细内容" })).toContainText("国家")
+  await page.screenshot({ path: testInfo.outputPath("novelx-world-completed-map.png") })
+
   await dock.getByRole("button", { name: "文件", exact: true }).click()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
   await resources.getByRole("button", { name: "World\\", exact: true }).click()
