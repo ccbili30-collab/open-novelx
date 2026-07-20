@@ -78,8 +78,12 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
       return json(route, await config.fileList(url.searchParams.get("path") ?? ""))
     if (path === "/file/content" && config.fileContent)
       return json(route, await config.fileContent(url.searchParams.get("path") ?? ""))
-    if (path === "/file/edit" && route.request().method() === "GET" && config.fileEditable)
-      return json(route, await config.fileEditable(url.searchParams.get("path") ?? ""))
+    if (path === "/file/edit" && route.request().method() === "GET" && config.fileEditable) {
+      const result = await config.fileEditable(url.searchParams.get("path") ?? "")
+      if (result === undefined)
+        return json(route, { _tag: "FileEditNotFoundError", message: "File not found" }, undefined, 404)
+      return json(route, result)
+    }
     if (path === "/file/edit" && route.request().method() === "GET")
       return json(route, { _tag: "FileEditNotFoundError", message: "File not found" }, undefined, 404)
     if (path === "/file/edit" && route.request().method() === "PUT" && config.fileWrite) {

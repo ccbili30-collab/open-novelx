@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { NovelXWorld } from "@opencode-ai/schema"
+import { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
 import {
   novelXWorldNavigationItems,
   parseNovelXWorldBlueprint,
   parseNovelXWorldMaterialization,
+  parseNovelXWorldVisuals,
+  resolveNovelXWorldMapFeature,
 } from "./novelx-world-growth"
 
 const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")
@@ -112,5 +114,113 @@ test("parses adaptive world state and projects model-selected layers and entitie
     ["stage", "轨道环境"],
     ["editor", "阶段主编"],
     ["entity", "赫利俄斯同步环"],
+  ])
+})
+
+test("verifies visual evidence and resolves whole features without letting rivers steal cell clicks", async () => {
+  const cells: NovelXWorldVisual.AtlasCell[] = Array.from({ length: 24 }, (_, index) => ({
+    id: `cell-${index}`,
+    center: { x: (index % 6) / 6 + 0.04, y: Math.floor(index / 6) / 4 + 0.04 },
+    polygon: [
+      { x: 0.01, y: 0.01 },
+      { x: 0.02, y: 0.01 },
+      { x: 0.01, y: 0.02 },
+    ],
+    neighborIds: [],
+    surface: "plain",
+    geographyEntityIds: index < 2 ? ["basin", "river"] : [],
+    humanEntityIds: index < 3 ? ["realm"] : [],
+  }))
+  const sourceSha256 = "b".repeat(64)
+  const features: NovelXWorldVisual.AtlasFeature[] = [
+    {
+      entityId: "river",
+      layer: "geography",
+      kind: "river",
+      surface: "coast",
+      cellIds: ["cell-0", "cell-1"],
+      label: "银涌河",
+      labelPoint: { x: 0.2, y: 0.3 },
+      summary: "自北岭流入盆地的主河道。",
+      sourceSha256,
+      importance: "notable",
+    },
+    {
+      entityId: "basin",
+      layer: "geography",
+      kind: "region",
+      surface: "plain",
+      cellIds: ["cell-0", "cell-1"],
+      label: "暮谷盆地",
+      labelPoint: { x: 0.3, y: 0.4 },
+      summary: "群山环抱、由河谷冲积形成的盆地。",
+      sourceSha256,
+      importance: "ordinary",
+    },
+    {
+      entityId: "realm",
+      layer: "human",
+      kind: "polity",
+      surface: "plain",
+      cellIds: ["cell-0", "cell-1", "cell-2"],
+      label: "北烽王国",
+      labelPoint: { x: 0.4, y: 0.5 },
+      summary: "跨越盆地和北岭隘口的山地王国。",
+      sourceSha256,
+      importance: "required",
+    },
+  ]
+  const task: NovelXWorldVisual.ImageTask = {
+    id: "map-task",
+    type: "map",
+    subtype: "world-map",
+    ownerEntityId: null,
+    status: "queued",
+    title: "测试世界地图",
+    prompt: "绘制一张无文字的古典中世纪世界地图底图。",
+    rationale: "使用权威语义蒙版生成可叠加标签的地图。",
+    sourceEntityIds: ["basin"],
+    sourceSha256s: [sourceSha256],
+    targetPath: NovelXWorldVisual.MAP_RASTER_PATH,
+    mime: null,
+    assetSha256: null,
+    model: null,
+    startedAt: null,
+    completedAt: null,
+    errorCode: null,
+  }
+  const materializationSha256 = "c".repeat(64)
+  const draft = {
+    schemaVersion: 1 as const,
+    stage: "world_visuals" as const,
+    status: "queued" as const,
+    worldMaterializationIntegritySha256: materializationSha256,
+    visualLanguage: "温暖羊皮纸质感、克制色彩、古典地图绘画语言。",
+    visualLanguageSha256: "d".repeat(64),
+    atlas: {
+      id: "atlas",
+      title: "测试世界",
+      width: 1024 as const,
+      height: 1024 as const,
+      seed: "seed",
+      meshSha256: "e".repeat(64),
+      semanticMaskPath: NovelXWorldVisual.SEMANTIC_MASK_PATH,
+      semanticMaskSha256: "f".repeat(64),
+      rasterPath: NovelXWorldVisual.MAP_RASTER_PATH,
+      cells,
+      features,
+    },
+    tasks: [task],
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const manifest = { ...draft, integritySha256: sha256(draft) } satisfies NovelXWorldVisual.Manifest
+  expect(await parseNovelXWorldVisuals(JSON.stringify(manifest), materializationSha256)).toEqual(manifest)
+  expect(resolveNovelXWorldMapFeature(manifest, "geography", { cellId: "cell-0" })?.entityId).toBe("basin")
+  expect(resolveNovelXWorldMapFeature(manifest, "geography", { explicitEntityId: "river" })?.entityId).toBe("river")
+  expect(resolveNovelXWorldMapFeature(manifest, "human", { cellId: "cell-0" })?.cellIds).toEqual([
+    "cell-0",
+    "cell-1",
+    "cell-2",
   ])
 })

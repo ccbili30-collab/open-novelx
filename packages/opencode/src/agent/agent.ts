@@ -16,6 +16,7 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_NOVELX_WORLD_GROWTH from "./prompt/novelx-world-growth.txt"
 import PROMPT_NOVELX_STAGE_EDITOR from "./prompt/novelx-stage-editor.txt"
+import PROMPT_NOVELX_VISUAL_EDITOR from "./prompt/novelx-visual-editor.txt"
 import PROMPT_NOVELX_GEOGRAPHY_WRITER from "./prompt/novelx-geography-writer.txt"
 import PROMPT_NOVELX_WORLD_WRITER from "./prompt/novelx-world-writer.txt"
 import { Permission } from "@/permission"
@@ -150,6 +151,7 @@ const layer = Layer.effect(
             task: {
               "*": "deny",
               "novelx-stage-editor": "allow",
+              "novelx-visual-editor": "allow",
             },
           }),
           [
@@ -183,6 +185,20 @@ const layer = Layer.effect(
             { permission: "doom_loop", pattern: "novelx_prepare_world_document", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_commit_world_document", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_finish_world_stage", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const visualEditorRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_prepare_world_visuals: "allow",
+            novelx_read_world_visual_sources: "allow",
+            novelx_register_world_visuals: "allow",
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_prepare_world_visuals", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_read_world_visual_sources", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_world_visuals", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
         const geographyRestriction = Permission.fromConfig({
@@ -258,8 +274,7 @@ const layer = Layer.effect(
           },
           "novelx-stage-editor": {
             name: "novelx-stage-editor",
-            description:
-              "NovelX 阶段主编。绑定一个世界阶段，读取权威上游原文、注册实体、派发叶子并审查封存。",
+            description: "NovelX 阶段主编。绑定一个世界阶段，读取权威上游原文、注册实体、派发叶子并审查封存。",
             options: {},
             permission: Permission.merge(defaults, user, stageEditorRestriction),
             mode: "subagent",
@@ -267,6 +282,17 @@ const layer = Layer.effect(
             hidden: true,
             steps: 80,
             prompt: PROMPT_NOVELX_STAGE_EDITOR,
+          },
+          "novelx-visual-editor": {
+            name: "novelx-visual-editor",
+            description: "NovelX 世界视觉主编。读取封存档案，注册权威地图空间和稀疏风貌图片任务。",
+            options: {},
+            permission: Permission.merge(defaults, user, visualEditorRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 18,
+            prompt: PROMPT_NOVELX_VISUAL_EDITOR,
           },
           "novelx-geography": {
             name: "novelx-geography",
@@ -379,6 +405,7 @@ const layer = Layer.effect(
           if (
             key === "growth" ||
             key === "novelx-stage-editor" ||
+            key === "novelx-visual-editor" ||
             key === "novelx-geography" ||
             key === "novelx-world-writer"
           )

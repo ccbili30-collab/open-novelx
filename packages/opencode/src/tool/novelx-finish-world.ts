@@ -37,7 +37,7 @@ export const NovelXFinishWorldTool = Tool.define<typeof Parameters, Metadata, FS
             return {
               title: "世界生长完成",
               metadata: { stages: next.stages.length, documents: next.documents.length },
-              output: `模型注册的 ${next.stages.length} 个世界层、${next.documents.length} 份正式档案已经全部提交。图片、角色、故事、图谱事实和世界包均未开始。`,
+              output: `模型注册的 ${next.stages.length} 个世界层、${next.documents.length} 份正式档案已经全部提交。下一步派发 novelx-visual-editor 注册地图与稀疏风貌队列；角色、故事、图谱事实和世界包均未开始。`,
             }
           }),
         ).pipe(Effect.orDie),

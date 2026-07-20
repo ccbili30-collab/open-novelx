@@ -127,3 +127,9 @@ export function assertWorldStageEditor(ctx: Tool.Context) {
     )
   }
 }
+
+export function assertWorldVisualEditor(ctx: Tool.Context) {
+  if (ctx.agent !== "novelx-visual-editor") {
+    throw new Error("NOVELX_VISUAL_EDITOR_REQUIRED: This tool may only run in the NovelX visual editor session.")
+  }
+}

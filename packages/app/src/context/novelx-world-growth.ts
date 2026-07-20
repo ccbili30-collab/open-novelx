@@ -1,4 +1,4 @@
-import { NovelXWorld } from "@opencode-ai/schema"
+import { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
 import { Schema } from "effect"
 import { createEffect, createSignal, onCleanup } from "solid-js"
 import { useSDK, type DirectorySDK } from "./sdk"
@@ -10,6 +10,8 @@ export type NovelXWorldGrowthState =
       status: "ready"
       blueprint: NovelXWorld.BlueprintManifest
       materialization?: NovelXWorld.WorldMaterialization
+      visual?: NovelXWorldVisual.Manifest
+      visualAssets?: Record<string, string>
     }
   | { status: "error"; message: string }
 
@@ -18,6 +20,30 @@ export type NovelXWorldNavigationItem =
   | { id: string; kind: "stage"; label: string; depth: 1; stageId: string }
   | { id: string; kind: "editor"; label: string; depth: 2; stageId: string; sessionId: string }
   | { id: string; kind: "entity"; label: string; depth: 3; stageId: string; typeLabel: string }
+
+export type NovelXWorldMapMode = "art" | "geography" | "human" | "semantic"
+
+export function resolveNovelXWorldMapFeature(
+  visual: NovelXWorldVisual.Manifest,
+  mode: NovelXWorldMapMode,
+  input: { cellId?: string; explicitEntityId?: string },
+) {
+  if (mode === "art" || mode === "semantic") return undefined
+  const layer = mode === "geography" ? "geography" : "human"
+  if (input.explicitEntityId) {
+    return visual.atlas.features.find(
+      (feature) => feature.layer === layer && feature.entityId === input.explicitEntityId,
+    )
+  }
+  const cell = visual.atlas.cells.find((candidate) => candidate.id === input.cellId)
+  if (!cell) return undefined
+  const ids = new Set(mode === "geography" ? cell.geographyEntityIds : cell.humanEntityIds)
+  const importance = { required: 3, notable: 2, ordinary: 1 } as const
+  return visual.atlas.features
+    .filter((feature) => feature.layer === layer && ids.has(feature.entityId))
+    .filter((feature) => mode !== "geography" || feature.kind !== "river")
+    .toSorted((left, right) => importance[right.importance] - importance[left.importance])[0]
+}
 
 const errorMessage = (error: unknown) => {
   if (error instanceof Error && error.message) return error.message
@@ -36,10 +62,26 @@ const isNotFound = (error: unknown): boolean => {
 
 const matchesWorldPath = (value: string) => {
   const normalized = value.replaceAll("\\", "/").toLocaleLowerCase()
-  return [NovelXWorld.BLUEPRINT_PATH, NovelXWorld.MATERIALIZATION_PATH].some((path) => {
+  return [
+    NovelXWorld.BLUEPRINT_PATH,
+    NovelXWorld.MATERIALIZATION_PATH,
+    NovelXWorldVisual.MANIFEST_PATH,
+    "World/Media/",
+  ].some((path) => {
     const expected = path.toLocaleLowerCase()
+    if (expected.endsWith("/")) return normalized.includes(`/${expected}`) || normalized.startsWith(expected)
     return normalized === expected || normalized.endsWith(`/${expected}`)
   })
+}
+
+export async function parseNovelXWorldVisuals(content: string, worldMaterializationIntegritySha256: string) {
+  const manifest = Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)(JSON.parse(content))
+  const { integritySha256, ...draft } = manifest
+  if ((await sha256(draft)) !== integritySha256) throw new Error("世界视觉状态完整性校验失败。")
+  if (manifest.worldMaterializationIntegritySha256 !== worldMaterializationIntegritySha256) {
+    throw new Error("世界视觉状态与当前世界事实不匹配。")
+  }
+  return manifest
 }
 
 async function sha256(value: unknown) {
@@ -102,7 +144,40 @@ export function createNovelXWorldGrowthController() {
         blueprint.integritySha256,
       )
       if (version !== loadVersion) return
-      setState({ status: "ready", blueprint, materialization })
+      const visualResult = await current.client.file
+        .editable({ path: NovelXWorldVisual.MANIFEST_PATH })
+        .catch((error) => {
+          if (!isNotFound(error)) throw error
+          return undefined
+        })
+      if (version !== loadVersion) return
+      if (
+        !visualResult ||
+        visualResult.response.status === 404 ||
+        isNotFound(visualResult.error) ||
+        !visualResult.data
+      ) {
+        setState({ status: "ready", blueprint, materialization })
+        return
+      }
+      const visual = await parseNovelXWorldVisuals(visualResult.data.content, materialization.integritySha256)
+      const assetEntries = await Promise.all(
+        visual.tasks
+          .filter((task) => task.status === "attached" && task.mime)
+          .map(async (task) => {
+            const response = await current.client.file.read({ path: task.targetPath })
+            if (response.data?.type !== "binary" || response.data.encoding !== "base64") return undefined
+            return [task.id, `data:${response.data.mimeType ?? task.mime};base64,${response.data.content}`] as const
+          }),
+      )
+      if (version !== loadVersion) return
+      setState({
+        status: "ready",
+        blueprint,
+        materialization,
+        visual,
+        visualAssets: Object.fromEntries(assetEntries.filter((entry): entry is NonNullable<typeof entry> => !!entry)),
+      })
     } catch (error) {
       if (version !== loadVersion) return
       if (isNotFound(error)) {
@@ -161,12 +236,12 @@ export function novelXWorldNavigationItems(
           ]
         : []),
       ...(records.get(stage.id)?.entities.map((entity) => ({
-      id: entity.id,
-      kind: "entity" as const,
-      label: entity.name,
-      depth: 3 as const,
-      stageId: stage.id,
-      typeLabel: entity.typeLabel,
+        id: entity.id,
+        kind: "entity" as const,
+        label: entity.name,
+        depth: 3 as const,
+        stageId: stage.id,
+        typeLabel: entity.typeLabel,
       })) ?? []),
     ]),
   ]

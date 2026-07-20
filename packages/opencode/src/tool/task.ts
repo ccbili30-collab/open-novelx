@@ -25,9 +25,11 @@ const id = "task"
 const novelXLeafInvocations = new Map<string, number>()
 
 const isNovelXOwnedLeaf = (name: string) => name === "novelx-geography" || name === "novelx-world-writer"
-const isNovelXOwnedChild = (name: string) => name === "novelx-stage-editor" || isNovelXOwnedLeaf(name)
+const isNovelXOwnedChild = (name: string) =>
+  name === "novelx-stage-editor" || name === "novelx-visual-editor" || isNovelXOwnedLeaf(name)
 const isNovelXEditorialDispatch = (parent: string, child: string) =>
   (parent === "growth" && child === "novelx-stage-editor") ||
+  (parent === "growth" && child === "novelx-visual-editor") ||
   (parent === "novelx-stage-editor" && child === "novelx-world-writer")
 const BACKGROUND_DESCRIPTION = [
   "Background mode: background=true launches the subagent asynchronously and returns immediately.",
@@ -142,7 +144,9 @@ export const TaskTool = Tool.define(
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
       if (
-        (next.name === "novelx-stage-editor" || next.name === "novelx-world-writer") &&
+        (next.name === "novelx-stage-editor" ||
+          next.name === "novelx-visual-editor" ||
+          next.name === "novelx-world-writer") &&
         !isNovelXEditorialDispatch(ctx.agent, next.name)
       ) {
         return yield* Effect.fail(

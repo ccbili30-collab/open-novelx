@@ -72,9 +72,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
             ? { type: "text", content: JSON.stringify(worldMaterialization), bom: false }
             : path === ".novelx/growth/geography-materialization.json"
               ? { type: "text", content: JSON.stringify(geographyMaterialization), bom: false }
-              : path === "README.md"
-                ? { type: "text", content: editable, bom: true }
-                : { type: "text", content: `# ${path}\n`, bom: false },
+              : path === ".novelx/visuals/world-visuals.json"
+                ? undefined
+                : path === "README.md"
+                  ? { type: "text", content: editable, bom: true }
+                  : { type: "text", content: `# ${path}\n`, bom: false },
     fileWrite: ({ path, body }) => {
       const write = body as { content: string; expectedContent: string; expectedBom: boolean }
       if (conflictNext) {

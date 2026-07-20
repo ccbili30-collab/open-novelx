@@ -204,6 +204,14 @@ export function NovelXResourceWorkspace(props: {
     const state = worldGrowth.state()
     return state.status === "ready" ? state.materialization : undefined
   })
+  const worldVisual = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "ready" ? state.visual : undefined
+  })
+  const worldVisualAssets = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "ready" ? state.visualAssets : undefined
+  })
   const worldGrowthErrorMessage = createMemo(() => {
     const state = worldGrowth.state()
     return state.status === "error" ? state.message : "未知错误"
@@ -248,6 +256,18 @@ export function NovelXResourceWorkspace(props: {
   const selectedWorldDocument = createMemo(() => {
     const entity = selectedWorldEntity()
     return entity ? worldDocumentRecords().get(entity.id) : undefined
+  })
+  const selectedWorldScenery = createMemo(() => {
+    const entity = selectedWorldEntity()
+    const visual = worldVisual()
+    const assets = worldVisualAssets()
+    if (!entity || !visual || !assets) return []
+    return visual.tasks.flatMap((task) => {
+      const source = assets[task.id]
+      return task.type === "scenery" && task.ownerEntityId === entity.id && task.status === "attached" && source
+        ? [{ task, source }]
+        : []
+    })
   })
   const geographyManifest = createMemo(() => {
     const state = geography.state()
@@ -663,12 +683,20 @@ export function NovelXResourceWorkspace(props: {
               <NovelXWorldGrowthPrimary
                 blueprint={worldBlueprint()!}
                 materialization={worldMaterialization()}
+                visual={worldVisual()}
+                visualAssets={worldVisualAssets()}
                 selectedStage={selectedWorldStage()}
                 selectedEntity={selectedWorldEntity()}
                 selectedDocument={selectedWorldDocument()}
                 selectedChildText={selectedChildText}
                 selectedChildSessionId={selectedChildSessionId()}
                 status={projectedWorldStatus}
+                onSelectEntity={(entityId) => {
+                  const item = worldItems().find(
+                    (candidate) => candidate.kind === "entity" && candidate.id === entityId,
+                  )
+                  if (item) selectWorldItem(item)
+                }}
               />
             ) : resource === "world" && growthManifest() ? (
               selectedPlanned() && selectedGeographyRecord()?.status !== "committed" ? (
@@ -687,14 +715,28 @@ export function NovelXResourceWorkspace(props: {
           }
         >
           {(state) => (
-            <NovelXDocumentEditor
-              state={state()}
-              locked={document.locked()}
-              lockedAgents={document.lockedAgents()}
-              onInput={document.edit}
-              onSave={() => void document.save()}
-              onReload={document.reload}
-            />
+            <div class="novelx-world-document-with-visual">
+              <Show when={active() === "world" && selectedWorldScenery().length}>
+                <div class="novelx-world-document-visuals">
+                  <For each={selectedWorldScenery()}>
+                    {(item) => (
+                      <figure>
+                        <img src={item.source} alt={item.task.title} />
+                        <figcaption>{item.task.title}</figcaption>
+                      </figure>
+                    )}
+                  </For>
+                </div>
+              </Show>
+              <NovelXDocumentEditor
+                state={state()}
+                locked={document.locked()}
+                lockedAgents={document.lockedAgents()}
+                onInput={document.edit}
+                onSave={() => void document.save()}
+                onReload={document.reload}
+              />
+            </div>
           )}
         </Show>
       </div>

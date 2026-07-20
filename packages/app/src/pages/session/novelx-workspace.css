@@ -1727,3 +1727,343 @@
     grid-template-columns: 1fr;
   }
 }
+
+.novelx-world-atlas {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #f3efe7;
+  color: #302d29;
+}
+
+.novelx-world-atlas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(71, 63, 51, 0.12);
+  background: rgba(248, 245, 239, 0.92);
+}
+
+.novelx-world-atlas-toolbar > div {
+  display: grid;
+  gap: 2px;
+}
+
+.novelx-world-atlas-toolbar strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.novelx-world-atlas-toolbar span,
+.novelx-world-atlas footer {
+  color: rgba(48, 45, 41, 0.58);
+  font-size: 11px;
+}
+
+.novelx-world-atlas-toolbar nav {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(71, 63, 51, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.novelx-world-atlas-toolbar button,
+.novelx-world-map-zoom button,
+.novelx-world-map-popover button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.novelx-world-atlas-toolbar nav button {
+  min-width: 48px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: rgba(48, 45, 41, 0.62);
+  font-size: 12px;
+}
+
+.novelx-world-atlas-toolbar nav button:hover,
+.novelx-world-atlas-toolbar nav button.is-active {
+  background: rgba(92, 80, 61, 0.1);
+  color: #302d29;
+}
+
+.novelx-world-atlas-canvas {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: radial-gradient(circle at 48% 46%, rgba(255, 255, 255, 0.62), transparent 58%), #e9e3d8;
+}
+
+.novelx-world-atlas-canvas > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 430px;
+  touch-action: none;
+}
+
+.novelx-world-atlas-canvas polygon {
+  cursor: pointer;
+  vector-effect: non-scaling-stroke;
+  transition:
+    fill 140ms ease,
+    stroke 140ms ease;
+}
+
+.novelx-world-atlas-canvas polygon.is-selected {
+  filter: drop-shadow(0 0 3px rgba(118, 87, 36, 0.18));
+}
+
+.novelx-world-document-with-visual {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  flex-direction: column;
+}
+
+.novelx-world-document-visuals {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  padding: 14px 18px 0;
+  background: #f6f2eb;
+}
+
+.novelx-world-document-visuals figure {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid rgba(72, 63, 50, 0.14);
+  border-radius: 9px;
+  background: #ded6c8;
+}
+
+.novelx-world-document-visuals img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+}
+
+.novelx-world-document-visuals figcaption {
+  position: absolute;
+  left: 9px;
+  bottom: 8px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: rgba(35, 31, 27, 0.72);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.novelx-world-map-label {
+  cursor: pointer;
+  color: #403b32;
+}
+
+.novelx-world-map-label circle {
+  fill: currentColor;
+  stroke: rgba(255, 251, 243, 0.9);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.novelx-world-map-label text {
+  paint-order: stroke fill;
+  stroke: rgba(247, 241, 230, 0.92);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  fill: currentColor;
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  vector-effect: non-scaling-stroke;
+}
+
+.novelx-world-map-status {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transform: translateX(-50%);
+  padding: 7px 11px;
+  border: 1px solid rgba(73, 65, 53, 0.14);
+  border-radius: 999px;
+  background: rgba(248, 245, 239, 0.9);
+  box-shadow: 0 7px 22px rgba(62, 53, 42, 0.09);
+  color: rgba(48, 45, 41, 0.72);
+  font-size: 11px;
+  backdrop-filter: blur(10px);
+}
+
+.novelx-world-map-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9b7b43;
+  box-shadow: 0 0 0 3px rgba(155, 123, 67, 0.12);
+}
+
+.novelx-world-map-status[data-status="failed"] i {
+  background: #9c5147;
+}
+
+.novelx-world-map-popover {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  width: min(286px, calc(100% - 32px));
+  max-height: min(430px, calc(100% - 36px));
+  overflow: auto;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(72, 63, 50, 0.16);
+  border-radius: 10px;
+  background: rgba(250, 247, 241, 0.96);
+  box-shadow: 0 18px 46px rgba(54, 45, 33, 0.18);
+  transform: translate(12px, 10px);
+  backdrop-filter: blur(14px);
+}
+
+.novelx-world-map-popover img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 7px;
+  background: #ded6c8;
+}
+
+.novelx-world-map-popover small,
+.novelx-world-map-popover span {
+  color: rgba(48, 45, 41, 0.56);
+  font-size: 10px;
+}
+
+.novelx-world-map-popover strong {
+  padding-right: 22px;
+  font-size: 15px;
+}
+
+.novelx-world-map-popover p {
+  margin: 0;
+  color: rgba(48, 45, 41, 0.76);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.novelx-world-map-popover > button:last-child {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(48, 45, 41, 0.32);
+  font-size: 11px;
+}
+
+.novelx-world-map-popover-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px !important;
+}
+
+.novelx-world-map-popover-close:hover {
+  background: rgba(48, 45, 41, 0.08);
+}
+
+.novelx-world-map-zoom {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(72, 63, 50, 0.14);
+  border-radius: 7px;
+  background: rgba(249, 246, 240, 0.9);
+  box-shadow: 0 8px 22px rgba(54, 45, 33, 0.1);
+}
+
+.novelx-world-map-zoom button {
+  min-width: 34px;
+  height: 30px;
+  border-right: 1px solid rgba(72, 63, 50, 0.1);
+  font-size: 11px;
+}
+
+.novelx-world-map-zoom button:last-child {
+  border-right: 0;
+}
+
+.novelx-world-atlas-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: rgba(48, 45, 41, 0.54);
+  text-align: center;
+}
+
+.novelx-world-atlas-empty strong {
+  color: #302d29;
+  font-size: 14px;
+}
+
+.novelx-world-atlas-empty span {
+  max-width: 360px;
+  font-size: 11px;
+}
+
+.novelx-world-atlas footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  padding: 7px 14px;
+  border-top: 1px solid rgba(71, 63, 51, 0.1);
+  background: rgba(248, 245, 239, 0.88);
+}
+
+@container (max-width: 980px) {
+  .novelx-world-atlas-toolbar {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .novelx-world-atlas-toolbar nav button {
+    min-width: 42px;
+    padding-inline: 7px;
+  }
+
+  .novelx-world-map-popover {
+    left: 12px !important;
+    right: 12px;
+    bottom: 48px;
+    top: auto !important;
+    width: auto;
+    transform: none;
+  }
+}

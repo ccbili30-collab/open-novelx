@@ -1,18 +1,261 @@
 import { Icon } from "@opencode-ai/ui/icon"
-import type { NovelXWorld } from "@opencode-ai/schema"
+import type { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
 import { NovelXResourceIcon } from "@/components/novelx-resource-icon"
-import { novelXWorldStatusLabel, type NovelXWorldNavigationItem } from "@/context/novelx-world-growth"
-import { For, Show } from "solid-js"
+import {
+  novelXWorldStatusLabel,
+  resolveNovelXWorldMapFeature,
+  type NovelXWorldMapMode,
+  type NovelXWorldNavigationItem,
+} from "@/context/novelx-world-growth"
+import { For, Show, createMemo, createSignal } from "solid-js"
 
 type WorldProps = {
   blueprint: NovelXWorld.BlueprintManifest
   materialization?: NovelXWorld.WorldMaterialization
+  visual?: NovelXWorldVisual.Manifest
+  visualAssets?: Record<string, string>
   selectedStage?: NovelXWorld.BlueprintStage
   selectedEntity?: NovelXWorld.RegisteredEntity
   selectedDocument?: NovelXWorld.WorldDocumentRecord
   selectedChildText: () => string
   selectedChildSessionId?: string
   status: (entityId: string) => NovelXWorld.WorldDocumentStatus
+  onSelectEntity?: (entityId: string) => void
+}
+
+function NovelXWorldAtlas(props: WorldProps) {
+  const [mode, setMode] = createSignal<NovelXWorldMapMode>("geography")
+  const [selectedFeatureId, setSelectedFeatureId] = createSignal<string>()
+  const [zoom, setZoom] = createSignal(1)
+  const mapTask = () => props.visual?.tasks.find((task) => task.type === "map")
+  const mapAsset = () => {
+    const task = mapTask()
+    return task ? props.visualAssets?.[task.id] : undefined
+  }
+  const layerFeatures = createMemo(() => {
+    if (!props.visual || mode() === "art" || mode() === "semantic") return []
+    return props.visual.atlas.features.filter(
+      (feature) => feature.layer === (mode() === "geography" ? "geography" : "human"),
+    )
+  })
+  const selectedFeature = createMemo(() =>
+    props.visual?.atlas.features.find((feature) => feature.entityId === selectedFeatureId()),
+  )
+  const scenery = createMemo(() => {
+    const selected = selectedFeature()
+    if (!selected || !props.visual) return undefined
+    return props.visual.tasks.find((task) => task.type === "scenery" && task.ownerEntityId === selected.entityId)
+  })
+  const selectCell = (cell: NovelXWorldVisual.AtlasCell) => {
+    if (mode() === "art" || mode() === "semantic") {
+      setSelectedFeatureId(undefined)
+      return
+    }
+    setSelectedFeatureId(resolveNovelXWorldMapFeature(props.visual!, mode(), { cellId: cell.id })?.entityId)
+  }
+  const surfaceColor: Record<NovelXWorldVisual.Surface, string> = {
+    ocean: "#2a5b7c",
+    plain: "#7c9159",
+    mountain: "#68655e",
+    desert: "#b49051",
+    marsh: "#3d766d",
+    coast: "#b0a473",
+    forest: "#376748",
+    ice: "#c6d3d3",
+  }
+  return (
+    <div class="novelx-world-atlas" aria-label={`${props.blueprint.profile.title}世界地图`}>
+      <header class="novelx-world-atlas-toolbar">
+        <div>
+          <strong>{props.blueprint.profile.title}</strong>
+          <span>世界图册 / 主大陆</span>
+        </div>
+        <nav aria-label="地图图层">
+          <For
+            each={
+              [
+                ["art", "底图"],
+                ["geography", "地理"],
+                ["human", "国家"],
+                ["semantic", "语义"],
+              ] as const
+            }
+          >
+            {(item) => (
+              <button
+                type="button"
+                classList={{ "is-active": mode() === item[0] }}
+                onClick={() => {
+                  setMode(item[0])
+                  setSelectedFeatureId(undefined)
+                }}
+              >
+                {item[1]}
+              </button>
+            )}
+          </For>
+        </nav>
+      </header>
+      <div
+        class="novelx-world-atlas-canvas"
+        onWheel={(event) => {
+          event.preventDefault()
+          setZoom((value) => Math.min(2.4, Math.max(0.72, value + (event.deltaY < 0 ? 0.12 : -0.12))))
+        }}
+      >
+        <Show
+          when={props.visual}
+          fallback={
+            <div class="novelx-world-atlas-empty">
+              <NovelXResourceIcon resource="world" size={30} />
+              <strong>地图尚未注册</strong>
+              <span>世界档案完成后，视觉主编会建立权威坐标和图片队列。</span>
+            </div>
+          }
+        >
+          {(visual) => (
+            <svg viewBox="0 0 1024 1024" role="img" aria-label="可交互世界地图" style={{ "--novelx-map-zoom": zoom() }}>
+              <g transform={`translate(${512 - 512 * zoom()} ${512 - 512 * zoom()}) scale(${zoom()})`}>
+                <Show when={mapAsset()} fallback={<rect width="1024" height="1024" fill="#eee8dd" />}>
+                  {(src) => <image href={src()} width="1024" height="1024" preserveAspectRatio="xMidYMid slice" />}
+                </Show>
+                <For each={visual().atlas.cells}>
+                  {(cell) => {
+                    const points = () => cell.polygon.map((point) => `${point.x * 1024},${point.y * 1024}`).join(" ")
+                    const selected = () => selectedFeature()?.cellIds.includes(cell.id) ?? false
+                    return (
+                      <polygon
+                        points={points()}
+                        fill={
+                          mode() === "semantic"
+                            ? surfaceColor[cell.surface]
+                            : selected()
+                              ? "rgba(239, 213, 146, .52)"
+                              : "transparent"
+                        }
+                        stroke={
+                          mode() === "semantic"
+                            ? "rgba(255,255,255,.28)"
+                            : selected()
+                              ? "rgba(239, 213, 146, .52)"
+                              : "transparent"
+                        }
+                        stroke-width={selected() ? 2.2 : 0.55}
+                        classList={{ "is-selected": selected(), "is-debug": mode() === "semantic" }}
+                        onClick={() => selectCell(cell)}
+                      />
+                    )
+                  }}
+                </For>
+                <For each={layerFeatures()}>
+                  {(feature) => (
+                    <g
+                      class="novelx-world-map-label"
+                      transform={`translate(${feature.labelPoint.x * 1024} ${feature.labelPoint.y * 1024})`}
+                      onClick={() =>
+                        setSelectedFeatureId(
+                          resolveNovelXWorldMapFeature(visual(), mode(), { explicitEntityId: feature.entityId })
+                            ?.entityId,
+                        )
+                      }
+                    >
+                      <circle r="4" />
+                      <text y="-10" text-anchor="middle">
+                        {feature.label}
+                      </text>
+                    </g>
+                  )}
+                </For>
+              </g>
+            </svg>
+          )}
+        </Show>
+        <Show when={props.visual && !mapAsset()}>
+          <div class="novelx-world-map-status" data-status={mapTask()?.status ?? "queued"}>
+            <i aria-hidden="true" />
+            {mapTask()?.status === "failed"
+              ? `地图生成失败 · ${mapTask()?.errorCode}`
+              : mapTask()?.status === "generating" || mapTask()?.status === "validating"
+                ? "真实地图生成中"
+                : "地图任务已排队"}
+          </div>
+        </Show>
+        <Show when={selectedFeature()} keyed>
+          {(feature) => {
+            const imageTask = scenery()
+            const image = () => (imageTask ? props.visualAssets?.[imageTask.id] : undefined)
+            return (
+              <aside
+                class="novelx-world-map-popover"
+                style={{
+                  left: `${Math.min(76, Math.max(6, feature.labelPoint.x * 100))}%`,
+                  top: `${Math.min(72, Math.max(8, feature.labelPoint.y * 100))}%`,
+                }}
+              >
+                <button
+                  type="button"
+                  class="novelx-world-map-popover-close"
+                  aria-label="关闭"
+                  onClick={() => setSelectedFeatureId(undefined)}
+                >
+                  <Icon name="close-small" size="small" />
+                </button>
+                <Show when={image()}>{(src) => <img src={src()} alt={imageTask?.title ?? feature.label} />}</Show>
+                <small>
+                  {feature.kind === "polity"
+                    ? "国家疆域"
+                    : feature.kind === "organization"
+                      ? "组织影响"
+                      : feature.kind === "river"
+                        ? "水系"
+                        : "自然地理"}
+                </small>
+                <strong>{feature.label}</strong>
+                <p>{feature.summary}</p>
+                <span>
+                  {imageTask
+                    ? imageTask.status === "attached"
+                      ? "风貌候选已生成"
+                      : imageTask.status === "failed"
+                        ? "风貌生成失败"
+                        : "风貌图生成中"
+                    : feature.importance === "ordinary"
+                      ? "普通对象 · 未进入生图队列"
+                      : "暂无风貌任务"}
+                </span>
+                <button type="button" onClick={() => props.onSelectEntity?.(feature.entityId)}>
+                  打开完整档案
+                </button>
+              </aside>
+            )
+          }}
+        </Show>
+        <div class="novelx-world-map-zoom" aria-label="地图缩放">
+          <button type="button" onClick={() => setZoom((value) => Math.min(2.4, value + 0.2))}>
+            ＋
+          </button>
+          <button type="button" onClick={() => setZoom(1)}>
+            适应
+          </button>
+          <button type="button" onClick={() => setZoom((value) => Math.max(0.72, value - 0.2))}>
+            −
+          </button>
+        </div>
+      </div>
+      <footer>
+        <span>
+          {props.visual
+            ? `${props.visual.atlas.cells.length} 个权威地块 · ${props.visual.atlas.features.length} 个空间投影`
+            : "等待视觉注册"}
+        </span>
+        <span>
+          {props.visual
+            ? `${props.visual.tasks.filter((task) => task.status === "attached").length}/${props.visual.tasks.length} 张候选图已挂载`
+            : "图片队列未开始"}
+        </span>
+      </footer>
+    </div>
+  )
 }
 
 export function NovelXWorldGrowthTree(
@@ -107,16 +350,20 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
       when={props.selectedStage}
       keyed
       fallback={
-        <div class="novelx-terrain-atlas is-empty" aria-label={`${props.blueprint.profile.title}世界总览`}>
-          <div class="novelx-terrain-empty-map-mark" aria-hidden="true">
-            <NovelXResourceIcon resource="world" size={30} />
+        props.materialization?.status === "completed" || props.visual ? (
+          <NovelXWorldAtlas {...props} />
+        ) : (
+          <div class="novelx-terrain-atlas is-empty" aria-label={`${props.blueprint.profile.title}世界总览`}>
+            <div class="novelx-terrain-empty-map-mark" aria-hidden="true">
+              <NovelXResourceIcon resource="world" size={30} />
+            </div>
+            <strong>世界正在生长</strong>
+            <span>{props.blueprint.profile.designSummary}</span>
+            <small>
+              {progress().committed}/{progress().total} 份世界档案已提交 · 地图等待世界封存
+            </small>
           </div>
-          <strong>{props.materialization?.status === "completed" ? "世界档案已完成" : "世界正在生长"}</strong>
-          <span>{props.blueprint.profile.designSummary}</span>
-          <small>
-            {progress().committed}/{progress().total} 份世界档案已提交 · 图片、地图与星图尚未生成
-          </small>
-        </div>
+        )
       }
     >
       {(stage) => {
@@ -142,11 +389,11 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
                       ? "已完成"
                       : record()?.status === "reviewing"
                         ? "阶段主编审核中"
-                      : record()?.status === "prepared"
-                        ? "主编注册中"
-                        : record()?.status === "registered"
-                          ? "档案生长中"
-                          : "等待前序事实"}
+                        : record()?.status === "prepared"
+                          ? "主编注册中"
+                          : record()?.status === "registered"
+                            ? "档案生长中"
+                            : "等待前序事实"}
                   </div>
                 </header>
                 <div class="novelx-world-stage-contract">

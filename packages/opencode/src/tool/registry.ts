@@ -70,6 +70,9 @@ import { NovelXReadWorldSourcesTool } from "./novelx-read-world-sources"
 import { NovelXFinishWorldStageTool } from "./novelx-finish-world-stage"
 import { NovelXCheckpointGrowthMemoryTool } from "./novelx-checkpoint-growth-memory"
 import { NovelXRecoverGrowthContextTool } from "./novelx-recover-growth-context"
+import { NovelXPrepareWorldVisualsTool } from "./novelx-prepare-world-visuals"
+import { NovelXReadWorldVisualSourcesTool } from "./novelx-read-world-visual-sources"
+import { NovelXRegisterWorldVisualsTool } from "./novelx-register-world-visuals"
 import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
@@ -142,6 +145,9 @@ const layer = Layer.effect(
     const finishWorldStage = yield* NovelXFinishWorldStageTool
     const checkpointGrowthMemory = yield* NovelXCheckpointGrowthMemoryTool
     const recoverGrowthContext = yield* NovelXRecoverGrowthContextTool
+    const prepareWorldVisuals = yield* NovelXPrepareWorldVisualsTool
+    const readWorldVisualSources = yield* NovelXReadWorldVisualSourcesTool
+    const registerWorldVisuals = yield* NovelXRegisterWorldVisualsTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -265,6 +271,9 @@ const layer = Layer.effect(
           finishWorldStage: Tool.init(finishWorldStage),
           checkpointGrowthMemory: Tool.init(checkpointGrowthMemory),
           recoverGrowthContext: Tool.init(recoverGrowthContext),
+          prepareWorldVisuals: Tool.init(prepareWorldVisuals),
+          readWorldVisualSources: Tool.init(readWorldVisualSources),
+          registerWorldVisuals: Tool.init(registerWorldVisuals),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -303,6 +312,9 @@ const layer = Layer.effect(
             tool.finishWorldStage,
             tool.checkpointGrowthMemory,
             tool.recoverGrowthContext,
+            tool.prepareWorldVisuals,
+            tool.readWorldVisualSources,
+            tool.registerWorldVisuals,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
