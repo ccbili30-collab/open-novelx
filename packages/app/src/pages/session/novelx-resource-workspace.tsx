@@ -212,6 +212,14 @@ export function NovelXResourceWorkspace(props: {
     const state = worldGrowth.state()
     return state.status === "ready" ? state.visualAssets : undefined
   })
+  const worldPublication = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "ready" ? state.publication : undefined
+  })
+  const worldPublicationTexts = createMemo(() => {
+    const state = worldGrowth.state()
+    return state.status === "ready" ? state.publicationTexts : undefined
+  })
   const worldGrowthErrorMessage = createMemo(() => {
     const state = worldGrowth.state()
     return state.status === "error" ? state.message : "未知错误"
@@ -448,7 +456,17 @@ export function NovelXResourceWorkspace(props: {
       return
     }
     const record = item.kind === "entity" ? worldDocumentRecords().get(item.id) : undefined
-    view.setActiveFile(record?.status === "committed" ? record.targetPath : "")
+    const published =
+      item.kind === "entity"
+        ? worldPublication()?.records.find(
+            (candidate) =>
+              candidate.entityId === item.id && candidate.kind === "atlas" && candidate.status === "committed",
+          )
+        : undefined
+    view.setActiveFile(
+      published?.targetPath ??
+        (worldMaterialization()?.status === "completed" ? "" : record?.status === "committed" ? record.targetPath : ""),
+    )
     setPlannedSelection((current) => ({ ...current, world: item.id }))
   }
 
@@ -685,6 +703,8 @@ export function NovelXResourceWorkspace(props: {
                 materialization={worldMaterialization()}
                 visual={worldVisual()}
                 visualAssets={worldVisualAssets()}
+                publication={worldPublication()}
+                publicationTexts={worldPublicationTexts()}
                 selectedStage={selectedWorldStage()}
                 selectedEntity={selectedWorldEntity()}
                 selectedDocument={selectedWorldDocument()}

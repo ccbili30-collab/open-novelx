@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
 import {
+  advanceNovelXWorldMapSelection,
   novelXWorldNavigationItems,
   parseNovelXWorldBlueprint,
   parseNovelXWorldMaterialization,
@@ -115,6 +116,9 @@ test("parses adaptive world state and projects model-selected layers and entitie
     ["editor", "阶段主编"],
     ["entity", "赫利俄斯同步环"],
   ])
+  expect(
+    novelXWorldNavigationItems(blueprint, { ...materialization, status: "completed" }).map((item) => item.kind),
+  ).toEqual(["stage", "entity"])
 })
 
 test("verifies visual evidence and resolves whole features without letting rivers steal cell clicks", async () => {
@@ -128,8 +132,11 @@ test("verifies visual evidence and resolves whole features without letting river
     ],
     neighborIds: [],
     surface: "plain",
-    geographyEntityIds: index < 2 ? ["basin", "river"] : [],
-    humanEntityIds: index < 3 ? ["realm"] : [],
+    geographyAreaEntityId: index < 2 ? "basin" : null,
+    humanAreaEntityId: index < 3 ? "realm" : null,
+    geographyLineEntityIds: index < 2 ? ["river"] : [],
+    humanLineEntityIds: [],
+    pointEntityIds: [],
   }))
   const sourceSha256 = "b".repeat(64)
   const features: NovelXWorldVisual.AtlasFeature[] = [
@@ -137,8 +144,15 @@ test("verifies visual evidence and resolves whole features without letting river
       entityId: "river",
       layer: "geography",
       kind: "river",
+      geometry: "line",
+      parentEntityId: null,
       surface: "coast",
       cellIds: ["cell-0", "cell-1"],
+      rings: [],
+      path: [
+        { x: 0.1, y: 0.2 },
+        { x: 0.3, y: 0.4 },
+      ],
       label: "银涌河",
       labelPoint: { x: 0.2, y: 0.3 },
       summary: "自北岭流入盆地的主河道。",
@@ -149,8 +163,18 @@ test("verifies visual evidence and resolves whole features without letting river
       entityId: "basin",
       layer: "geography",
       kind: "region",
+      geometry: "area",
+      parentEntityId: null,
       surface: "plain",
       cellIds: ["cell-0", "cell-1"],
+      rings: [
+        [
+          { x: 0.01, y: 0.01 },
+          { x: 0.02, y: 0.01 },
+          { x: 0.01, y: 0.02 },
+        ],
+      ],
+      path: [],
       label: "暮谷盆地",
       labelPoint: { x: 0.3, y: 0.4 },
       summary: "群山环抱、由河谷冲积形成的盆地。",
@@ -161,8 +185,18 @@ test("verifies visual evidence and resolves whole features without letting river
       entityId: "realm",
       layer: "human",
       kind: "polity",
+      geometry: "area",
+      parentEntityId: null,
       surface: "plain",
       cellIds: ["cell-0", "cell-1", "cell-2"],
+      rings: [
+        [
+          { x: 0.01, y: 0.01 },
+          { x: 0.02, y: 0.01 },
+          { x: 0.01, y: 0.02 },
+        ],
+      ],
+      path: [],
       label: "北烽王国",
       labelPoint: { x: 0.4, y: 0.5 },
       summary: "跨越盆地和北岭隘口的山地王国。",
@@ -191,7 +225,7 @@ test("verifies visual evidence and resolves whole features without letting river
   }
   const materializationSha256 = "c".repeat(64)
   const draft = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     stage: "world_visuals" as const,
     status: "queued" as const,
     worldMaterializationIntegritySha256: materializationSha256,
@@ -223,4 +257,22 @@ test("verifies visual evidence and resolves whole features without letting river
     "cell-1",
     "cell-2",
   ])
+})
+
+test("cycles one map region through highlight, focused details, and restored full map", () => {
+  const highlighted = advanceNovelXWorldMapSelection({ state: "idle" }, "basin")
+  expect(highlighted).toEqual({ state: "highlighted", entityId: "basin" })
+  const focused = advanceNovelXWorldMapSelection(highlighted, "basin")
+  expect(focused).toEqual({ state: "focused", entityId: "basin" })
+  expect(advanceNovelXWorldMapSelection(focused, "basin")).toEqual({ state: "idle" })
+  expect(advanceNovelXWorldMapSelection(focused, "realm")).toEqual({
+    state: "highlighted",
+    entityId: "realm",
+  })
+})
+
+test("rejects the ambiguous V1 map contract instead of guessing a migration", async () => {
+  await expect(parseNovelXWorldVisuals('{"schemaVersion":1}', "c".repeat(64))).rejects.toThrow(
+    "地图数据已过期，需要重新生成",
+  )
 })

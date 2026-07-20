@@ -1,4 +1,4 @@
-import { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
+import { NovelXWorld, NovelXWorldPublication, NovelXWorldVisual } from "@opencode-ai/schema"
 import { Schema } from "effect"
 import { createEffect, createSignal, onCleanup } from "solid-js"
 import { useSDK, type DirectorySDK } from "./sdk"
@@ -12,6 +12,8 @@ export type NovelXWorldGrowthState =
       materialization?: NovelXWorld.WorldMaterialization
       visual?: NovelXWorldVisual.Manifest
       visualAssets?: Record<string, string>
+      publication?: NovelXWorldPublication.Manifest
+      publicationTexts?: Record<string, { atlas?: string; travelogue?: string }>
     }
   | { status: "error"; message: string }
 
@@ -19,9 +21,23 @@ export type NovelXWorldNavigationItem =
   | { id: string; kind: "root"; label: string; depth: 0; stageId: "" }
   | { id: string; kind: "stage"; label: string; depth: 1; stageId: string }
   | { id: string; kind: "editor"; label: string; depth: 2; stageId: string; sessionId: string }
-  | { id: string; kind: "entity"; label: string; depth: 3; stageId: string; typeLabel: string }
+  | { id: string; kind: "entity"; label: string; depth: 2 | 3; stageId: string; typeLabel: string }
 
 export type NovelXWorldMapMode = "art" | "geography" | "human" | "semantic"
+
+export type NovelXWorldMapSelection =
+  | { state: "idle" }
+  | { state: "highlighted"; entityId: string }
+  | { state: "focused"; entityId: string }
+
+export function advanceNovelXWorldMapSelection(
+  current: NovelXWorldMapSelection,
+  entityId: string,
+): NovelXWorldMapSelection {
+  if (current.state === "idle" || current.entityId !== entityId) return { state: "highlighted", entityId }
+  if (current.state === "highlighted") return { state: "focused", entityId }
+  return { state: "idle" }
+}
 
 export function resolveNovelXWorldMapFeature(
   visual: NovelXWorldVisual.Manifest,
@@ -37,12 +53,12 @@ export function resolveNovelXWorldMapFeature(
   }
   const cell = visual.atlas.cells.find((candidate) => candidate.id === input.cellId)
   if (!cell) return undefined
-  const ids = new Set(mode === "geography" ? cell.geographyEntityIds : cell.humanEntityIds)
-  const importance = { required: 3, notable: 2, ordinary: 1 } as const
-  return visual.atlas.features
-    .filter((feature) => feature.layer === layer && ids.has(feature.entityId))
-    .filter((feature) => mode !== "geography" || feature.kind !== "river")
-    .toSorted((left, right) => importance[right.importance] - importance[left.importance])[0]
+  const entityId = mode === "geography" ? cell.geographyAreaEntityId : cell.humanAreaEntityId
+  return entityId
+    ? visual.atlas.features.find(
+        (feature) => feature.layer === layer && feature.geometry === "area" && feature.entityId === entityId,
+      )
+    : undefined
 }
 
 const errorMessage = (error: unknown) => {
@@ -66,7 +82,9 @@ const matchesWorldPath = (value: string) => {
     NovelXWorld.BLUEPRINT_PATH,
     NovelXWorld.MATERIALIZATION_PATH,
     NovelXWorldVisual.MANIFEST_PATH,
+    NovelXWorldPublication.MANIFEST_PATH,
     "World/Media/",
+    `${NovelXWorldPublication.PUBLICATION_DIRECTORY}/`,
   ].some((path) => {
     const expected = path.toLocaleLowerCase()
     if (expected.endsWith("/")) return normalized.includes(`/${expected}`) || normalized.startsWith(expected)
@@ -75,11 +93,30 @@ const matchesWorldPath = (value: string) => {
 }
 
 export async function parseNovelXWorldVisuals(content: string, worldMaterializationIntegritySha256: string) {
-  const manifest = Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)(JSON.parse(content))
+  const value = JSON.parse(content) as { schemaVersion?: unknown }
+  if (value.schemaVersion !== 2) throw new Error("地图数据已过期，需要重新生成。")
+  const manifest = Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)(value)
   const { integritySha256, ...draft } = manifest
   if ((await sha256(draft)) !== integritySha256) throw new Error("世界视觉状态完整性校验失败。")
   if (manifest.worldMaterializationIntegritySha256 !== worldMaterializationIntegritySha256) {
     throw new Error("世界视觉状态与当前世界事实不匹配。")
+  }
+  return manifest
+}
+
+export async function parseNovelXWorldPublication(
+  content: string,
+  worldMaterializationIntegritySha256: string,
+  worldVisualIntegritySha256: string,
+) {
+  const manifest = Schema.decodeUnknownSync(NovelXWorldPublication.Manifest)(JSON.parse(content))
+  const { integritySha256, ...draft } = manifest
+  if ((await sha256(draft)) !== integritySha256) throw new Error("玩家世界文稿完整性校验失败。")
+  if (
+    manifest.worldMaterializationIntegritySha256 !== worldMaterializationIntegritySha256 ||
+    manifest.worldVisualIntegritySha256 !== worldVisualIntegritySha256
+  ) {
+    throw new Error("玩家世界文稿与当前世界事实不匹配。")
   }
   return manifest
 }
@@ -171,12 +208,49 @@ export function createNovelXWorldGrowthController() {
           }),
       )
       if (version !== loadVersion) return
+      const publicationResult = await current.client.file
+        .editable({ path: NovelXWorldPublication.MANIFEST_PATH })
+        .catch((error) => {
+          if (!isNotFound(error)) throw error
+          return undefined
+        })
+      if (version !== loadVersion) return
+      const publication =
+        publicationResult?.data && publicationResult.response.status !== 404
+          ? await parseNovelXWorldPublication(
+              publicationResult.data.content,
+              materialization.integritySha256,
+              visual.integritySha256,
+            )
+          : undefined
+      const publicationEntries = publication
+        ? await Promise.all(
+            publication.records
+              .filter((record) => record.status === "committed")
+              .map(async (record) => {
+                const response = await current.client.file.editable({ path: record.targetPath })
+                if (!response.data) return undefined
+                return [record.entityId, record.kind, response.data.content] as const
+              }),
+          )
+        : []
+      if (version !== loadVersion) return
+      const publicationTexts = publicationEntries.reduce<Record<string, { atlas?: string; travelogue?: string }>>(
+        (result, entry) => {
+          if (!entry) return result
+          result[entry[0]] = { ...result[entry[0]], [entry[1]]: entry[2] }
+          return result
+        },
+        {},
+      )
       setState({
         status: "ready",
         blueprint,
         materialization,
         visual,
         visualAssets: Object.fromEntries(assetEntries.filter((entry): entry is NonNullable<typeof entry> => !!entry)),
+        publication,
+        publicationTexts,
       })
     } catch (error) {
       if (version !== loadVersion) return
@@ -213,6 +287,19 @@ export function novelXWorldNavigationItems(
   materialization?: NovelXWorld.WorldMaterialization,
 ): NovelXWorldNavigationItem[] {
   const records = new Map(materialization?.stages.map((stage) => [stage.stageId, stage]) ?? [])
+  if (materialization?.status === "completed") {
+    return blueprint.stages.flatMap((stage) => [
+      { id: stage.id, kind: "stage" as const, label: stage.label, depth: 1 as const, stageId: stage.id },
+      ...(records.get(stage.id)?.entities.map((entity) => ({
+        id: entity.id,
+        kind: "entity" as const,
+        label: entity.name,
+        depth: 2 as const,
+        stageId: stage.id,
+        typeLabel: entity.typeLabel,
+      })) ?? []),
+    ])
+  }
   return [
     {
       id: `growth:${materialization?.growthSessionId ?? blueprint.source.sessionId}`,
