@@ -90,7 +90,7 @@ export async function compileWorldVisuals(input: {
     subtype: "world-map" as const,
     ownerEntityId: null,
     status: "queued" as const,
-    title: `${blueprint.profile.title}世界地图`,
+    title: `${blueprint.profile.title}地图`,
     prompt: input.profile.mapPrompt,
     rationale: "以已封存自然档案和权威语义网格生成无字底图，地理与国家文字由 UI 图层投影。",
     sourceEntityIds: mapSources.map((feature) => feature.entityId),
