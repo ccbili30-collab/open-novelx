@@ -2,7 +2,7 @@
 
 日期：2026-07-20
 
-状态：执行中
+状态：代码冻结；真实 Live 因 Provider 额度不足暂停，恢复入口见 `../status/2026-07-20-novelx-authoritative-map-and-publication-progress.md`
 
 ## 当前目标
 

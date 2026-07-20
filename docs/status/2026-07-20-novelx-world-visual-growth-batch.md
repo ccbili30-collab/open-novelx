@@ -1,5 +1,7 @@
 # NovelX 世界视觉 Growth 批次状态
 
+> 已被后续 Atlas V2 工作取代：本文件记录的是提交 `dc17513` 的 V1 Live 证据，其中“自然/人文多对多空间投影”和旧地图交互不再代表当前权威合同。V2 将面状同级区域改为唯一归属，线/点对象独立，旧 V1 清单失败关闭。当前实现与尚未完成的 Live 边界见 [`2026-07-20-novelx-authoritative-map-and-publication-progress.md`](./2026-07-20-novelx-authoritative-map-and-publication-progress.md)。
+
 日期：2026-07-20
 
 项目目录：`D:\CodexW\NovelX_Desktop\work\opencode-novelx`
