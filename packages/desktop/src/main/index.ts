@@ -45,18 +45,18 @@ import {
 import { createWslServersController } from "./wsl/servers"
 import { registerWslIpcHandlers } from "./wsl/ipc"
 import { spawnWslSidecar } from "./wsl/sidecar"
-import { migrate } from "./migrate"
 import { cleanupStoreFiles } from "./store-cleanup"
+import { applyNovelXProfile, resolveNovelXProfilePaths } from "./novelx-profile"
 
 const APP_NAMES: Record<string, string> = {
-  dev: "OpenCode Dev",
-  beta: "OpenCode Beta",
-  prod: "OpenCode",
+  dev: "NovelX Dev",
+  beta: "NovelX Beta",
+  prod: "NovelX",
 }
 const APP_IDS: Record<string, string> = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "ai.novelx.desktop.dev",
+  beta: "ai.novelx.desktop.beta",
+  prod: "ai.novelx.desktop",
 }
 const TEST_ONBOARDING = process.env.OPENCODE_TEST_ONBOARDING === "1"
 const jsCallStackFeature = "DocumentPolicyIncludeJSCallStacksInCrashReports"
@@ -119,7 +119,7 @@ const main = Effect.gen(function* () {
 
   process.env.OPENCODE_DISABLE_EMBEDDED_WEB_UI = "true"
 
-  const appId = app.isPackaged ? APP_IDS[CHANNEL] : "ai.opencode.desktop.dev"
+  const appId = app.isPackaged ? APP_IDS[CHANNEL] : "ai.novelx.desktop.dev"
   const onboardingTestRoot = ((): string | undefined => {
     if (!TEST_ONBOARDING) return
 
@@ -135,13 +135,21 @@ const main = Effect.gen(function* () {
     process.env.XDG_STATE_HOME = join(root, "state")
     return root
   })()
-  app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "OpenCode Dev")
+  const novelxProfile = onboardingTestRoot
+    ? undefined
+    : resolveNovelXProfilePaths({
+        roamingAppData: app.getPath("appData"),
+        localAppData: process.env.LOCALAPPDATA ?? app.getPath("appData"),
+      })
+  if (novelxProfile) applyNovelXProfile(novelxProfile)
+  app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "NovelX Dev")
   app.setAppUserModelId(appId)
   app.setPath(
     "userData",
-    onboardingTestRoot ? join(onboardingTestRoot, "desktop") : join(app.getPath("appData"), appId),
+    onboardingTestRoot ? join(onboardingTestRoot, "desktop") : novelxProfile!.desktop,
   )
-  if (onboardingTestRoot) app.setPath("sessionData", join(onboardingTestRoot, "session"))
+  app.setPath("sessionData", onboardingTestRoot ? join(onboardingTestRoot, "session") : novelxProfile!.session)
+  if (novelxProfile) app.setAppLogsPath(novelxProfile.logs)
   initializeOldLayoutEligibility(app.getPath("userData"))
   logger = initLogging()
   initCrashReporter()
@@ -251,7 +259,9 @@ const main = Effect.gen(function* () {
 
   yield* Effect.promise(() => app.whenReady())
 
-  if (!TEST_ONBOARDING) migrate()
+  // NovelX owns an independent desktop profile. Importing the upstream OpenCode
+  // Tauri stores here would silently restore OpenCode windows, projects, and
+  // model choices into the fresh NovelX profile.
   yield* Effect.promise(() => cleanupStoreFiles(app.getPath("userData"))).pipe(
     Effect.tap((result) =>
       Effect.sync(() => {
