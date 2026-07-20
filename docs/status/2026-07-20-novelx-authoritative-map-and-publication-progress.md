@@ -1,5 +1,7 @@
 # NovelX 权威地图与玩家文稿进度状态
 
+> 本文件记录 2026-07-20 的 Provider 阻塞现场，已由 [`2026-07-21-novelx-world-live-and-independent-profile.md`](./2026-07-21-novelx-world-live-and-independent-profile.md) 取代。后续状态已经完成同一根会话的世界、视觉、玩家发布与 NovelX 独立 Profile（运行档案）验收；不得继续把本文件的“12/27、Provider 阻塞”描述为当前状态。
+
 日期：2026-07-20
 
 项目目录：`D:\CodexW\NovelX_Desktop\work\opencode-novelx`
