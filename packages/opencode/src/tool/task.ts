@@ -14,6 +14,7 @@ import { Effect, Exit, Schema, Scope, Semaphore } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@opencode-ai/core/database/database"
+import { errorMessage } from "@/util/error"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -23,6 +24,7 @@ export interface TaskPromptOps {
 
 const id = "task"
 const novelXLeafInvocations = new Map<string, number>()
+const novelXLeafExecution = Semaphore.makeUnsafe(2)
 
 const isNovelXOwnedLeaf = (name: string) =>
   name === "novelx-geography" || name === "novelx-world-writer" || name === "novelx-world-prose-writer"
@@ -274,7 +276,16 @@ export const TaskTool = Tool.define(
           agent: next.name,
           parts,
         })
-        return result.parts.findLast((item) => item.type === "text")?.text ?? ""
+        if (result.info.role === "assistant" && result.info.error) {
+          return yield* Effect.fail(
+            new Error(`NOVELX_TASK_PROVIDER_FAILURE: ${errorMessage(result.info.error)}`),
+          )
+        }
+        const text = result.parts.findLast((item) => item.type === "text")?.text ?? ""
+        if (isNovelXOwnedLeaf(next.name) && !text.trim()) {
+          return yield* Effect.fail(new Error("NOVELX_TASK_EMPTY_OUTPUT: NovelX leaf task returned no prose."))
+        }
+        return text
       })
 
       const inject = Effect.fn("TaskTool.injectBackgroundResult")(function* (
@@ -423,7 +434,10 @@ export const TaskTool = Tool.define(
           Effect.gen(function* () {
             const existing = novelXLeafCalls.get(key)
             if (existing) return existing
-            const cached = yield* Effect.cached(effect)
+            const scheduled = isNovelXOwnedLeaf(params.subagent_type)
+              ? novelXLeafExecution.withPermits(1)(effect)
+              : effect
+            const cached = yield* Effect.cached(scheduled)
             novelXLeafCalls.set(key, cached)
             if (novelXLeafCalls.size > 2048) {
               const oldest = novelXLeafCalls.keys().next().value

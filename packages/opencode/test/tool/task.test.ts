@@ -384,6 +384,138 @@ describe("tool.task", () => {
     }),
   )
 
+  it.instance("NovelX leaf tasks fail closed when the Provider returns an assistant error", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const stage = yield* sessions.create({
+        parentID: chat.id,
+        title: "阶段：权力与交换",
+        agent: "novelx-stage-editor",
+      })
+      const stageAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: stage.id,
+        mode: "novelx-stage-editor",
+        agent: "novelx-stage-editor",
+      })
+      const def = yield* (yield* TaskTool).init()
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) =>
+          Effect.sync(() => {
+            const failed = reply(input, "")
+            return {
+              ...failed,
+              info: {
+                ...failed.info,
+                error: {
+                  name: "APIError",
+                  data: { message: "insufficient quota", statusCode: 403, isRetryable: false },
+                },
+              },
+              parts: [],
+            } as SessionV1.WithParts
+          }),
+      }
+
+      const exit = yield* def
+        .execute(
+          {
+            description: "撰写河侯领档案",
+            prompt: "World Context Pack",
+            subagent_type: "novelx-world-writer",
+          },
+          {
+            sessionID: stage.id,
+            messageID: stageAssistant.id,
+            callID: "call-world-provider-error",
+            agent: "novelx-stage-editor",
+            abort: new AbortController().signal,
+            extra: { promptOps },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+    }),
+  )
+
+  it.instance("NovelX leaf task scheduling limits concurrent Provider reservations to two", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const stage = yield* sessions.create({
+        parentID: chat.id,
+        title: "阶段：权力与交换",
+        agent: "novelx-stage-editor",
+      })
+      const stageAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: stage.id,
+        mode: "novelx-stage-editor",
+        agent: "novelx-stage-editor",
+      })
+      const twoStarted = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      let active = 0
+      let started = 0
+      let maximum = 0
+      const promptOps: TaskPromptOps = {
+        ...stubOps(),
+        prompt: (input) =>
+          Effect.gen(function* () {
+            active += 1
+            started += 1
+            maximum = Math.max(maximum, active)
+            if (started === 2) yield* Deferred.succeed(twoStarted, undefined)
+            yield* Deferred.await(release)
+            active -= 1
+            return reply(input, "# 正式档案")
+          }),
+      }
+      const def = yield* (yield* TaskTool).init()
+      const calls = ["河侯领", "关议会", "井契盟"].map((name, index) =>
+        def.execute(
+          {
+            description: `撰写${name}档案`,
+            prompt: `World Context Pack ${index}`,
+            subagent_type: "novelx-world-writer",
+          },
+          {
+            sessionID: stage.id,
+            messageID: stageAssistant.id,
+            callID: `call-world-concurrency-${index}`,
+            agent: "novelx-stage-editor",
+            abort: new AbortController().signal,
+            extra: { promptOps },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        ),
+      )
+
+      const fiber = yield* Effect.all(calls, { concurrency: "unbounded" }).pipe(Effect.forkChild)
+      yield* Deferred.await(twoStarted)
+      yield* Effect.sleep("25 millis")
+      expect(started).toBe(2)
+      expect(maximum).toBe(2)
+
+      yield* Deferred.succeed(release, undefined)
+      const results = yield* Fiber.join(fiber)
+      expect(results).toHaveLength(3)
+      expect(maximum).toBe(2)
+    }),
+  )
+
   it.instance("execute asks by default and skips checks when bypassed", () =>
     Effect.gen(function* () {
       const { chat, assistant } = yield* seed()
