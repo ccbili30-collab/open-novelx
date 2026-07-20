@@ -16,6 +16,7 @@ export const Parameters = NovelXWorldVisual.VisualRegistrationProfile
 type Metadata = {
   manifestPath: string
   maskPath: string
+  integritySha256: string
   cells: number
   features: number
   tasks: number
@@ -49,7 +50,7 @@ export const NovelXRegisterWorldVisualsTool = Tool.define<
                 manifest: Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)(JSON.parse(existing)),
                 materialization: runtime.materialization,
               })
-              return result(current, true)
+              return worldVisualRegistrationResult(current, true)
             }
             yield* ctx.ask({
               permission: TOOL_ID,
@@ -78,19 +79,20 @@ export const NovelXRegisterWorldVisualsTool = Tool.define<
                 Effect.provideService(Provider.Service, provider),
               ),
             )
-            return result(compiled.manifest, false)
+            return worldVisualRegistrationResult(compiled.manifest, false)
           }),
         ).pipe(Effect.orDie),
     }
   }),
 )
 
-function result(manifest: NovelXWorldVisual.Manifest, replayed: boolean) {
+export function worldVisualRegistrationResult(manifest: NovelXWorldVisual.Manifest, replayed: boolean) {
   return {
     title: replayed ? "世界视觉任务已存在" : "世界视觉任务已入队",
     metadata: {
       manifestPath: NovelXWorldVisual.MANIFEST_PATH,
       maskPath: NovelXWorldVisual.SEMANTIC_MASK_PATH,
+      integritySha256: manifest.integritySha256,
       cells: manifest.atlas.cells.length,
       features: manifest.atlas.features.length,
       tasks: manifest.tasks.length,
@@ -99,6 +101,7 @@ function result(manifest: NovelXWorldVisual.Manifest, replayed: boolean) {
     output: [
       replayed ? "同一世界视觉账本已经存在，本次为幂等读取。" : "权威泰森网格、语义蒙版和异步图片队列已经建立。",
       `${manifest.atlas.cells.length} 个地块；${manifest.atlas.features.length} 个地理/人文投影；${manifest.tasks.length} 个地图/风貌任务。`,
+      `视觉清单：${NovelXWorldVisual.MANIFEST_PATH}；完整性 SHA-256：${manifest.integritySha256}。`,
       "图片 Worker 已独立启动，Growth 不等待图片完成。正式 UI 必须读取真实 queued/generating/attached/failed 状态。",
     ].join("\n"),
   }

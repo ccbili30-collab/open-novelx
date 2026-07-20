@@ -122,6 +122,10 @@ const layer = Layer.effect(
           "*": "ask",
           ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
         } satisfies Record<string, "allow" | "ask" | "deny">
+        const novelxLeafExternalDirectory = {
+          "*": "deny",
+          ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+        } satisfies Record<string, "allow" | "ask" | "deny">
 
         const defaults = Permission.fromConfig({
           "*": "allow",
@@ -230,7 +234,7 @@ const layer = Layer.effect(
           glob: "allow",
           grep: "allow",
           list: "allow",
-          external_directory: readonlyExternalDirectory,
+          external_directory: novelxLeafExternalDirectory,
         })
         const worldWriterRestriction = Permission.fromConfig({
           "*": "deny",
@@ -238,7 +242,7 @@ const layer = Layer.effect(
           glob: "allow",
           grep: "allow",
           list: "allow",
-          external_directory: readonlyExternalDirectory,
+          external_directory: novelxLeafExternalDirectory,
         })
         const worldProseWriterRestriction = Permission.fromConfig({
           "*": "deny",
@@ -246,7 +250,7 @@ const layer = Layer.effect(
           glob: "allow",
           grep: "allow",
           list: "allow",
-          external_directory: readonlyExternalDirectory,
+          external_directory: novelxLeafExternalDirectory,
         })
 
         const agents: Record<string, Info> = {

@@ -145,6 +145,7 @@ it.instance("player prose writer is a hidden read-only leaf", () =>
     expect(evalPerm(child, "read")).toBe("allow")
     expect(evalPerm(child, "write")).toBe("deny")
     expect(evalPerm(child, "task", "general")).toBe("deny")
+    expect(evalPerm(child, "external_directory", "/outside/world")).toBe("deny")
     expect(child?.prompt).toContain("Never mention or reproduce the production structure")
   }),
 )
@@ -182,6 +183,7 @@ it.instance(
       expect(evalPerm(child, "write")).toBe("deny")
       expect(evalPerm(child, "edit")).toBe("deny")
       expect(evalPerm(child, "task", "general")).toBe("deny")
+      expect(evalPerm(child, "external_directory", "/outside/world")).toBe("deny")
       expect(child?.prompt).not.toContain("CONFIG_OVERRIDE_SENTINEL")
     }),
   {
@@ -209,6 +211,7 @@ it.instance(
       expect(evalPerm(child, "edit")).toBe("deny")
       expect(evalPerm(child, "apply_patch")).toBe("deny")
       expect(evalPerm(child, "task", "general")).toBe("deny")
+      expect(evalPerm(child, "external_directory", "/outside/world")).toBe("deny")
       expect(child?.prompt).not.toContain("CONFIG_OVERRIDE_SENTINEL")
     }),
   {

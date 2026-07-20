@@ -14,7 +14,7 @@ import { loadWorldRuntime, publishWorldFile, withWorldMutation } from "@/tool/no
 import { updateImageTask, verifyWorldVisuals, WorldVisualError } from "./world-visual"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
-const IMAGE_MODEL = ModelV2.ID.make("gpt-image-2-cheap")
+export const WORLD_IMAGE_MODEL = ModelV2.ID.make("gpt-image-2")
 
 export function runWorldImageQueue(options: { directory: string }) {
   return Effect.gen(function* () {
@@ -22,7 +22,7 @@ export function runWorldImageQueue(options: { directory: string }) {
     const events = yield* EventV2Bridge.Service
     const provider = yield* Provider.Service
     const info = yield* provider.getProvider(IMAGE_PROVIDER)
-    yield* provider.getModel(IMAGE_PROVIDER, IMAGE_MODEL)
+    yield* provider.getModel(IMAGE_PROVIDER, WORLD_IMAGE_MODEL)
     const baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
     const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
     if (!baseURL || !apiKey) {
@@ -57,7 +57,7 @@ export function runWorldImageQueue(options: { directory: string }) {
           taskId: before.id,
           status: "generating",
           now: Date.now(),
-          model: `${IMAGE_PROVIDER}/${IMAGE_MODEL}`,
+          model: `${IMAGE_PROVIDER}/${WORLD_IMAGE_MODEL}`,
         })
         yield* persistManifest(fs, events, runtime.directory, generating)
         const data = yield* generateImage({
@@ -88,7 +88,7 @@ export function runWorldImageQueue(options: { directory: string }) {
           taskId: before.id,
           status: "attached",
           now: Date.now(),
-          model: `${IMAGE_PROVIDER}/${IMAGE_MODEL}`,
+          model: `${IMAGE_PROVIDER}/${WORLD_IMAGE_MODEL}`,
           mime: validated.mime,
           assetSha256: validated.sha256,
         })
@@ -133,7 +133,7 @@ function generateImage(input: {
     return Effect.gen(function* () {
       const mask = yield* input.fs.readFile(absoluteVisualPath(input.directory, input.manifest.atlas.semanticMaskPath))
       const form = new FormData()
-      form.append("model", IMAGE_MODEL)
+      form.append("model", WORLD_IMAGE_MODEL)
       form.append(
         "prompt",
         `${prompt}\n\nUse the supplied semantic color mask as a strict topology reference. Preserve coast, mountain, plain, desert, marsh, forest and ice placement while replacing flat colors with finished cartographic art.`,
@@ -153,7 +153,7 @@ function generateImage(input: {
     method: "POST",
     headers: { Authorization: `Bearer ${input.apiKey}`, "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
-      model: IMAGE_MODEL,
+      model: WORLD_IMAGE_MODEL,
       prompt,
       size: "1024x1024",
       quality: "low",
