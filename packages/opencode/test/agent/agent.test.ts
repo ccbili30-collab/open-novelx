@@ -53,8 +53,10 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("growth")
     expect(names).toContain("novelx-stage-editor")
     expect(names).toContain("novelx-visual-editor")
+    expect(names).toContain("novelx-publication-editor")
     expect(names).toContain("novelx-geography")
     expect(names).toContain("novelx-world-writer")
+    expect(names).toContain("novelx-world-prose-writer")
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
@@ -86,6 +88,7 @@ it.instance(
       expect(evalPerm(growth, "bash")).toBe("deny")
       expect(evalPerm(growth, "task", "novelx-stage-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-visual-editor")).toBe("allow")
+      expect(evalPerm(growth, "task", "novelx-publication-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-world-writer")).toBe("deny")
       expect(evalPerm(growth, "task", "novelx-geography")).toBe("deny")
       expect(evalPerm(growth, "task", "general")).toBe("deny")
@@ -115,6 +118,34 @@ it.instance("visual editor is hidden and can only register source-bound map and 
     expect(evalPerm(editor, "task", "general")).toBe("deny")
     expect(editor?.prompt).toContain("Do not draw SVG maps or write image files yourself")
     expect(editor?.prompt).toContain("at most three genuinely world-influential natural wonders")
+  }),
+)
+
+it.instance("publication editor can only project source-bound atlas and travelogue prose", () =>
+  Effect.gen(function* () {
+    const editor = yield* load((svc) => svc.get("novelx-publication-editor"))
+    expect(editor?.mode).toBe("subagent")
+    expect(editor?.hidden).toBe(true)
+    expect(evalPerm(editor, "novelx_prepare_world_publication")).toBe("allow")
+    expect(evalPerm(editor, "novelx_read_world_publication_source")).toBe("allow")
+    expect(evalPerm(editor, "novelx_commit_world_publication")).toBe("allow")
+    expect(evalPerm(editor, "novelx_finish_world_publication")).toBe("allow")
+    expect(evalPerm(editor, "task", "novelx-world-prose-writer")).toBe("allow")
+    expect(evalPerm(editor, "task", "novelx-world-writer")).toBe("deny")
+    expect(evalPerm(editor, "write")).toBe("deny")
+    expect(editor?.prompt).toContain("Never expose Agent names")
+  }),
+)
+
+it.instance("player prose writer is a hidden read-only leaf", () =>
+  Effect.gen(function* () {
+    const child = yield* load((svc) => svc.get("novelx-world-prose-writer"))
+    expect(child?.mode).toBe("subagent")
+    expect(child?.hidden).toBe(true)
+    expect(evalPerm(child, "read")).toBe("allow")
+    expect(evalPerm(child, "write")).toBe("deny")
+    expect(evalPerm(child, "task", "general")).toBe("deny")
+    expect(child?.prompt).toContain("Never mention or reproduce the production structure")
   }),
 )
 

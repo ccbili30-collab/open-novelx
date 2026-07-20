@@ -24,13 +24,19 @@ export interface TaskPromptOps {
 const id = "task"
 const novelXLeafInvocations = new Map<string, number>()
 
-const isNovelXOwnedLeaf = (name: string) => name === "novelx-geography" || name === "novelx-world-writer"
+const isNovelXOwnedLeaf = (name: string) =>
+  name === "novelx-geography" || name === "novelx-world-writer" || name === "novelx-world-prose-writer"
 const isNovelXOwnedChild = (name: string) =>
-  name === "novelx-stage-editor" || name === "novelx-visual-editor" || isNovelXOwnedLeaf(name)
+  name === "novelx-stage-editor" ||
+  name === "novelx-visual-editor" ||
+  name === "novelx-publication-editor" ||
+  isNovelXOwnedLeaf(name)
 const isNovelXEditorialDispatch = (parent: string, child: string) =>
   (parent === "growth" && child === "novelx-stage-editor") ||
   (parent === "growth" && child === "novelx-visual-editor") ||
-  (parent === "novelx-stage-editor" && child === "novelx-world-writer")
+  (parent === "growth" && child === "novelx-publication-editor") ||
+  (parent === "novelx-stage-editor" && child === "novelx-world-writer") ||
+  (parent === "novelx-publication-editor" && child === "novelx-world-prose-writer")
 const BACKGROUND_DESCRIPTION = [
   "Background mode: background=true launches the subagent asynchronously and returns immediately.",
   "Foreground is the default; use it when you need the result before continuing.",
@@ -118,7 +124,9 @@ export const TaskTool = Tool.define(
         current = yield* sessions.get(current.parentID)
       }
       const editorialNestedLeaf =
-        depth === 1 && isNovelXEditorialDispatch(ctx.agent, params.subagent_type) && ctx.agent === "novelx-stage-editor"
+        depth === 1 &&
+        isNovelXEditorialDispatch(ctx.agent, params.subagent_type) &&
+        (ctx.agent === "novelx-stage-editor" || ctx.agent === "novelx-publication-editor")
       if (depth >= (cfg.subagent_depth ?? 1) && !editorialNestedLeaf) {
         return yield* Effect.fail(
           new Error(
@@ -146,7 +154,9 @@ export const TaskTool = Tool.define(
       if (
         (next.name === "novelx-stage-editor" ||
           next.name === "novelx-visual-editor" ||
-          next.name === "novelx-world-writer") &&
+          next.name === "novelx-publication-editor" ||
+          next.name === "novelx-world-writer" ||
+          next.name === "novelx-world-prose-writer") &&
         !isNovelXEditorialDispatch(ctx.agent, next.name)
       ) {
         return yield* Effect.fail(

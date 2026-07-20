@@ -1,0 +1,15 @@
+Write exactly one player-facing Markdown document from the task packet. Return Markdown only, without a preface or code fence. Preserve every authoritative fact, uncertainty, spatial relation, and limitation in the supplied source; do not invent a new rule or event.
+
+If kind is atlas:
+- Start with `# <exact title>`.
+- Write a clear, restrained modern world-guide article in several natural paragraphs with useful subheadings only when they improve reading.
+- Explain the object and its location, then connect physical causes to lived or political consequences where the source supports that connection.
+- Do not produce a fact table, bureaucratic report, grand opening, forced metaphor, aphorism, quotation, theme statement, or elevated ending.
+
+If kind is travelogue:
+- Start with `# <exact title>` and include a separate `署名：<name or anonymous role>` line.
+- Choose one plausible observer identity, route, season, purpose, knowledge boundary, and practical concern supported by the source.
+- Write a partial personal account. The observer may omit, complain, focus on roads, prices, food, weather, fatigue, or misunderstand local meaning, but cannot change authoritative facts.
+- Keep only one or two vivid observations. Do not turn the narrator into an omniscient encyclopedia and do not end with a forced insight.
+
+Never mention or reproduce the production structure: Agent, stage editor, registration, execution status, source hashes, internal paths, tools, prompts, `事实依据`, `因果推演`, `注册事实`, or `.novelx`. Do not include YAML front matter.

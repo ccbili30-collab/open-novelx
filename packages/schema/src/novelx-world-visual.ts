@@ -15,6 +15,8 @@ export const SpatialClaimProfile = Schema.Struct({
   entityId: Schema.String,
   layer: Schema.Literals(["geography", "human"]),
   kind: Schema.Literals(["region", "river", "mountain", "polity", "organization"]),
+  geometry: Schema.Literals(["area", "line", "point"]),
+  parentEntityId: Schema.NullOr(Schema.String),
   surface: Surface,
   anchors: Schema.Array(Point).check(Schema.isMinLength(1), Schema.isMaxLength(12)),
   radius: Schema.Number.check(Schema.isGreaterThan(0.02), Schema.isLessThanOrEqualTo(0.65)),
@@ -47,8 +49,11 @@ export const AtlasCell = Schema.Struct({
   polygon: Schema.Array(Point).check(Schema.isMinLength(3), Schema.isMaxLength(32)),
   neighborIds: Schema.Array(Schema.String),
   surface: Surface,
-  geographyEntityIds: Schema.Array(Schema.String),
-  humanEntityIds: Schema.Array(Schema.String),
+  geographyAreaEntityId: Schema.NullOr(Schema.String),
+  humanAreaEntityId: Schema.NullOr(Schema.String),
+  geographyLineEntityIds: Schema.Array(Schema.String),
+  humanLineEntityIds: Schema.Array(Schema.String),
+  pointEntityIds: Schema.Array(Schema.String),
 })
 export interface AtlasCell extends Schema.Schema.Type<typeof AtlasCell> {}
 
@@ -56,8 +61,12 @@ export const AtlasFeature = Schema.Struct({
   entityId: Schema.String,
   layer: Schema.Literals(["geography", "human"]),
   kind: Schema.Literals(["region", "river", "mountain", "polity", "organization"]),
+  geometry: Schema.Literals(["area", "line", "point"]),
+  parentEntityId: Schema.NullOr(Schema.String),
   surface: Surface,
   cellIds: Schema.Array(Schema.String).check(Schema.isMinLength(1)),
+  rings: Schema.Array(Schema.Array(Point).check(Schema.isMinLength(3))),
+  path: Schema.Array(Point),
   label: Label,
   labelPoint: Point,
   summary: Summary,
@@ -91,7 +100,7 @@ export const ImageTask = Schema.Struct({
 export interface ImageTask extends Schema.Schema.Type<typeof ImageTask> {}
 
 export const Manifest = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+  schemaVersion: Schema.Literal(2),
   stage: Schema.Literal("world_visuals"),
   status: Schema.Literals(["queued", "generating", "ready", "partial", "failed"]),
   worldMaterializationIntegritySha256: Sha256,

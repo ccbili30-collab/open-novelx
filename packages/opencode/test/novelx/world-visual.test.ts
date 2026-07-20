@@ -224,6 +224,8 @@ const profile: NovelXWorldVisual.VisualRegistrationProfile = {
       entityId: "natural-basin",
       layer: "geography",
       kind: "region",
+      geometry: "area",
+      parentEntityId: null,
       surface: "plain",
       anchors: [{ x: 0.51, y: 0.55 }],
       radius: 0.32,
@@ -235,6 +237,8 @@ const profile: NovelXWorldVisual.VisualRegistrationProfile = {
       entityId: "natural-mountains",
       layer: "geography",
       kind: "mountain",
+      geometry: "area",
+      parentEntityId: null,
       surface: "mountain",
       anchors: [
         { x: 0.25, y: 0.25 },
@@ -250,6 +254,8 @@ const profile: NovelXWorldVisual.VisualRegistrationProfile = {
       entityId: "human-kingdom",
       layer: "human",
       kind: "polity",
+      geometry: "area",
+      parentEntityId: null,
       surface: "plain",
       anchors: [
         { x: 0.48, y: 0.52 },
@@ -295,6 +301,16 @@ describe("NovelX world visual materialization", () => {
     expect(
       first.manifest.atlas.features.find((feature) => feature.entityId === "natural-basin")!.cellIds.length,
     ).toBeGreaterThan(1)
+    const basin = first.manifest.atlas.features.find((feature) => feature.entityId === "natural-basin")!
+    const mountains = first.manifest.atlas.features.find((feature) => feature.entityId === "natural-mountains")!
+    expect(basin.rings.length).toBeGreaterThan(0)
+    expect(mountains.rings.length).toBeGreaterThan(0)
+    expect(basin.cellIds.filter((cellId) => mountains.cellIds.includes(cellId))).toEqual([])
+    expect(
+      first.manifest.atlas.cells.every((cell) =>
+        cell.geographyAreaEntityId ? ["natural-basin", "natural-mountains"].includes(cell.geographyAreaEntityId) : true,
+      ),
+    ).toBe(true)
     expect(verifyWorldVisuals({ manifest: first.manifest, materialization })).toEqual(first.manifest)
   })
 

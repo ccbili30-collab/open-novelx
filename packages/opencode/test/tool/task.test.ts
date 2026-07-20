@@ -598,6 +598,36 @@ describe("tool.task", () => {
         },
         { ...rootContext, sessionID: stageSession.id, messageID: stageAssistant.id, agent: "novelx-stage-editor" },
       )
+      const publication = yield* def.execute(
+        {
+          description: "世界图志与纪行",
+          prompt: "Current materialization and visual integrity hashes",
+          subagent_type: "novelx-publication-editor",
+        },
+        rootContext,
+      )
+      const publicationSession = yield* sessions.get(publication.metadata.sessionId)
+      const publicationAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: publicationSession.id,
+        mode: "novelx-publication-editor",
+        agent: "novelx-publication-editor",
+      })
+      const prose = yield* def.execute(
+        {
+          description: "图志：北境冰原",
+          prompt: "Exact source dossier and atlas mode",
+          subagent_type: "novelx-world-prose-writer",
+        },
+        {
+          ...rootContext,
+          sessionID: publicationSession.id,
+          messageID: publicationAssistant.id,
+          agent: "novelx-publication-editor",
+        },
+      )
       const rootToLeaf = yield* def
         .execute(
           {
@@ -621,6 +651,8 @@ describe("tool.task", () => {
 
       expect(stageSession.parentID).toBe(chat.id)
       expect((yield* sessions.get(leaf.metadata.sessionId)).parentID).toBe(stageSession.id)
+      expect(publicationSession.parentID).toBe(chat.id)
+      expect((yield* sessions.get(prose.metadata.sessionId)).parentID).toBe(publicationSession.id)
       expect(rootToLeaf._tag).toBe("Failure")
       expect(stageToStage._tag).toBe("Failure")
     }),

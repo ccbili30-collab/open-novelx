@@ -17,8 +17,10 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_NOVELX_WORLD_GROWTH from "./prompt/novelx-world-growth.txt"
 import PROMPT_NOVELX_STAGE_EDITOR from "./prompt/novelx-stage-editor.txt"
 import PROMPT_NOVELX_VISUAL_EDITOR from "./prompt/novelx-visual-editor.txt"
+import PROMPT_NOVELX_PUBLICATION_EDITOR from "./prompt/novelx-publication-editor.txt"
 import PROMPT_NOVELX_GEOGRAPHY_WRITER from "./prompt/novelx-geography-writer.txt"
 import PROMPT_NOVELX_WORLD_WRITER from "./prompt/novelx-world-writer.txt"
+import PROMPT_NOVELX_WORLD_PROSE_WRITER from "./prompt/novelx-world-prose-writer.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -152,6 +154,7 @@ const layer = Layer.effect(
               "*": "deny",
               "novelx-stage-editor": "allow",
               "novelx-visual-editor": "allow",
+              "novelx-publication-editor": "allow",
             },
           }),
           [
@@ -201,6 +204,26 @@ const layer = Layer.effect(
             { permission: "doom_loop", pattern: "novelx_register_world_visuals", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
+        const publicationEditorRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_prepare_world_publication: "allow",
+            novelx_read_world_publication_source: "allow",
+            novelx_commit_world_publication: "allow",
+            novelx_finish_world_publication: "allow",
+            task: {
+              "*": "deny",
+              "novelx-world-prose-writer": "allow",
+            },
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_prepare_world_publication", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_read_world_publication_source", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_commit_world_publication", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_world_publication", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
         const geographyRestriction = Permission.fromConfig({
           "*": "deny",
           read: "allow",
@@ -210,6 +233,14 @@ const layer = Layer.effect(
           external_directory: readonlyExternalDirectory,
         })
         const worldWriterRestriction = Permission.fromConfig({
+          "*": "deny",
+          read: "allow",
+          glob: "allow",
+          grep: "allow",
+          list: "allow",
+          external_directory: readonlyExternalDirectory,
+        })
+        const worldProseWriterRestriction = Permission.fromConfig({
           "*": "deny",
           read: "allow",
           glob: "allow",
@@ -294,6 +325,17 @@ const layer = Layer.effect(
             steps: 18,
             prompt: PROMPT_NOVELX_VISUAL_EDITOR,
           },
+          "novelx-publication-editor": {
+            name: "novelx-publication-editor",
+            description: "NovelX 玩家文稿主编。把权威世界档案投影为图志与必要纪行。",
+            options: {},
+            permission: Permission.merge(defaults, user, publicationEditorRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 120,
+            prompt: PROMPT_NOVELX_PUBLICATION_EDITOR,
+          },
           "novelx-geography": {
             name: "novelx-geography",
             description: "NovelX 地理执行叶节点。只根据已注册的真实地形上下文撰写一份详细地理档案并返回主编。",
@@ -315,6 +357,17 @@ const layer = Layer.effect(
             hidden: true,
             steps: 4,
             prompt: PROMPT_NOVELX_WORLD_WRITER,
+          },
+          "novelx-world-prose-writer": {
+            name: "novelx-world-prose-writer",
+            description: "NovelX 玩家文稿叶节点。只依据一份权威原文撰写图志或纪行。",
+            options: {},
+            permission: Permission.merge(defaults, user, worldProseWriterRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 4,
+            prompt: PROMPT_NOVELX_WORLD_PROSE_WRITER,
           },
           general: {
             name: "general",
@@ -406,8 +459,10 @@ const layer = Layer.effect(
             key === "growth" ||
             key === "novelx-stage-editor" ||
             key === "novelx-visual-editor" ||
+            key === "novelx-publication-editor" ||
             key === "novelx-geography" ||
-            key === "novelx-world-writer"
+            key === "novelx-world-writer" ||
+            key === "novelx-world-prose-writer"
           )
             continue
           if (value.disable) {

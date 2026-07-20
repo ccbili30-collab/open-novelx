@@ -133,3 +133,11 @@ export function assertWorldVisualEditor(ctx: Tool.Context) {
     throw new Error("NOVELX_VISUAL_EDITOR_REQUIRED: This tool may only run in the NovelX visual editor session.")
   }
 }
+
+export function assertWorldPublicationEditor(ctx: Tool.Context) {
+  if (ctx.agent !== "novelx-publication-editor") {
+    throw new Error(
+      "NOVELX_PUBLICATION_EDITOR_REQUIRED: This tool may only run in the NovelX publication editor session.",
+    )
+  }
+}

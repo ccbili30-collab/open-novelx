@@ -37,53 +37,129 @@ export async function compileWorldVisuals(input: {
   for (const scenery of input.profile.scenery) requireCommittedSource(scenery.ownerEntityId, entities, documents)
   validateScenery(input.profile)
 
-  const seed = `${blueprint.integritySha256}:world-atlas-v1`
+  validateSpatialClaims(input.profile.claims)
+  const seed = `${blueprint.integritySha256}:world-atlas-v2`
   const baseCells = voronoiCells(seed, input.cellCount ?? 72)
+  const claims = new Map(input.profile.claims.map((claim) => [claim.entityId, claim]))
+  const children = new Map<string, string[]>()
+  for (const claim of input.profile.claims) {
+    if (!claim.parentEntityId) continue
+    children.set(claim.parentEntityId, [...(children.get(claim.parentEntityId) ?? []), claim.entityId])
+  }
+  const geographyAreas = assignAreaCells(
+    baseCells,
+    input.profile.claims.filter(
+      (claim) => claim.layer === "geography" && claim.geometry === "area" && !children.has(claim.entityId),
+    ),
+    "geography",
+  )
+  const humanAreas = assignAreaCells(
+    baseCells,
+    input.profile.claims.filter(
+      (claim) => claim.layer === "human" && claim.geometry === "area" && !children.has(claim.entityId),
+    ),
+    "human",
+  )
+  const directCells = new Map(
+    input.profile.claims.map((claim) => [
+      claim.entityId,
+      claim.geometry === "area"
+        ? baseCells
+            .filter(
+              (cell) => (claim.layer === "geography" ? geographyAreas : humanAreas).get(cell.id) === claim.entityId,
+            )
+            .map((cell) => cell.id)
+        : claim.geometry === "line"
+          ? selectLineCells(baseCells, claim.anchors)
+          : [nearestCell(baseCells, claim.anchors[0]!).id],
+    ]),
+  )
+  const featureCells = (entityId: string, stack: string[] = []): string[] => {
+    if (stack.includes(entityId)) {
+      throw new WorldVisualError("NOVELX_VISUAL_HIERARCHY_CYCLE", "Atlas area hierarchy contains a cycle.")
+    }
+    const descendants = children.get(entityId)
+    if (!descendants?.length) return directCells.get(entityId) ?? []
+    return [...new Set(descendants.flatMap((child) => featureCells(child, [...stack, entityId])))]
+  }
   const features = input.profile.claims.map((claim) => {
     const source = requireCommittedSource(claim.entityId, entities, documents)
-    const ranked = baseCells
-      .map((cell) => ({
-        cell,
-        distance: Math.min(...claim.anchors.map((anchor) => distance(cell.center, anchor))),
-        order: Math.min(...claim.anchors.map((anchor, index) => distance(cell.center, anchor) + index * 0.00001)),
-      }))
-      .sort((left, right) => left.order - right.order)
-    const selected = ranked.filter((item) => item.distance <= claim.radius)
-    const cellIds = (selected.length ? selected : ranked.slice(0, 1)).map((item) => item.cell.id)
+    const cellIds = featureCells(claim.entityId)
+    if (!cellIds.length) {
+      throw new WorldVisualError(
+        "NOVELX_VISUAL_FEATURE_EMPTY",
+        `Spatial feature ${claim.label} does not own any atlas geometry.`,
+      )
+    }
+    const featureCellRecords = cellIds.map((cellId) => baseCells.find((cell) => cell.id === cellId)!)
+    const path = claim.geometry === "line" ? claim.anchors.map((point) => ({ ...point })) : []
     return {
       entityId: claim.entityId,
       layer: claim.layer,
       kind: claim.kind,
+      geometry: claim.geometry,
+      parentEntityId: claim.parentEntityId,
       surface: claim.surface,
       cellIds,
+      rings: claim.geometry === "area" ? externalRings(featureCellRecords) : [],
+      path,
       label: claim.label,
-      labelPoint: claim.anchors[0]!,
+      labelPoint:
+        claim.geometry === "area"
+          ? areaLabelPoint(featureCellRecords)
+          : claim.geometry === "line"
+            ? path[Math.floor(path.length / 2)]!
+            : claim.anchors[0]!,
       summary: claim.summary,
       sourceSha256: source.committedSha256!,
       importance: claim.importance,
     } satisfies NovelXWorldVisual.AtlasFeature
   })
   const cells = baseCells.map((cell) => {
-    const geography = features.filter((feature) => feature.layer === "geography" && feature.cellIds.includes(cell.id))
-    const human = features.filter((feature) => feature.layer === "human" && feature.cellIds.includes(cell.id))
-    const surface = geography
-      .toSorted((left, right) => surfacePriority(right.surface) - surfacePriority(left.surface))
-      .at(0)?.surface
+    const geographyAreaEntityId = geographyAreas.get(cell.id) ?? null
+    const humanAreaEntityId = humanAreas.get(cell.id) ?? null
+    const geographyLineEntityIds = features
+      .filter(
+        (feature) => feature.layer === "geography" && feature.geometry === "line" && feature.cellIds.includes(cell.id),
+      )
+      .map((feature) => feature.entityId)
+    const humanLineEntityIds = features
+      .filter(
+        (feature) => feature.layer === "human" && feature.geometry === "line" && feature.cellIds.includes(cell.id),
+      )
+      .map((feature) => feature.entityId)
+    const pointEntityIds = features
+      .filter((feature) => feature.geometry === "point" && feature.cellIds.includes(cell.id))
+      .map((feature) => feature.entityId)
+    const surface = geographyAreaEntityId ? claims.get(geographyAreaEntityId)?.surface : undefined
     return {
       ...cell,
       surface: surface ?? (cell.center.x < 0.08 || cell.center.x > 0.92 || cell.center.y < 0.06 ? "ocean" : "plain"),
-      geographyEntityIds: geography.map((feature) => feature.entityId),
-      humanEntityIds: human.map((feature) => feature.entityId),
+      geographyAreaEntityId,
+      humanAreaEntityId,
+      geographyLineEntityIds,
+      humanLineEntityIds,
+      pointEntityIds,
     } satisfies NovelXWorldVisual.AtlasCell
   })
-  const mapSources = features.filter((feature) => feature.layer === "geography")
+  const mapSources = features.filter((feature) => feature.layer === "geography" && feature.geometry === "area")
   if (!mapSources.length) {
     throw new WorldVisualError("NOVELX_VISUAL_GEOGRAPHY_REQUIRED", "A world map requires geography claims.")
   }
   const maskBytes = await renderSemanticMask(cells)
   const semanticMaskSha256 = createHash("sha256").update(maskBytes).digest("hex")
-  const meshSha256 = worldSha256(cells.map(({ geographyEntityIds, humanEntityIds, ...cell }) => cell))
+  const meshSha256 = worldSha256(cells)
   const visualLanguageSha256 = worldSha256(input.profile.visualLanguage)
+  const mapPrompt = [
+    input.profile.mapPrompt,
+    "Authoritative placements (normalized x,y; north is y=0):",
+    ...mapSources.map(
+      (feature) =>
+        `${feature.label}: ${feature.surface}, label near (${feature.labelPoint.x.toFixed(2)},${feature.labelPoint.y.toFixed(2)}).`,
+    ),
+  ]
+    .join("\n")
+    .slice(0, 2000)
   const mapTask = {
     id: stableId("visual-task", "world-map", meshSha256, semanticMaskSha256),
     type: "map" as const,
@@ -91,7 +167,7 @@ export async function compileWorldVisuals(input: {
     ownerEntityId: null,
     status: "queued" as const,
     title: `${blueprint.profile.title}地图`,
-    prompt: input.profile.mapPrompt,
+    prompt: mapPrompt,
     rationale: "以已封存自然档案和权威语义网格生成无字底图，地理与国家文字由 UI 图层投影。",
     sourceEntityIds: mapSources.map((feature) => feature.entityId),
     sourceSha256s: mapSources.map((feature) => feature.sourceSha256),
@@ -139,7 +215,7 @@ export async function compileWorldVisuals(input: {
     features,
   }
   const draft = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     stage: "world_visuals" as const,
     status: "queued" as const,
     worldMaterializationIntegritySha256: materialization.integritySha256,
@@ -166,11 +242,23 @@ export function verifyWorldVisuals(input: {
     throw new WorldVisualError("NOVELX_VISUAL_SOURCE_DRIFT", "World visual manifest belongs to stale world facts.")
   }
   const featureIds = new Set(input.manifest.atlas.features.map((feature) => feature.entityId))
+  if (featureIds.size !== input.manifest.atlas.features.length) {
+    throw new WorldVisualError("NOVELX_VISUAL_FEATURE_SET_INVALID", "Atlas feature IDs must be unique.")
+  }
   for (const cell of input.manifest.atlas.cells) {
-    if ([...cell.geographyEntityIds, ...cell.humanEntityIds].some((entityId) => !featureIds.has(entityId))) {
+    if (
+      [
+        cell.geographyAreaEntityId,
+        cell.humanAreaEntityId,
+        ...cell.geographyLineEntityIds,
+        ...cell.humanLineEntityIds,
+        ...cell.pointEntityIds,
+      ].some((entityId) => entityId !== null && !featureIds.has(entityId))
+    ) {
       throw new WorldVisualError("NOVELX_VISUAL_CELL_REFERENCE_INVALID", "Atlas cell references an unknown feature.")
     }
   }
+  validateAtlasGeometry(input.manifest)
   const tasks = new Set(input.manifest.tasks.map((task) => task.id))
   if (
     tasks.size !== input.manifest.tasks.length ||
@@ -277,6 +365,180 @@ function requireCommittedSource(
   return source
 }
 
+function validateSpatialClaims(claims: readonly NovelXWorldVisual.SpatialClaimProfile[]) {
+  const records = new Map(claims.map((claim) => [claim.entityId, claim]))
+  if (records.size !== claims.length) {
+    throw new WorldVisualError("NOVELX_VISUAL_FEATURE_SET_INVALID", "Spatial claim entity IDs must be unique.")
+  }
+  for (const claim of claims) {
+    if (!claim.parentEntityId) continue
+    const parent = records.get(claim.parentEntityId)
+    if (!parent || parent.geometry !== "area" || claim.geometry !== "area" || parent.layer !== claim.layer) {
+      throw new WorldVisualError(
+        "NOVELX_VISUAL_HIERARCHY_INVALID",
+        `Spatial parent ${claim.parentEntityId} must be an area in the same layer.`,
+      )
+    }
+    const seen = new Set([claim.entityId])
+    let cursor: NovelXWorldVisual.SpatialClaimProfile | undefined = parent
+    while (cursor) {
+      if (seen.has(cursor.entityId)) {
+        throw new WorldVisualError("NOVELX_VISUAL_HIERARCHY_CYCLE", "Atlas area hierarchy contains a cycle.")
+      }
+      seen.add(cursor.entityId)
+      cursor = cursor.parentEntityId ? records.get(cursor.parentEntityId) : undefined
+    }
+  }
+}
+
+function assignAreaCells(
+  cells: ReturnType<typeof voronoiCells>,
+  claims: readonly NovelXWorldVisual.SpatialClaimProfile[],
+  layer: "geography" | "human",
+) {
+  const assignments = new Map<string, string>()
+  if (!claims.length) return assignments
+  for (const cell of cells) {
+    const ranked = claims
+      .map((claim) => ({
+        claim,
+        score: Math.min(...claim.anchors.map((anchor) => distance(cell.center, anchor))) / claim.radius,
+      }))
+      .toSorted((left, right) => left.score - right.score || left.claim.entityId.localeCompare(right.claim.entityId))
+    const best = ranked[0]!
+    if (layer === "human" && best.score > 1) continue
+    const edge = cell.center.x < 0.08 || cell.center.x > 0.92 || cell.center.y < 0.06 || cell.center.y > 0.97
+    if (layer === "geography" && edge && best.score > 1 && best.claim.surface !== "ocean") continue
+    assignments.set(cell.id, best.claim.entityId)
+  }
+  return assignments
+}
+
+function selectLineCells(cells: ReturnType<typeof voronoiCells>, anchors: readonly Point[]) {
+  const anchorCells = anchors.map((anchor) => nearestCell(cells, anchor))
+  return [
+    ...new Set(
+      anchorCells.flatMap((cell, index) => {
+        const next = anchorCells[index + 1]
+        return next ? shortestCellPath(cells, cell.id, next.id) : [cell.id]
+      }),
+    ),
+  ]
+}
+
+function shortestCellPath(cells: ReturnType<typeof voronoiCells>, start: string, target: string) {
+  if (start === target) return [start]
+  const records = new Map(cells.map((cell) => [cell.id, cell]))
+  const queue = [start]
+  const previous = new Map<string, string>()
+  const visited = new Set(queue)
+  while (queue.length) {
+    const current = queue.shift()!
+    for (const neighbor of records.get(current)?.neighborIds ?? []) {
+      if (visited.has(neighbor)) continue
+      visited.add(neighbor)
+      previous.set(neighbor, current)
+      if (neighbor === target) {
+        const path = [target]
+        while (path[0] !== start) path.unshift(previous.get(path[0]!)!)
+        return path
+      }
+      queue.push(neighbor)
+    }
+  }
+  throw new WorldVisualError("NOVELX_VISUAL_LINE_DISCONNECTED", "Atlas line anchors are disconnected.")
+}
+
+function nearestCell(cells: ReturnType<typeof voronoiCells>, point: Point) {
+  return cells.reduce((best, candidate) =>
+    distance(point, candidate.center) < distance(point, best.center) ? candidate : best,
+  )
+}
+
+function externalRings(cells: ReturnType<typeof voronoiCells>) {
+  const edges = new Map<string, { left: Point; right: Point; count: number }>()
+  for (const cell of cells) {
+    cell.polygon.forEach((left, index) => {
+      const right = cell.polygon[(index + 1) % cell.polygon.length]!
+      const key = edgeKey(left, right)
+      const current = edges.get(key)
+      edges.set(key, current ? { ...current, count: current.count + 1 } : { left, right, count: 1 })
+    })
+  }
+  const boundary = [...edges.values()].filter((edge) => edge.count === 1)
+  const pointKey = (point: Point) => `${point.x.toFixed(5)},${point.y.toFixed(5)}`
+  const remaining = new Map(boundary.map((edge) => [edgeKey(edge.left, edge.right), edge]))
+  const rings: Point[][] = []
+  while (remaining.size) {
+    const first = remaining.values().next().value as { left: Point; right: Point }
+    remaining.delete(edgeKey(first.left, first.right))
+    const ring = [first.left, first.right]
+    while (pointKey(ring.at(-1)!) !== pointKey(ring[0]!)) {
+      const end = ring.at(-1)!
+      const next = [...remaining.values()].find(
+        (edge) => pointKey(edge.left) === pointKey(end) || pointKey(edge.right) === pointKey(end),
+      )
+      if (!next) {
+        throw new WorldVisualError("NOVELX_VISUAL_OUTLINE_OPEN", "Atlas area boundary is not a closed ring.")
+      }
+      remaining.delete(edgeKey(next.left, next.right))
+      ring.push(pointKey(next.left) === pointKey(end) ? next.right : next.left)
+    }
+    rings.push(ring.slice(0, -1))
+  }
+  return rings
+}
+
+function areaLabelPoint(cells: ReturnType<typeof voronoiCells>) {
+  const centroid = {
+    x: cells.reduce((sum, cell) => sum + cell.center.x, 0) / cells.length,
+    y: cells.reduce((sum, cell) => sum + cell.center.y, 0) / cells.length,
+  }
+  return nearestCell(cells, centroid).center
+}
+
+function validateAtlasGeometry(manifest: NovelXWorldVisual.Manifest) {
+  const cells = new Map(manifest.atlas.cells.map((cell) => [cell.id, cell]))
+  const features = new Map(manifest.atlas.features.map((feature) => [feature.entityId, feature]))
+  for (const feature of manifest.atlas.features) {
+    if (feature.cellIds.some((cellId) => !cells.has(cellId))) {
+      throw new WorldVisualError("NOVELX_VISUAL_FEATURE_CELL_INVALID", "Atlas feature references an unknown cell.")
+    }
+    if (feature.geometry === "area" && !feature.rings.length) {
+      throw new WorldVisualError("NOVELX_VISUAL_OUTLINE_REQUIRED", "Atlas areas require an external outline.")
+    }
+    if (feature.geometry === "line" && feature.path.length < 2) {
+      throw new WorldVisualError("NOVELX_VISUAL_LINE_PATH_REQUIRED", "Atlas lines require an ordered path.")
+    }
+    if (feature.parentEntityId) {
+      const parent = features.get(feature.parentEntityId)
+      if (!parent || parent.geometry !== "area" || parent.layer !== feature.layer) {
+        throw new WorldVisualError("NOVELX_VISUAL_HIERARCHY_INVALID", "Atlas feature parent is invalid.")
+      }
+      if (feature.cellIds.some((cellId) => !parent.cellIds.includes(cellId))) {
+        throw new WorldVisualError("NOVELX_VISUAL_PARENT_UNION_INVALID", "Atlas parent does not contain its child.")
+      }
+    }
+  }
+  for (const layer of ["geography", "human"] as const) {
+    const leafAreas = manifest.atlas.features.filter(
+      (feature) =>
+        feature.layer === layer &&
+        feature.geometry === "area" &&
+        !manifest.atlas.features.some((candidate) => candidate.parentEntityId === feature.entityId),
+    )
+    const ownership = new Set<string>()
+    for (const feature of leafAreas) {
+      for (const cellId of feature.cellIds) {
+        if (ownership.has(cellId)) {
+          throw new WorldVisualError("NOVELX_VISUAL_AREA_OVERLAP", "Sibling atlas areas may not overlap.")
+        }
+        ownership.add(cellId)
+      }
+    }
+  }
+}
+
 function voronoiCells(seed: string, count: number) {
   if (count < 24 || count > 160)
     throw new WorldVisualError("NOVELX_VISUAL_CELL_COUNT_INVALID", "Cell count is out of range.")
@@ -364,10 +626,18 @@ async function renderSemanticMask(cells: NovelXWorldVisual.AtlasCell[]) {
   }
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const point = { x: (x + 0.5) / size, y: (y + 0.5) / size }
-      const cell = cells.reduce((best, candidate) =>
-        distance(point, candidate.center) < distance(point, best.center) ? candidate : best,
-      )
+      const unitX = (x + 0.5) / size
+      const unitY = (y + 0.5) / size
+      let cell = cells[0]!
+      let bestDistance = Number.POSITIVE_INFINITY
+      for (const candidate of cells) {
+        const deltaX = unitX - candidate.center.x
+        const deltaY = unitY - candidate.center.y
+        const candidateDistance = deltaX * deltaX + deltaY * deltaY
+        if (candidateDistance >= bestDistance) continue
+        cell = candidate
+        bestDistance = candidateDistance
+      }
       const color = colors[cell.surface]
       const offset = (y * size + x) * 4
       rgba[offset] = color[0]
@@ -383,10 +653,6 @@ async function renderSemanticMask(cells: NovelXWorldVisual.AtlasCell[]) {
   } finally {
     image.free()
   }
-}
-
-function surfacePriority(surface: NovelXWorldVisual.Surface) {
-  return { ocean: 0, plain: 1, coast: 2, forest: 3, marsh: 4, desert: 5, ice: 6, mountain: 7 }[surface]
 }
 
 function distance(left: Point, right: Point) {

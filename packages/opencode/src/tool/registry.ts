@@ -73,6 +73,10 @@ import { NovelXRecoverGrowthContextTool } from "./novelx-recover-growth-context"
 import { NovelXPrepareWorldVisualsTool } from "./novelx-prepare-world-visuals"
 import { NovelXReadWorldVisualSourcesTool } from "./novelx-read-world-visual-sources"
 import { NovelXRegisterWorldVisualsTool } from "./novelx-register-world-visuals"
+import { NovelXPrepareWorldPublicationTool } from "./novelx-prepare-world-publication"
+import { NovelXReadWorldPublicationSourceTool } from "./novelx-read-world-publication-source"
+import { NovelXCommitWorldPublicationTool } from "./novelx-commit-world-publication"
+import { NovelXFinishWorldPublicationTool } from "./novelx-finish-world-publication"
 import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
@@ -148,6 +152,10 @@ const layer = Layer.effect(
     const prepareWorldVisuals = yield* NovelXPrepareWorldVisualsTool
     const readWorldVisualSources = yield* NovelXReadWorldVisualSourcesTool
     const registerWorldVisuals = yield* NovelXRegisterWorldVisualsTool
+    const prepareWorldPublication = yield* NovelXPrepareWorldPublicationTool
+    const readWorldPublicationSource = yield* NovelXReadWorldPublicationSourceTool
+    const commitWorldPublication = yield* NovelXCommitWorldPublicationTool
+    const finishWorldPublication = yield* NovelXFinishWorldPublicationTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -274,6 +282,10 @@ const layer = Layer.effect(
           prepareWorldVisuals: Tool.init(prepareWorldVisuals),
           readWorldVisualSources: Tool.init(readWorldVisualSources),
           registerWorldVisuals: Tool.init(registerWorldVisuals),
+          prepareWorldPublication: Tool.init(prepareWorldPublication),
+          readWorldPublicationSource: Tool.init(readWorldPublicationSource),
+          commitWorldPublication: Tool.init(commitWorldPublication),
+          finishWorldPublication: Tool.init(finishWorldPublication),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -315,6 +327,10 @@ const layer = Layer.effect(
             tool.prepareWorldVisuals,
             tool.readWorldVisualSources,
             tool.registerWorldVisuals,
+            tool.prepareWorldPublication,
+            tool.readWorldPublicationSource,
+            tool.commitWorldPublication,
+            tool.finishWorldPublication,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
