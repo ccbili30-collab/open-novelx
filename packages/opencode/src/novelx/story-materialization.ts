@@ -20,10 +20,14 @@ export type CompletedStoryMaterialization = RegisteredStoryMaterialization & {
 
 export function createStoryMaterialization(input: {
   world: { title: string; materializationIntegritySha256: string; sources: readonly NovelXStory.WorldSource[] }
+  protagonist: NovelXStory.ProtagonistSource
   editorSessionId: string
   now: number
-}): NovelXStory.Materialization {
+}): NovelXStory.MaterializationV2 {
   if (!input.world.sources.length) fail("NOVELX_STORY_WORLD_EMPTY", "The frozen world has no readable sources.")
+  if (!input.protagonist) {
+    fail("NOVELX_STORY_CHARACTER_REQUIRED", "New Story Growth requires one completed protagonist dossier.")
+  }
   unique(input.world.sources.map((source) => source.entityId), "world source ID")
   const world = {
     title: concreteLabel(input.world.title, "world.title"),
@@ -35,21 +39,65 @@ export function createStoryMaterialization(input: {
       sha256: sha256(source.sha256, `world source ${source.entityId}`),
     })),
   }
-  const preparedContextSha256 = worldSha256({ world })
+  const protagonist = {
+    id: concreteLabel(input.protagonist.id, "protagonist.id"),
+    name: concreteLabel(input.protagonist.name, "protagonist.name"),
+    path: safePath(input.protagonist.path),
+    sha256: sha256(input.protagonist.sha256, "protagonist dossier"),
+    characterIntegritySha256: sha256(input.protagonist.characterIntegritySha256, "character integrity"),
+  }
+  if (!protagonist.path.startsWith("Characters/")) {
+    fail("NOVELX_STORY_CHARACTER_PATH_INVALID", "The protagonist source must be a committed Characters dossier.")
+  }
+  const preparedContextSha256 = worldSha256({ world, protagonist })
   return withIntegrity({
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     stage: "story_materialization" as const,
     status: "planning" as const,
     world,
     editorSessionId: concreteLabel(input.editorSessionId, "story editor session"),
     preparedContextSha256,
     sourceReads: [],
+    protagonist,
+    protagonistRead: null,
     registrationSha256: null,
     historyBooks: [],
     references: [],
     novel: null,
     documents: [],
     createdAt: input.now,
+    updatedAt: input.now,
+  }) as NovelXStory.MaterializationV2
+}
+
+export function recordStoryCharacterRead(input: {
+  manifest: NovelXStory.Materialization
+  editorSessionId: string
+  protagonistId: string
+  sourceSha256: string
+  now: number
+}) {
+  const current = verifyStoryMaterialization(input.manifest)
+  assertEditor(current, input.editorSessionId)
+  if (current.schemaVersion !== 2) {
+    fail("NOVELX_STORY_LEGACY_CHARACTER_UNSUPPORTED", "Legacy Story v1 cannot acquire a retroactive protagonist source.")
+  }
+  const protagonist = current.protagonist
+  if (!protagonist) fail("NOVELX_STORY_CHARACTER_REQUIRED", "Story v2 is missing its protagonist source.")
+  if (current.status !== "planning") {
+    fail("NOVELX_STORY_PLANNING_REQUIRED", "The protagonist source is read only while planning Story Growth.")
+  }
+  if (input.protagonistId !== protagonist.id || input.sourceSha256 !== protagonist.sha256) {
+    fail("NOVELX_STORY_CHARACTER_SOURCE_DRIFT", "The read protagonist dossier does not match the frozen source.")
+  }
+  if (current.protagonistRead) return current
+  return withIntegrity({
+    ...withoutIntegrity(current),
+    protagonistRead: {
+      protagonistId: protagonist.id,
+      sourceSha256: protagonist.sha256,
+      readAt: input.now,
+    },
     updatedAt: input.now,
   })
 }
@@ -85,6 +133,19 @@ export function registerStory(input: {
   if (current.status !== "planning") fail("NOVELX_STORY_REGISTRATION_CONFLICT", "The story has already been registered.")
   if (input.profile.contextSha256 !== current.preparedContextSha256) {
     fail("NOVELX_STORY_CONTEXT_STALE", "Story registration was not planned from the current frozen world context.")
+  }
+  if (current.schemaVersion === 2) {
+    const protagonist = current.protagonist
+    if (!protagonist) fail("NOVELX_STORY_CHARACTER_REQUIRED", "Story v2 is missing its protagonist source.")
+    if (
+      current.protagonistRead?.protagonistId !== protagonist.id ||
+      current.protagonistRead.sourceSha256 !== protagonist.sha256
+    ) {
+      fail(
+        "NOVELX_STORY_CHARACTER_SOURCE_UNREAD",
+        "The Story editor must read the exact frozen protagonist dossier before registration.",
+      )
+    }
   }
   if (input.profile.historyBooks.length < 1 || input.profile.historyBooks.length > 4) {
     fail("NOVELX_STORY_HISTORY_COUNT_INVALID", "Story Growth requires one to four named history books.")
@@ -260,12 +321,14 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
   editorMessageId: string
   committedContents: Record<string, string>
   worldContents?: Record<string, string>
+  protagonistMarkdown?: string
   now: number
 }) {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
   if (current.status !== "writing") fail("NOVELX_STORY_WRITING_REQUIRED", "Story documents can only be prepared while writing.")
   const record = requireDocument(current, input.documentId)
+  const protagonist = protagonistContext(current, input.protagonistMarkdown)
   for (const prior of current.documents.filter((document) => document.ordinal < record.ordinal)) {
     const content = input.committedContents[prior.id]
     if (prior.status !== "committed" || !content || worldSha256(normalizeMarkdown(content)) !== prior.committedSha256) {
@@ -287,6 +350,7 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
       record: requireDocument(current, id),
       markdown: requireCommittedContent(current, id, input.committedContents),
     })),
+    protagonist,
   }
   if (record.status === "committed") return { manifest: current, record, context, replayed: true }
   // A lease belongs to the long-lived stage editor session, not to one model
@@ -348,7 +412,7 @@ export function finishStoryText(input: {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
   if (!current.documents.length || current.documents.some((document) => document.status !== "committed")) {
-    fail("NOVELX_STORY_TEXT_INCOMPLETE", "Every history, reference and novel document must be committed before covers start.")
+    fail("NOVELX_STORY_TEXT_INCOMPLETE", "Every history, reference and novel document must be committed before Story text completes.")
   }
   return withIntegrity({ ...withoutIntegrity(current), status: "text_completed" as const, updatedAt: input.now }) as CompletedStoryMaterialization
 }
@@ -359,6 +423,30 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
   unique(manifest.world.sources.map((source) => source.entityId), "world source ID")
   unique(manifest.documents.map((document) => document.id), "story document ID")
   unique(manifest.documents.map((document) => document.targetPath.toLocaleLowerCase("zh-CN")), "story target path")
+  if (manifest.schemaVersion === 2 && !manifest.protagonist) {
+    fail("NOVELX_STORY_CHARACTER_REQUIRED", "Story v2 is missing its protagonist source.")
+  }
+  const expectedContextSha256 = worldSha256(
+    manifest.schemaVersion === 2
+      ? { world: manifest.world, protagonist: manifest.protagonist! }
+      : { world: manifest.world },
+  )
+  if (manifest.preparedContextSha256 !== expectedContextSha256) {
+    fail("NOVELX_STORY_CONTEXT_INVALID", "Story prepared context does not match its frozen sources.")
+  }
+  if (manifest.schemaVersion === 2) {
+    const protagonist = manifest.protagonist!
+    if (!safeRelativePath(protagonist.path) || !protagonist.path.startsWith("Characters/")) {
+      fail("NOVELX_STORY_CHARACTER_PATH_INVALID", "The protagonist source path is invalid.")
+    }
+    if (
+      manifest.protagonistRead &&
+      (manifest.protagonistRead.protagonistId !== protagonist.id ||
+        manifest.protagonistRead.sourceSha256 !== protagonist.sha256)
+    ) {
+      fail("NOVELX_STORY_CHARACTER_SOURCE_DRIFT", "The recorded protagonist read does not match its frozen source.")
+    }
+  }
   if (manifest.status === "planning") {
     if (manifest.registrationSha256 || manifest.historyBooks.length || manifest.references.length || manifest.novel || manifest.documents.length) {
       fail("NOVELX_STORY_CONTENT_PREMATURE", "Planning state cannot contain registered story content.")
@@ -367,6 +455,13 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
   }
   if (!manifest.registrationSha256 || !manifest.novel || !manifest.historyBooks.length) {
     fail("NOVELX_STORY_REGISTRATION_INCOMPLETE", "Registered Story Growth is missing its named works.")
+  }
+  if (
+    manifest.schemaVersion === 2 &&
+    (manifest.protagonistRead?.protagonistId !== manifest.protagonist!.id ||
+      manifest.protagonistRead.sourceSha256 !== manifest.protagonist!.sha256)
+  ) {
+    fail("NOVELX_STORY_CHARACTER_SOURCE_UNREAD", "Registered Story Growth is missing its exact protagonist read.")
   }
   const expectedIds = [
     ...manifest.historyBooks.flatMap((book) => book.chapterIds),
@@ -436,6 +531,16 @@ function requireCommittedContent(current: NovelXStory.Materialization, documentI
   return normalizeMarkdown(value)
 }
 
+function protagonistContext(current: NovelXStory.Materialization, markdown: string | undefined) {
+  if (current.schemaVersion === 1) return null
+  const protagonist = current.protagonist
+  if (!protagonist) fail("NOVELX_STORY_CHARACTER_REQUIRED", "Story v2 is missing its protagonist source.")
+  if (!markdown || worldSha256(normalizeMarkdown(markdown)) !== protagonist.sha256) {
+    fail("NOVELX_STORY_CHARACTER_SOURCE_DRIFT", `Frozen protagonist source ${protagonist.path} is missing or changed.`)
+  }
+  return { ...protagonist, markdown: normalizeMarkdown(markdown) }
+}
+
 function requireDocument(current: NovelXStory.Materialization, id: string) {
   const record = current.documents.find((document) => document.id === id)
   if (!record) fail("NOVELX_STORY_DOCUMENT_UNKNOWN", `Unknown story document ${id}.`)
@@ -451,15 +556,15 @@ function updateDocument<T extends NovelXStory.Materialization>(current: T, recor
     ...withoutIntegrity(current),
     updatedAt: now,
     documents: current.documents.map((candidate) => (candidate.id === record.id ? record : candidate)),
-  }) as T
+  }) as unknown as T
 }
 
-function withoutIntegrity(current: NovelXStory.Materialization) {
+function withoutIntegrity<T extends NovelXStory.Materialization>(current: T): Omit<T, "integritySha256"> {
   const { integritySha256: _, ...draft } = current
   return draft
 }
 
-function withIntegrity<T extends Omit<NovelXStory.Materialization, "integritySha256">>(draft: T): NovelXStory.Materialization {
+function withIntegrity<T extends Record<string, unknown>>(draft: T): T & { integritySha256: string } {
   return { ...draft, integritySha256: worldSha256(draft) }
 }
 

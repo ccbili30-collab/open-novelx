@@ -29,6 +29,11 @@ import { NovelXPrepareCharacterDocumentTool } from "@/tool/novelx-prepare-charac
 import { NovelXCommitCharacterDocumentTool } from "@/tool/novelx-commit-character-document"
 import { NovelXFinishCharacterTool } from "@/tool/novelx-finish-character"
 import { NovelXRouteGrowthTool } from "@/tool/novelx-route-growth"
+import { NovelXPrepareStoryTool } from "@/tool/novelx-prepare-story"
+import { NovelXReadStoryWorldTool } from "@/tool/novelx-read-story-world"
+import { NovelXReadStoryCharacterTool } from "@/tool/novelx-read-story-character"
+import { NovelXRegisterStoryTool } from "@/tool/novelx-register-story"
+import { NovelXPrepareStoryDocumentTool } from "@/tool/novelx-prepare-story-document"
 import { ToolRegistry } from "@/tool/registry"
 import { createCharacterMaterialization } from "@/novelx/character-materialization"
 import {
@@ -36,10 +41,11 @@ import {
   createStoryMaterialization,
   finishStoryText,
   prepareStoryDocument,
+  recordStoryCharacterRead,
   recordStorySourceReads,
   registerStory,
 } from "@/novelx/story-materialization"
-import { compileWorldBlueprint } from "@/novelx/world-blueprint"
+import { compileWorldBlueprint, worldSha256 } from "@/novelx/world-blueprint"
 import {
   checkpointGrowthMemory,
   commitWorldDocument,
@@ -94,6 +100,20 @@ describe("NovelX Character Growth tools", () => {
         const route = yield* (yield* NovelXRouteGrowthTool).init()
         const initialRoute = yield* route.execute({}, rootContext)
         expect(initialRoute.metadata).toMatchObject({ route: "character_required", nextAgent: "novelx-character-editor" })
+        const prematureStoryEditor = yield* sessions.create({
+          parentID: root.id,
+          title: "故事：越权提前开始",
+          agent: "novelx-story-editor",
+        })
+        const prematureAssistant = yield* assistantMessage(sessions, prematureStoryEditor.id, "novelx-story-editor")
+        const prepareStory = yield* (yield* NovelXPrepareStoryTool).init()
+        const prematureStory = yield* prepareStory
+          .execute(
+            {},
+            context(prematureStoryEditor.id, prematureAssistant.id, "novelx-story-editor", "call-premature-story"),
+          )
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(prematureStory)).toBe(true)
         const editor = yield* sessions.create({
           parentID: root.id,
           title: "角色：唯一主角",
@@ -211,6 +231,76 @@ describe("NovelX Character Growth tools", () => {
           .execute({}, { ...rootContext, callID: "call-route-drift" })
           .pipe(Effect.exit)
         expect(Exit.isFailure(drift)).toBe(true)
+
+        yield* Effect.promise(() =>
+          fs.writeFile(
+            path.join(test.directory, ".novelx", "growth", "character-materialization.json"),
+            JSON.stringify(manifest, null, 2) + "\n",
+          ),
+        )
+        const storyEditor = yield* sessions.create({
+          parentID: root.id,
+          title: "故事：历史、文献与小说",
+          agent: "novelx-story-editor",
+        })
+        const storyAssistant = yield* assistantMessage(sessions, storyEditor.id, "novelx-story-editor")
+        const storyContext = context(storyEditor.id, storyAssistant.id, "novelx-story-editor", "call-story")
+        const storyPrepared = yield* prepareStory.execute({}, storyContext)
+        expect(storyPrepared.output).toContain("弥娅·雪痕")
+
+        const readStoryWorld = yield* (yield* NovelXReadStoryWorldTool).init()
+        yield* readStoryWorld.execute(
+          { entityIds: [world.entityId] },
+          { ...storyContext, callID: "call-story-world" },
+        )
+        const readStoryCharacter = yield* (yield* NovelXReadStoryCharacterTool).init()
+        const storyCharacter = yield* readStoryCharacter.execute(
+          {},
+          { ...storyContext, callID: "call-story-character" },
+        )
+        expect(storyCharacter.metadata.sha256).toBe(committed.metadata.sha256)
+
+        const registerStoryTool = yield* (yield* NovelXRegisterStoryTool).init()
+        const storyRegistered = yield* registerStoryTool.execute(
+          storyProfile(storyPrepared.metadata.contextSha256, world.entityId),
+          { ...storyContext, callID: "call-story-register" },
+        )
+        const firstStoryDocument = storyRegistered.metadata.documents > 0
+        expect(firstStoryDocument).toBe(true)
+        const storyManifest = JSON.parse(
+          yield* Effect.promise(() =>
+            fs.readFile(path.join(test.directory, ".novelx", "growth", "story-materialization.json"), "utf8"),
+          ),
+        )
+        expect(storyManifest).toMatchObject({
+          schemaVersion: 2,
+          protagonist: { id: registered.metadata.protagonistId, sha256: committed.metadata.sha256 },
+        })
+
+        const prepareStoryDocumentTool = yield* (yield* NovelXPrepareStoryDocumentTool).init()
+        const firstDocument = yield* prepareStoryDocumentTool.execute(
+          { documentId: storyManifest.documents[0].id },
+          { ...storyContext, callID: "call-story-document" },
+        )
+        const contextPack = JSON.parse(
+          yield* Effect.promise(() =>
+            fs.readFile(path.join(test.directory, ...firstDocument.metadata.contextPackPath.split("/")), "utf8"),
+          ),
+        )
+        expect(contextPack.context.protagonist).toMatchObject({
+          id: registered.metadata.protagonistId,
+          markdown: dossier,
+        })
+        yield* Effect.promise(() =>
+          fs.writeFile(path.join(test.directory, "Characters", "弥娅·雪痕.md"), `${dossier}\n被篡改的内容`),
+        )
+        const driftedStorySource = yield* prepareStoryDocumentTool
+          .execute(
+            { documentId: storyManifest.documents[0].id },
+            { ...storyContext, callID: "call-story-document-drift" },
+          )
+          .pipe(Effect.exit)
+        expect(Exit.isFailure(driftedStorySource)).toBe(true)
       }),
     { timeout: 30_000 },
   )
@@ -366,12 +456,21 @@ async function seedFrozenWorld(directory: string) {
 
 function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>) {
   const editorSessionId = "ses-legacy-story-editor"
+  const characterMarkdown = `# 旧版主角\n\n${"旧版故事测试角色只用于证明已完成的 Story v1 不会被倒灌新角色。".repeat(60)}\n`
+  const protagonist = {
+    id: "nx-legacy-protagonist",
+    name: "旧版主角",
+    path: "Characters/旧版主角.md",
+    sha256: worldSha256(characterMarkdown),
+    characterIntegritySha256: "c".repeat(64),
+  }
   const planning = createStoryMaterialization({
     world: {
       title: world.title,
       materializationIntegritySha256: world.materializationIntegritySha256,
       sources: [world.source],
     },
+    protagonist,
     editorSessionId,
     now: 10,
   })
@@ -381,11 +480,18 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
     sourceEntityIds: [world.entityId],
     now: 11,
   })
-  let manifest = registerStory({
+  const characterRead = recordStoryCharacterRead({
     manifest: read,
     editorSessionId,
+    protagonistId: protagonist.id,
+    sourceSha256: protagonist.sha256,
+    now: 11,
+  })
+  let manifest = registerStory({
+    manifest: characterRead,
+    editorSessionId,
     profile: {
-      contextSha256: read.preparedContextSha256,
+      contextSha256: characterRead.preparedContextSha256,
       historyBooks: [
         {
           title: "《霜脊关隘史》",
@@ -430,6 +536,7 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
       editorSessionId,
       editorMessageId: `msg-legacy-${document.ordinal}`,
       committedContents,
+      protagonistMarkdown: characterMarkdown,
       now: 20 + document.ordinal,
     })
     manifest = prepared.manifest
@@ -447,7 +554,53 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
     manifest = committed.manifest
     committedContents[document.id] = committed.markdown
   }
-  return finishStoryText({ manifest, editorSessionId, now: 100 })
+  const completed = finishStoryText({ manifest, editorSessionId, now: 100 })
+  const { protagonist: _, protagonistRead: __, integritySha256: ___, ...common } = completed
+  const legacyDraft = {
+    ...common,
+    schemaVersion: 1 as const,
+    preparedContextSha256: worldSha256({ world: completed.world }),
+  }
+  return { ...legacyDraft, integritySha256: worldSha256(legacyDraft) }
+}
+
+function storyProfile(contextSha256: string, entityId: string) {
+  return {
+    contextSha256,
+    historyBooks: [
+      {
+        title: "《霜脊关隘史》",
+        author: "边境抄写会",
+        summary: "记录霜脊关隘的封雪、商路、粮令与双印制度如何形成。",
+        chapters: Array.from({ length: 3 }, (_, index) => ({
+          title: `第${index + 1}章 关隘纪年`,
+          brief: "以具名事件解释关隘制度、迁徙与商路秩序的变化。",
+          sourceEntityIds: [entityId],
+        })),
+      },
+    ],
+    references: Array.from({ length: 2 }, (_, index) => ({
+      title: `《霜口文书${index + 1}》`,
+      kindLabel: "关隘文书",
+      author: "无名记录者",
+      summary: "保存封关期间粮食、通行与人员查验留下的具体文字证据。",
+      sourceEntityIds: [entityId],
+      historyReferences: [{ historyBookIndex: 0, chapterIndex: index }],
+    })),
+    novel: {
+      title: "《雪线以北》",
+      author: "NovelX",
+      summary: "弥娅带着失踪商队的账册穿越封关线，在旧债和父亲的秘密之间作出选择。",
+      theme: { title: "风雪封关", summary: "六章围绕弥娅的选择构成一条连续且付出代价的故事。" },
+      chapters: Array.from({ length: 6 }, (_, index) => ({
+        title: `第${index + 1}章 风雪旧路`,
+        brief: "让弥娅依据既有能力与限制推进封关期间连续发生的选择、冲突与后果。",
+        sourceEntityIds: [entityId],
+        historyReferences: [{ historyBookIndex: 0, chapterIndex: index % 3 }],
+        documentIndices: [index % 2],
+      })),
+    },
+  }
 }
 
 function context(sessionID: SessionID, messageID: MessageID, agent: string, callID: string) {

@@ -43,11 +43,12 @@ export const NovelXPrepareStoryTool = Tool.define<typeof Parameters, Metadata, F
                 status: runtime.manifest.status,
                 contextSha256: runtime.manifest.preparedContextSha256,
                 sources: runtime.manifest.world.sources,
+                protagonist: runtime.manifest.schemaVersion === 2 ? runtime.manifest.protagonist : null,
                 next:
                   runtime.manifest.status === "planning"
-                    ? "分批读取全部世界原文，再注册历史书、文献和一部小说。"
+                    ? "分批读取全部世界原文，并读取唯一主角原文，再注册历史书、文献和一部小说。"
                     : runtime.manifest.status === "text_completed"
-                      ? "正文已经封存；立即分裂 novelx-visual-editor 工具分身处理封面，不要重写正文。"
+                      ? "正文已经封存；返回 Growth，不要重写正文或启动图片。"
                       : "继续现有未提交文档。",
               }),
             }

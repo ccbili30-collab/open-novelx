@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test"
+import { Schema } from "effect"
+import { NovelXStory } from "@opencode-ai/schema/novelx-story"
 import {
   commitStoryDocument,
   createStoryMaterialization,
   finishStoryText,
   prepareStoryDocument,
+  recordStoryCharacterRead,
   recordStorySourceReads,
   registerStory,
   verifyStoryMaterialization,
 } from "../../src/novelx/story-materialization"
+import { worldSha256 } from "../../src/novelx/world-blueprint"
 
 const SHA = (digit: string) => digit.repeat(64)
 
@@ -19,6 +23,15 @@ const world = {
     { entityId: "world-river", title: "三岔母河流域", path: "World/01-自然/三岔母河流域.md", sha256: SHA("2") },
     { entityId: "world-order", title: "霜口双印关议会", path: "World/03-权力/霜口双印关议会.md", sha256: SHA("3") },
   ],
+}
+
+const characterMarkdown = `# 弥娅·雪痕\n\n${"她从霜脊山口的旧路和双印制度中学会判断风雪、债务与人的犹豫。".repeat(60)}\n`
+const protagonist = {
+  id: "nx-protagonist-miya",
+  name: "弥娅·雪痕",
+  path: "Characters/弥娅·雪痕.md",
+  sha256: worldSha256(characterMarkdown),
+  characterIntegritySha256: SHA("c"),
 }
 
 const profile = {
@@ -86,6 +99,7 @@ const profile = {
 const planning = () =>
   createStoryMaterialization({
     world,
+    protagonist,
     editorSessionId: "ses-story-editor",
     now: 10,
   })
@@ -97,10 +111,17 @@ const registered = () => {
     sourceEntityIds: world.sources.map((source) => source.entityId),
     now: 20,
   })
-  return registerStory({
+  const characterRead = recordStoryCharacterRead({
     manifest: read,
     editorSessionId: "ses-story-editor",
-    profile: { ...profile, contextSha256: read.preparedContextSha256 },
+    protagonistId: protagonist.id,
+    sourceSha256: protagonist.sha256,
+    now: 25,
+  })
+  return registerStory({
+    manifest: characterRead,
+    editorSessionId: "ses-story-editor",
+    profile: { ...profile, contextSha256: characterRead.preparedContextSha256 },
     now: 30,
   }).manifest
 }
@@ -108,6 +129,22 @@ const registered = () => {
 const prose = (title: string, length: number) => `# ${title}\n\n${"正文叙述。".repeat(Math.ceil(length / 5))}\n`
 
 describe("NovelX story materialization", () => {
+  test("requires one committed protagonist source and includes it in the new v2 context integrity", () => {
+    expect(() =>
+      createStoryMaterialization({
+        world,
+        protagonist: undefined as never,
+        editorSessionId: "ses-story-editor",
+        now: 10,
+      }),
+    ).toThrow("NOVELX_STORY_CHARACTER_REQUIRED")
+
+    const manifest = planning()
+    expect(manifest.schemaVersion).toBe(2)
+    expect(manifest.protagonist).toEqual(protagonist)
+    expect(manifest.preparedContextSha256).toBe(worldSha256({ world: manifest.world, protagonist }))
+  })
+
   test("registers named history, references and exactly one 6-8 chapter novel with one-way dependencies", () => {
     const manifest = registered()
 
@@ -131,6 +168,7 @@ describe("NovelX story materialization", () => {
     ])
     expect(manifest.documents[6]!.upstreamDocumentIds).toContain(manifest.documents[5]!.id)
     expect(manifest.documents.every((document) => document.targetPath.startsWith("Stories/"))).toBe(true)
+    expect(manifest.protagonistRead).toMatchObject({ protagonistId: protagonist.id, sourceSha256: protagonist.sha256 })
     expect(verifyStoryMaterialization(manifest)).toEqual(manifest)
   })
 
@@ -141,14 +179,36 @@ describe("NovelX story materialization", () => {
       sourceEntityIds: ["world-north"],
       now: 20,
     })
+    const characterRead = recordStoryCharacterRead({
+      manifest: read,
+      editorSessionId: "ses-story-editor",
+      protagonistId: protagonist.id,
+      sourceSha256: protagonist.sha256,
+      now: 25,
+    })
     expect(() =>
       registerStory({
-        manifest: read,
+        manifest: characterRead,
         editorSessionId: "ses-story-editor",
-        profile: { ...profile, contextSha256: read.preparedContextSha256 },
+        profile: { ...profile, contextSha256: characterRead.preparedContextSha256 },
         now: 30,
       }),
     ).toThrow("NOVELX_STORY_SOURCE_UNREAD")
+
+    const allWorld = recordStorySourceReads({
+      manifest: planning(),
+      editorSessionId: "ses-story-editor",
+      sourceEntityIds: world.sources.map((source) => source.entityId),
+      now: 20,
+    })
+    expect(() =>
+      registerStory({
+        manifest: allWorld,
+        editorSessionId: "ses-story-editor",
+        profile: { ...profile, contextSha256: allWorld.preparedContextSha256 },
+        now: 30,
+      }),
+    ).toThrow("NOVELX_STORY_CHARACTER_SOURCE_UNREAD")
 
     const manifest = registered()
     const reference = manifest.documents.find((document) => document.kind === "reference_document")!
@@ -159,6 +219,7 @@ describe("NovelX story materialization", () => {
         editorSessionId: "ses-story-editor",
         editorMessageId: "msg-1",
         committedContents: {},
+        protagonistMarkdown: characterMarkdown,
         now: 40,
       }),
     ).toThrow("NOVELX_STORY_DEPENDENCY_INCOMPLETE")
@@ -175,9 +236,13 @@ describe("NovelX story materialization", () => {
         editorSessionId: "ses-story-editor",
         editorMessageId: `msg-${document.ordinal}`,
         committedContents,
+        protagonistMarkdown: characterMarkdown,
         now: 100 + document.ordinal,
       })
       manifest = prepared.manifest
+      if (document.kind === "novel_chapter") {
+        expect(prepared.context.protagonist?.markdown).toBe(characterMarkdown)
+      }
       const minimum = document.kind === "novel_chapter" ? 1_500 : document.kind === "history_chapter" ? 1_200 : 300
       const markdown = prose(document.title, minimum + 100)
       const committed = commitStoryDocument({
@@ -207,6 +272,7 @@ describe("NovelX story materialization", () => {
       editorSessionId: "ses-story-editor",
       editorMessageId: "msg-before-provider-failure",
       committedContents: {},
+      protagonistMarkdown: characterMarkdown,
       now: 100,
     })
 
@@ -216,6 +282,7 @@ describe("NovelX story materialization", () => {
       editorSessionId: "ses-story-editor",
       editorMessageId: "msg-after-provider-failure",
       committedContents: {},
+      protagonistMarkdown: characterMarkdown,
       now: 200,
     })
 
@@ -229,8 +296,75 @@ describe("NovelX story materialization", () => {
         editorSessionId: "ses-different-editor",
         editorMessageId: "msg-other",
         committedContents: {},
+        protagonistMarkdown: characterMarkdown,
         now: 300,
       }),
     ).toThrow("NOVELX_STORY_EDITOR_SESSION_INVALID")
+  })
+
+  test("fails when the frozen protagonist dossier is missing or changed", () => {
+    const manifest = registered()
+    const document = manifest.documents[0]!
+    expect(() =>
+      prepareStoryDocument({
+        manifest,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        editorMessageId: "msg-character-missing",
+        committedContents: {},
+        now: 100,
+      }),
+    ).toThrow("NOVELX_STORY_CHARACTER_SOURCE_DRIFT")
+    expect(() =>
+      prepareStoryDocument({
+        manifest,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        editorMessageId: "msg-character-changed",
+        committedContents: {},
+        protagonistMarkdown: `${characterMarkdown}\nchanged`,
+        now: 100,
+      }),
+    ).toThrow("NOVELX_STORY_CHARACTER_SOURCE_DRIFT")
+  })
+
+  test("decodes and verifies a completed legacy v1 Story without mutation", () => {
+    let current = registered()
+    const committedContents: Record<string, string> = {}
+    for (const document of current.documents) {
+      const prepared = prepareStoryDocument({
+        manifest: current,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        editorMessageId: `msg-legacy-${document.ordinal}`,
+        committedContents,
+        protagonistMarkdown: characterMarkdown,
+        now: 100 + document.ordinal,
+      })
+      current = prepared.manifest
+      const minimum = document.kind === "novel_chapter" ? 1_500 : document.kind === "history_chapter" ? 1_200 : 300
+      const committed = commitStoryDocument({
+        manifest: current,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        taskSessionId: `ses-legacy-${document.ordinal}`,
+        leaseId: prepared.record.lease!.id,
+        markdown: prose(document.title, minimum + 100),
+        now: 200 + document.ordinal,
+      })
+      current = committed.manifest
+      committedContents[document.id] = committed.markdown
+    }
+    const completed = finishStoryText({ manifest: current, editorSessionId: "ses-story-editor", now: 500 })
+    const { protagonist: _, protagonistRead: __, integritySha256: ___, ...common } = completed
+    const legacyDraft = {
+      ...common,
+      schemaVersion: 1 as const,
+      preparedContextSha256: worldSha256({ world: completed.world }),
+    }
+    const legacy = { ...legacyDraft, integritySha256: worldSha256(legacyDraft) }
+    const decoded = Schema.decodeUnknownSync(NovelXStory.Materialization)(JSON.parse(JSON.stringify(legacy)))
+    expect(verifyStoryMaterialization(decoded)).toEqual(legacy)
+    expect(decoded.schemaVersion).toBe(1)
   })
 })

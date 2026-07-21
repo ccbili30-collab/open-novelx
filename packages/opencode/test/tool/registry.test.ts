@@ -148,6 +148,7 @@ describe("tool.registry", () => {
       expect(ids).toContain("novelx_finish_character")
       expect(ids).toContain("novelx_prepare_story")
       expect(ids).toContain("novelx_read_story_world")
+      expect(ids).toContain("novelx_read_story_character")
       expect(ids).toContain("novelx_register_story")
       expect(ids).toContain("novelx_prepare_story_document")
       expect(ids).toContain("novelx_commit_story_document")

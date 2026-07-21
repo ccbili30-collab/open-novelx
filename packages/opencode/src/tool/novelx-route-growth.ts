@@ -8,6 +8,7 @@ import { Tool } from "@/tool/tool"
 import { verifyStoryMaterialization } from "@/novelx/story-materialization"
 import { verifyCharacterMaterialization } from "@/novelx/character-materialization"
 import { assertWorldGrowthEditor, loadWorldRuntime } from "./novelx-world-runtime"
+import { loadStoryRuntime } from "./novelx-story-runtime"
 
 const TOOL_ID = "novelx_route_growth"
 export const Parameters = Schema.Struct({})
@@ -45,6 +46,7 @@ export const NovelXRouteGrowthTool = Tool.define<typeof Parameters, Metadata, FS
             const story = verifyStoryMaterialization(
               Schema.decodeUnknownSync(NovelXStory.Materialization)(JSON.parse(storyText)),
             )
+            if (story.schemaVersion === 2) yield* loadStoryRuntime(fs)
             if (story.status !== "text_completed") {
               return result("story_resume", "novelx-story-editor", "Story Growth 已注册但正文未全部提交。")
             }

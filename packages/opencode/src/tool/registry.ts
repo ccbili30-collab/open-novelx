@@ -86,6 +86,7 @@ import { NovelXCommitCharacterDocumentTool } from "./novelx-commit-character-doc
 import { NovelXFinishCharacterTool } from "./novelx-finish-character"
 import { NovelXPrepareStoryTool } from "./novelx-prepare-story"
 import { NovelXReadStoryWorldTool } from "./novelx-read-story-world"
+import { NovelXReadStoryCharacterTool } from "./novelx-read-story-character"
 import { NovelXRegisterStoryTool } from "./novelx-register-story"
 import { NovelXPrepareStoryDocumentTool } from "./novelx-prepare-story-document"
 import { NovelXCommitStoryDocumentTool } from "./novelx-commit-story-document"
@@ -180,6 +181,7 @@ const layer = Layer.effect(
     const finishCharacter = yield* NovelXFinishCharacterTool
     const prepareStory = yield* NovelXPrepareStoryTool
     const readStoryWorld = yield* NovelXReadStoryWorldTool
+    const readStoryCharacter = yield* NovelXReadStoryCharacterTool
     const registerStory = yield* NovelXRegisterStoryTool
     const prepareStoryDocument = yield* NovelXPrepareStoryDocumentTool
     const commitStoryDocument = yield* NovelXCommitStoryDocumentTool
@@ -325,6 +327,7 @@ const layer = Layer.effect(
           finishCharacter: Tool.init(finishCharacter),
           prepareStory: Tool.init(prepareStory),
           readStoryWorld: Tool.init(readStoryWorld),
+          readStoryCharacter: Tool.init(readStoryCharacter),
           registerStory: Tool.init(registerStory),
           prepareStoryDocument: Tool.init(prepareStoryDocument),
           commitStoryDocument: Tool.init(commitStoryDocument),
@@ -385,6 +388,7 @@ const layer = Layer.effect(
             tool.finishCharacter,
             tool.prepareStory,
             tool.readStoryWorld,
+            tool.readStoryCharacter,
             tool.registerStory,
             tool.prepareStoryDocument,
             tool.commitStoryDocument,

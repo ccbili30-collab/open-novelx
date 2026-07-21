@@ -144,8 +144,17 @@ export const DocumentRecord = Schema.Struct({
 })
 export interface DocumentRecord extends Schema.Schema.Type<typeof DocumentRecord> {}
 
+export const ProtagonistSource = Schema.Struct({
+  id: Schema.String,
+  name: Label,
+  path: Schema.String,
+  sha256: Sha256,
+  characterIntegritySha256: Sha256,
+})
+export interface ProtagonistSource extends Schema.Schema.Type<typeof ProtagonistSource> {}
+
 export const Materialization = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+  schemaVersion: Schema.Literals([1, 2]),
   stage: Schema.Literal("story_materialization"),
   status: Schema.Literals(["planning", "writing", "text_completed", "failed", "waiting_user"]),
   world: Schema.Struct({
@@ -158,6 +167,16 @@ export const Materialization = Schema.Struct({
   sourceReads: Schema.Array(
     Schema.Struct({ entityId: Schema.String, sourceSha256: Sha256, readAt: Timestamp }),
   ),
+  protagonist: Schema.optional(ProtagonistSource),
+  protagonistRead: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        protagonistId: Schema.String,
+        sourceSha256: Sha256,
+        readAt: Timestamp,
+      }),
+    ),
+  ),
   registrationSha256: Schema.NullOr(Sha256),
   historyBooks: Schema.Array(HistoryBook).check(Schema.isMaxLength(4)),
   references: Schema.Array(ReferenceDocument).check(Schema.isMaxLength(5)),
@@ -168,6 +187,12 @@ export const Materialization = Schema.Struct({
   integritySha256: Sha256,
 })
 export interface Materialization extends Schema.Schema.Type<typeof Materialization> {}
+export type MaterializationV1 = Materialization & { schemaVersion: 1; protagonist?: never; protagonistRead?: never }
+export type MaterializationV2 = Materialization & {
+  schemaVersion: 2
+  protagonist: ProtagonistSource
+  protagonistRead: null | { protagonistId: string; sourceSha256: string; readAt: number }
+}
 
 export const MATERIALIZATION_PATH = ".novelx/growth/story-materialization.json"
 export const DRAFT_DIRECTORY = ".novelx/growth/story-drafts"

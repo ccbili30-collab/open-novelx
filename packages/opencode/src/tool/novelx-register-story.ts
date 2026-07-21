@@ -26,6 +26,11 @@ export const NovelXRegisterStoryTool = Tool.define<typeof Parameters, Metadata, 
             if (runtime.manifest.sourceReads.length !== runtime.manifest.world.sources.length) {
               throw new Error("NOVELX_STORY_SOURCE_UNREAD: Read every frozen world original before registering Story Growth.")
             }
+            if (runtime.manifest.schemaVersion === 2 && !runtime.manifest.protagonistRead) {
+              throw new Error(
+                "NOVELX_STORY_CHARACTER_SOURCE_UNREAD: Read the exact protagonist dossier before registering Story Growth.",
+              )
+            }
             const result = registerStory({ manifest: runtime.manifest, editorSessionId: ctx.sessionID, profile, now: Date.now() })
             yield* persistStoryMaterialization(fs, events, runtime, result.manifest)
             return {

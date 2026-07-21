@@ -2,9 +2,11 @@ import {
   commitStoryDocument,
   createStoryMaterialization,
   prepareStoryDocument,
+  recordStoryCharacterRead,
   recordStorySourceReads,
   registerStory,
 } from "../../src/novelx/story-materialization"
+import { worldSha256 } from "../../src/novelx/world-blueprint"
 
 const SHA = (digit: string) => digit.repeat(64)
 const world = {
@@ -12,20 +14,35 @@ const world = {
   materializationIntegritySha256: SHA("a"),
   sources: [{ entityId: "world-1", title: "霜脊山系", path: "World/霜脊山系.md", sha256: SHA("1") }],
 }
+const characterMarkdown = `# 弥娅·雪痕\n\n${"她在霜脊山口辨认旧路、关印和每一场风雪留下的代价。".repeat(60)}\n`
+const protagonist = {
+  id: "nx-protagonist-miya",
+  name: "弥娅·雪痕",
+  path: "Characters/弥娅·雪痕.md",
+  sha256: worldSha256(characterMarkdown),
+  characterIntegritySha256: SHA("c"),
+}
 
 export function registeredStoryFixture() {
-  const planning = createStoryMaterialization({ world, editorSessionId: "ses-story-editor", now: 1 })
+  const planning = createStoryMaterialization({ world, protagonist, editorSessionId: "ses-story-editor", now: 1 })
   const read = recordStorySourceReads({
     manifest: planning,
     editorSessionId: "ses-story-editor",
     sourceEntityIds: ["world-1"],
     now: 2,
   })
-  let manifest = registerStory({
+  const characterRead = recordStoryCharacterRead({
     manifest: read,
     editorSessionId: "ses-story-editor",
+    protagonistId: protagonist.id,
+    sourceSha256: protagonist.sha256,
+    now: 2,
+  })
+  let manifest = registerStory({
+    manifest: characterRead,
+    editorSessionId: "ses-story-editor",
     profile: {
-      contextSha256: read.preparedContextSha256,
+      contextSha256: characterRead.preparedContextSha256,
       historyBooks: [
         {
           title: "《霜脊以北》",
@@ -70,6 +87,7 @@ export function registeredStoryFixture() {
       editorSessionId: "ses-story-editor",
       editorMessageId: `msg-${document.ordinal}`,
       committedContents: contents,
+      protagonistMarkdown: characterMarkdown,
       now: 10 + document.ordinal,
     })
     manifest = prepared.manifest

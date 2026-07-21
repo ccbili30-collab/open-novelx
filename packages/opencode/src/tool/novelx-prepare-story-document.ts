@@ -51,6 +51,7 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
               editorMessageId: ctx.messageID,
               committedContents,
               worldContents,
+              protagonistMarkdown: runtime.protagonistMarkdown ?? undefined,
               now: Date.now(),
             })
             if (!prepared.replayed) yield* persistStoryMaterialization(fs, events, runtime, prepared.manifest)
@@ -60,7 +61,7 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
             const contextPack =
               JSON.stringify(
                 {
-                  schemaVersion: 1,
+                  schemaVersion: runtime.manifest.schemaVersion,
                   documentId: prepared.record.id,
                   leaseId: prepared.record.lease?.id ?? null,
                   context: prepared.context,
