@@ -23,6 +23,12 @@ import {
   novelXWorldNavigationItems,
   type NovelXWorldNavigationItem,
 } from "@/context/novelx-world-growth"
+import {
+  createNovelXStoryGrowthController,
+  novelXStoryNavigationItems,
+  type NovelXStoryNavigationItem,
+} from "@/context/novelx-story-growth"
+import { isNovelXHiddenProjectPath } from "@/context/novelx-project-files"
 import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
 import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowthTree } from "./novelx-world-growth-view"
@@ -168,13 +174,11 @@ export function NovelXResourceWorkspace(props: {
     return state.status === "ready" ? state.manifest.integritySha256 : undefined
   })
   const worldGrowth = createNovelXWorldGrowthController()
+  const storyGrowth = createNovelXStoryGrowthController()
   const [plannedSelection, setPlannedSelection] = createSignal<Partial<Record<NovelXResource, string>>>({})
   const [terrainQuery, setTerrainQuery] = createSignal("")
 
-  const isNovelXInternal = (path: string) => {
-    const normalized = file.normalize(path).replaceAll("\\", "/")
-    return normalized === ".novelx" || normalized.startsWith(".novelx/")
-  }
+  const isNovelXInternal = (path: string) => isNovelXHiddenProjectPath(file.normalize(path))
   const rootVisibleEmpty = createMemo(
     () => props.rootEmpty() || file.tree.children("").every((node) => isNovelXInternal(node.path)),
   )
@@ -223,6 +227,58 @@ export function NovelXResourceWorkspace(props: {
   const worldGrowthErrorMessage = createMemo(() => {
     const state = worldGrowth.state()
     return state.status === "error" ? state.message : "未知错误"
+  })
+  const storyMaterialization = createMemo(() => {
+    const state = storyGrowth.state()
+    return state.status === "ready" ? state.materialization : undefined
+  })
+  const storyGrowthErrorMessage = createMemo(() => {
+    const state = storyGrowth.state()
+    return state.status === "error" ? state.message : "未知错误"
+  })
+  const storyCovers = createMemo(() => {
+    const state = storyGrowth.state()
+    return state.status === "ready" ? state.covers : undefined
+  })
+  const storyCoverAssets = createMemo(() => {
+    const state = storyGrowth.state()
+    return state.status === "ready" ? state.coverAssets : {}
+  })
+  const storyItems = createMemo(() => {
+    const manifest = storyMaterialization()
+    return manifest ? novelXStoryNavigationItems(manifest) : []
+  })
+  const selectedStoryItem = createMemo(() => {
+    if (active() !== "story") return
+    const selected = plannedSelection().story
+    return storyItems().find((item) => item.id === selected)
+  })
+  const selectedStoryCover = createMemo(() => {
+    const item = selectedStoryItem()
+    const ownerId = item?.ownerId ?? storyMaterialization()?.novel?.id
+    const task = storyCovers()?.tasks.find((candidate) => candidate.ownerId === ownerId && candidate.status === "attached")
+    const source = task ? storyCoverAssets()[task.id] : undefined
+    return task && source ? { task, source } : undefined
+  })
+  const storyProgress = createMemo(() => ({
+    committed: storyMaterialization()?.documents.filter((record) => record.status === "committed").length ?? 0,
+    total: storyMaterialization()?.documents.length ?? 0,
+  }))
+
+  createEffect(() => {
+    if (active() !== "files") return
+    const queue = [""]
+    const seen = new Set<string>()
+    while (queue.length) {
+      const current = queue.shift()!
+      if (seen.has(current)) continue
+      seen.add(current)
+      for (const node of file.tree.children(current)) {
+        if (node.type !== "directory" || isNovelXInternal(node.path)) continue
+        queue.push(node.path)
+        if (!file.tree.state(node.path)?.expanded) file.tree.expand(node.path)
+      }
+    }
   })
   const worldStageRecords = createMemo(
     () => new Map(worldMaterialization()?.stages.map((stage) => [stage.stageId, stage]) ?? []),
@@ -471,6 +527,19 @@ export function NovelXResourceWorkspace(props: {
     setPlannedSelection((current) => ({ ...current, world: item.id }))
   }
 
+  const selectStoryItem = (item: NovelXStoryNavigationItem) => {
+    if (!document.canLeave()) {
+      showToast({
+        variant: "default",
+        title: language.t("novelx.document.unsaved.title"),
+        description: language.t("novelx.document.unsaved.description"),
+      })
+      return
+    }
+    view.setActiveFile(item.kind === "document" ? item.targetPath : "")
+    setPlannedSelection((current) => ({ ...current, story: item.id }))
+  }
+
   const resourcePath = (resource: NovelXResource) => {
     if (resource === "world") return "World"
     if (resource === "characters") {
@@ -493,6 +562,7 @@ export function NovelXResourceWorkspace(props: {
       if (growthManifest() || worldBlueprint()) return
       return <div class="novelx-resource-empty">{language.t("novelx.resource.noStructuredData")}</div>
     }
+    if (resource === "story" && storyMaterialization()) return
     if (growthManifest() || worldBlueprint()) {
       if (resource === "world" && props.worldStatus() !== "tree") return
       if (resource !== "files" && !hasDirectory(path)) return
@@ -514,6 +584,40 @@ export function NovelXResourceWorkspace(props: {
 
   const renderGrowthTree = (resource: NovelXResource) => (
     <Switch>
+      <Match when={resource === "story" && storyGrowth.state().status === "ready"}>
+        <section class="novelx-story-tree" aria-label="故事、历史与文献">
+          <For each={storyItems()}>
+            {(item) => (
+              <button
+                type="button"
+                class="novelx-story-tree-item"
+                classList={{ "is-selected": selectedStoryItem()?.id === item.id, [`is-${item.kind}`]: true }}
+                style={{ "--novelx-story-depth": item.depth }}
+                title={item.label}
+                aria-pressed={selectedStoryItem()?.id === item.id}
+                onClick={() => selectStoryItem(item)}
+              >
+                <span class="novelx-story-tree-mark" aria-hidden="true" />
+                <span>{item.label}</span>
+                <Show when={item.kind === "document"}>
+                  <small>
+                    {storyMaterialization()?.documents.find((record) => record.id === item.id)?.status === "committed"
+                      ? "已提交"
+                      : "生长中"}
+                  </small>
+                </Show>
+              </button>
+            )}
+          </For>
+        </section>
+      </Match>
+      <Match when={resource === "story" && storyGrowth.state().status === "error"}>
+        <div class="novelx-growth-error" role="alert">
+          <strong>故事生长状态无法读取</strong>
+          <span>{storyGrowthErrorMessage()}</span>
+          <button type="button" onClick={storyGrowth.reload}>重新读取</button>
+        </div>
+      </Match>
       <Match when={resource === "world" && worldGrowth.state().status === "ready"}>
         <NovelXWorldGrowthTree
           blueprint={worldBlueprint()!}
@@ -609,6 +713,10 @@ export function NovelXResourceWorkspace(props: {
   )
 
   const resourceEmpty = (resource: NovelXResource) => {
+    if (resource === "story" && storyGrowth.state().status === "loading") {
+      return <div class="novelx-resource-empty">正在读取故事…</div>
+    }
+    if (resource === "story" && storyMaterialization()) return
     if (growthManifest() || worldBlueprint()) return
     if (resource === "world") {
       return (
@@ -698,7 +806,45 @@ export function NovelXResourceWorkspace(props: {
         <Show
           when={document.state()}
           fallback={
-            resource === "world" && worldBlueprint() ? (
+            resource === "story" && storyMaterialization() ? (
+              <div class="novelx-story-overview">
+                <Show
+                  when={selectedStoryCover()}
+                  fallback={
+                    <div class="novelx-story-cover-placeholder">
+                      <NovelXResourceIcon resource="story" size={30} />
+                      <span>{storyCovers() ? "封面正在生成" : "封面尚未生成"}</span>
+                    </div>
+                  }
+                >
+                  {(cover) => (
+                    <figure classList={{ "is-landscape": cover().task.aspect === "landscape" }}>
+                      <img src={cover().source} alt={cover().task.title} />
+                      <figcaption>{cover().task.title}</figcaption>
+                    </figure>
+                  )}
+                </Show>
+                <div class="novelx-story-overview-copy">
+                  <span>
+                    {selectedStoryItem()?.kind === "theme"
+                      ? "主题"
+                      : selectedStoryItem()?.kind === "work"
+                        ? "历史书"
+                        : "小说"}
+                  </span>
+                  <h2>{selectedStoryItem()?.label ?? storyMaterialization()!.novel?.title}</h2>
+                  <p>
+                    {selectedStoryItem()?.kind === "theme"
+                      ? storyMaterialization()!.novel?.theme.summary
+                      : storyMaterialization()!.historyBooks.find((book) => book.id === selectedStoryItem()?.id)
+                          ?.summary ?? storyMaterialization()!.novel?.summary}
+                  </p>
+                  <small>
+                    {storyProgress().committed}/{storyProgress().total} 份故事文稿已提交
+                  </small>
+                </div>
+              </div>
+            ) : resource === "world" && worldBlueprint() ? (
               <NovelXWorldGrowthPrimary
                 blueprint={worldBlueprint()!}
                 materialization={worldMaterialization()}
@@ -737,6 +883,14 @@ export function NovelXResourceWorkspace(props: {
         >
           {(state) => (
             <div class="novelx-world-document-with-visual">
+              <Show when={active() === "story" && selectedStoryCover()}>
+                {(cover) => (
+                  <figure class="novelx-story-document-cover">
+                    <img src={cover().source} alt={cover().task.title} />
+                    <figcaption>{cover().task.title}</figcaption>
+                  </figure>
+                )}
+              </Show>
               <Show when={active() === "world" && selectedWorldScenery().length}>
                 <div class="novelx-world-document-visuals">
                   <For each={selectedWorldScenery()}>
@@ -811,7 +965,9 @@ export function NovelXResourceWorkspace(props: {
                       ? `${worldBlueprint()!.profile.title} · ${worldProgress().committed}/${worldProgress().total} 份世界档案已提交`
                       : resource() === "world" && growthManifest()
                         ? `${growthManifest()!.profile.title} · ${geographyProgress().committed}/${geographyProgress().total} 份地理档案已提交`
-                        : language.t(resourceCopy[resource()].summary)}
+                        : resource() === "story" && storyMaterialization()
+                          ? `${storyMaterialization()!.novel?.title ?? "故事"} · ${storyProgress().committed}/${storyProgress().total} 份文稿已提交`
+                          : language.t(resourceCopy[resource()].summary)}
                   </span>
                 </div>
                 <div class="novelx-resource-page-actions">
@@ -832,7 +988,7 @@ export function NovelXResourceWorkspace(props: {
                     </button>
                   </Show>
                   <Show
-                    when={(view.activeFile() || selectedTerrain() || selectedWorldStage()) && !view.inspectorOpen()}
+                    when={(view.activeFile() || selectedTerrain() || selectedWorldStage() || selectedStoryItem()) && !view.inspectorOpen()}
                   >
                     <button
                       type="button"
@@ -854,13 +1010,14 @@ export function NovelXResourceWorkspace(props: {
                   </div>
                 </nav>
                 {primary(resource())}
-                <Show when={view.inspectorOpen() && (view.activeFile() || selectedTerrain() || selectedWorldStage())}>
+                <Show when={view.inspectorOpen() && (view.activeFile() || selectedTerrain() || selectedWorldStage() || selectedStoryItem())}>
                   <aside class="novelx-resource-inspector">
                     <div class="novelx-resource-inspector-heading">
                       <strong>
                         {selectedWorldEntity()?.name ??
                           selectedWorldStage()?.label ??
                           selectedTerrain()?.name ??
+                          selectedStoryItem()?.label ??
                           language.t("novelx.resource.details")}
                       </strong>
                       <button
@@ -884,6 +1041,35 @@ export function NovelXResourceWorkspace(props: {
                           selectedChildSessionId={selectedChildSessionId()}
                           status={projectedWorldStatus}
                         />
+                      </Match>
+                      <Match when={selectedStoryItem()}>
+                        {(item) => (
+                          <div class="novelx-story-inspector-body">
+                            <p>{item().label}</p>
+                            <dl>
+                              <dt>类型</dt>
+                              <dd>
+                                {item().kind === "root"
+                                  ? "小说"
+                                  : item().kind === "work"
+                                    ? "历史书"
+                                    : item().kind === "theme"
+                                      ? "主题"
+                                      : item().kind === "document"
+                                        ? "正式文稿"
+                                        : "分类"}
+                              </dd>
+                              <dt>状态</dt>
+                              <dd>
+                                {item().kind === "document"
+                                  ? storyMaterialization()?.documents.find((record) => record.id === item().id)?.status
+                                  : storyMaterialization()?.status}
+                              </dd>
+                              <dt>文件</dt>
+                              <dd>{item().kind === "document" ? item().targetPath : "—"}</dd>
+                            </dl>
+                          </div>
+                        )}
                       </Match>
                       <Match when={selectedTerrain()}>
                         {(terrain) => (

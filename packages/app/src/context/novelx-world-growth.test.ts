@@ -117,8 +117,15 @@ test("parses adaptive world state and projects model-selected layers and entitie
     ["entity", "赫利俄斯同步环"],
   ])
   expect(
-    novelXWorldNavigationItems(blueprint, { ...materialization, status: "completed" }).map((item) => item.kind),
-  ).toEqual(["stage", "entity"])
+    novelXWorldNavigationItems(blueprint, { ...materialization, status: "completed" }).map((item) => [
+      item.kind,
+      item.label,
+    ]),
+  ).toEqual([
+    ["root", `${blueprint.profile.title} · 世界图册`],
+    ["stage", stage.label],
+    ["entity", entity.name],
+  ])
 })
 
 test("verifies visual evidence and resolves whole features without letting rivers steal cell clicks", async () => {

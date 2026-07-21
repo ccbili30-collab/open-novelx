@@ -1,4 +1,4 @@
-export const NOVELX_RESOURCES = ["files", "world", "characters", "graph", "story", "package"] as const
+export const NOVELX_RESOURCES = ["files", "world", "story", "graph", "characters", "package"] as const
 
 export type NovelXResource = (typeof NOVELX_RESOURCES)[number]
 

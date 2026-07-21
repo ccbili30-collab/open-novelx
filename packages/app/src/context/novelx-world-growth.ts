@@ -288,17 +288,26 @@ export function novelXWorldNavigationItems(
 ): NovelXWorldNavigationItem[] {
   const records = new Map(materialization?.stages.map((stage) => [stage.stageId, stage]) ?? [])
   if (materialization?.status === "completed") {
-    return blueprint.stages.flatMap((stage) => [
-      { id: stage.id, kind: "stage" as const, label: stage.label, depth: 1 as const, stageId: stage.id },
-      ...(records.get(stage.id)?.entities.map((entity) => ({
-        id: entity.id,
-        kind: "entity" as const,
-        label: entity.name,
-        depth: 2 as const,
-        stageId: stage.id,
-        typeLabel: entity.typeLabel,
-      })) ?? []),
-    ])
+    return [
+      {
+        id: `world-atlas:${blueprint.integritySha256}`,
+        kind: "root" as const,
+        label: `${blueprint.profile.title} · 世界图册`,
+        depth: 0 as const,
+        stageId: "" as const,
+      },
+      ...blueprint.stages.flatMap((stage) => [
+        { id: stage.id, kind: "stage" as const, label: stage.label, depth: 1 as const, stageId: stage.id },
+        ...(records.get(stage.id)?.entities.map((entity) => ({
+          id: entity.id,
+          kind: "entity" as const,
+          label: entity.name,
+          depth: 2 as const,
+          stageId: stage.id,
+          typeLabel: entity.typeLabel,
+        })) ?? []),
+      ]),
+    ]
   }
   return [
     {
