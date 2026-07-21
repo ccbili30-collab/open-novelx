@@ -78,6 +78,12 @@ import { NovelXReadWorldPublicationSourceTool } from "./novelx-read-world-public
 import { NovelXCommitWorldPublicationTool } from "./novelx-commit-world-publication"
 import { NovelXFinishWorldPublicationTool } from "./novelx-finish-world-publication"
 import { NovelXRouteGrowthTool } from "./novelx-route-growth"
+import { NovelXPrepareCharacterTool } from "./novelx-prepare-character"
+import { NovelXReadCharacterWorldTool } from "./novelx-read-character-world"
+import { NovelXRegisterCharacterTool } from "./novelx-register-character"
+import { NovelXPrepareCharacterDocumentTool } from "./novelx-prepare-character-document"
+import { NovelXCommitCharacterDocumentTool } from "./novelx-commit-character-document"
+import { NovelXFinishCharacterTool } from "./novelx-finish-character"
 import { NovelXPrepareStoryTool } from "./novelx-prepare-story"
 import { NovelXReadStoryWorldTool } from "./novelx-read-story-world"
 import { NovelXRegisterStoryTool } from "./novelx-register-story"
@@ -166,6 +172,12 @@ const layer = Layer.effect(
     const commitWorldPublication = yield* NovelXCommitWorldPublicationTool
     const finishWorldPublication = yield* NovelXFinishWorldPublicationTool
     const routeGrowth = yield* NovelXRouteGrowthTool
+    const prepareCharacter = yield* NovelXPrepareCharacterTool
+    const readCharacterWorld = yield* NovelXReadCharacterWorldTool
+    const registerCharacter = yield* NovelXRegisterCharacterTool
+    const prepareCharacterDocument = yield* NovelXPrepareCharacterDocumentTool
+    const commitCharacterDocument = yield* NovelXCommitCharacterDocumentTool
+    const finishCharacter = yield* NovelXFinishCharacterTool
     const prepareStory = yield* NovelXPrepareStoryTool
     const readStoryWorld = yield* NovelXReadStoryWorldTool
     const registerStory = yield* NovelXRegisterStoryTool
@@ -305,6 +317,12 @@ const layer = Layer.effect(
           commitWorldPublication: Tool.init(commitWorldPublication),
           finishWorldPublication: Tool.init(finishWorldPublication),
           routeGrowth: Tool.init(routeGrowth),
+          prepareCharacter: Tool.init(prepareCharacter),
+          readCharacterWorld: Tool.init(readCharacterWorld),
+          registerCharacter: Tool.init(registerCharacter),
+          prepareCharacterDocument: Tool.init(prepareCharacterDocument),
+          commitCharacterDocument: Tool.init(commitCharacterDocument),
+          finishCharacter: Tool.init(finishCharacter),
           prepareStory: Tool.init(prepareStory),
           readStoryWorld: Tool.init(readStoryWorld),
           registerStory: Tool.init(registerStory),
@@ -359,6 +377,12 @@ const layer = Layer.effect(
             tool.commitWorldPublication,
             tool.finishWorldPublication,
             tool.routeGrowth,
+            tool.prepareCharacter,
+            tool.readCharacterWorld,
+            tool.registerCharacter,
+            tool.prepareCharacterDocument,
+            tool.commitCharacterDocument,
+            tool.finishCharacter,
             tool.prepareStory,
             tool.readStoryWorld,
             tool.registerStory,

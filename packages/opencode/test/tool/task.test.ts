@@ -776,6 +776,36 @@ describe("tool.task", () => {
         },
         rootContext,
       )
+      const character = yield* def.execute(
+        {
+          description: "角色：唯一主角",
+          prompt: "Frozen world integrity",
+          subagent_type: "novelx-character-editor",
+        },
+        rootContext,
+      )
+      const characterSession = yield* sessions.get(character.metadata.sessionId)
+      const characterAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: characterSession.id,
+        mode: "novelx-character-editor",
+        agent: "novelx-character-editor",
+      })
+      const characterWriter = yield* def.execute(
+        {
+          description: "角色：主角档案",
+          prompt: "Exact source-bound Character Context Pack",
+          subagent_type: "novelx-character-writer",
+        },
+        {
+          ...rootContext,
+          sessionID: characterSession.id,
+          messageID: characterAssistant.id,
+          agent: "novelx-character-editor",
+        },
+      )
       const storySession = yield* sessions.get(story.metadata.sessionId)
       const storyAssistant = yield* sessions.updateMessage({
         ...assistant,
@@ -838,6 +868,8 @@ describe("tool.task", () => {
       expect((yield* sessions.get(prose.metadata.sessionId)).parentID).toBe(publicationSession.id)
       expect(storySession.parentID).toBe(chat.id)
       expect((yield* sessions.get(storyWriter.metadata.sessionId)).parentID).toBe(storySession.id)
+      expect(characterSession.parentID).toBe(chat.id)
+      expect((yield* sessions.get(characterWriter.metadata.sessionId)).parentID).toBe(characterSession.id)
       const worldVisualSession = yield* sessions.get(worldVisualTool.metadata.sessionId)
       expect(worldVisualSession.parentID).toBe(chat.id)
       expect(worldVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_story_covers")?.action).toBe("deny")

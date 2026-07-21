@@ -23,6 +23,8 @@ import PROMPT_NOVELX_WORLD_WRITER from "./prompt/novelx-world-writer.txt"
 import PROMPT_NOVELX_WORLD_PROSE_WRITER from "./prompt/novelx-world-prose-writer.txt"
 import PROMPT_NOVELX_STORY_EDITOR from "./prompt/novelx-story-editor.txt"
 import PROMPT_NOVELX_STORY_WRITER from "./prompt/novelx-story-writer.txt"
+import PROMPT_NOVELX_CHARACTER_EDITOR from "./prompt/novelx-character-editor.txt"
+import PROMPT_NOVELX_CHARACTER_WRITER from "./prompt/novelx-character-writer.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -162,6 +164,7 @@ const layer = Layer.effect(
               "novelx-stage-editor": "allow",
               "novelx-visual-editor": "allow",
               "novelx-publication-editor": "allow",
+              "novelx-character-editor": "allow",
               "novelx-story-editor": "allow",
             },
           }),
@@ -267,6 +270,32 @@ const layer = Layer.effect(
             { permission: "doom_loop", pattern: "novelx_finish_story", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
+        const characterEditorRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_prepare_character: "allow",
+            novelx_read_character_world: "allow",
+            novelx_register_character: "allow",
+            novelx_prepare_character_document: "allow",
+            novelx_commit_character_document: "allow",
+            novelx_finish_character: "allow",
+            task: { "*": "deny", "novelx-character-writer": "allow" },
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_prepare_character", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_read_character_world", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_character", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_prepare_character_document", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_commit_character_document", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_character", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const characterWriterRestriction = Permission.fromConfig({
+          "*": "deny",
+          read: "allow",
+          external_directory: novelxLeafExternalDirectory,
+        })
         const storyWriterRestriction = Permission.fromConfig({
           "*": "deny",
           read: "allow",
@@ -387,6 +416,17 @@ const layer = Layer.effect(
             steps: 160,
             prompt: PROMPT_NOVELX_STORY_EDITOR,
           },
+          "novelx-character-editor": {
+            name: "novelx-character-editor",
+            description: "NovelX 角色主编。读取冻结世界原文，注册并封存唯一主角档案。",
+            options: {},
+            permission: Permission.merge(defaults, user, characterEditorRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 80,
+            prompt: PROMPT_NOVELX_CHARACTER_EDITOR,
+          },
           "novelx-geography": {
             name: "novelx-geography",
             description: "NovelX 地理执行叶节点。只根据已注册的真实地形上下文撰写一份详细地理档案并返回主编。",
@@ -430,6 +470,17 @@ const layer = Layer.effect(
             hidden: true,
             steps: 4,
             prompt: PROMPT_NOVELX_STORY_WRITER,
+          },
+          "novelx-character-writer": {
+            name: "novelx-character-writer",
+            description: "NovelX 主角档案叶节点。只依据冻结世界与注册事实撰写唯一主角档案。",
+            options: {},
+            permission: Permission.merge(defaults, user, characterWriterRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 4,
+            prompt: PROMPT_NOVELX_CHARACTER_WRITER,
           },
           general: {
             name: "general",
@@ -527,6 +578,8 @@ const layer = Layer.effect(
             key === "novelx-world-prose-writer"
             || key === "novelx-story-editor"
             || key === "novelx-story-writer"
+            || key === "novelx-character-editor"
+            || key === "novelx-character-writer"
           )
             continue
           if (value.disable) {

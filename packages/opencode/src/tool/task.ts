@@ -28,20 +28,27 @@ const novelXLeafInvocations = new Map<string, number>()
 const novelXLeafExecution = Semaphore.makeUnsafe(2)
 
 const isNovelXOwnedLeaf = (name: string) =>
-  name === "novelx-geography" || name === "novelx-world-writer" || name === "novelx-world-prose-writer" || name === "novelx-story-writer"
+  name === "novelx-geography" ||
+  name === "novelx-world-writer" ||
+  name === "novelx-world-prose-writer" ||
+  name === "novelx-story-writer" ||
+  name === "novelx-character-writer"
 const isNovelXOwnedChild = (name: string) =>
   name === "novelx-stage-editor" ||
   name === "novelx-visual-editor" ||
   name === "novelx-publication-editor" ||
   name === "novelx-story-editor" ||
+  name === "novelx-character-editor" ||
   isNovelXOwnedLeaf(name)
 const isNovelXEditorialDispatch = (parent: string, child: string) =>
   (parent === "growth" && child === "novelx-stage-editor") ||
   (parent === "growth" && child === "novelx-visual-editor") ||
   (parent === "growth" && child === "novelx-publication-editor") ||
+  (parent === "growth" && child === "novelx-character-editor") ||
   (parent === "growth" && child === "novelx-story-editor") ||
   (parent === "novelx-stage-editor" && child === "novelx-world-writer") ||
   (parent === "novelx-publication-editor" && child === "novelx-world-prose-writer") ||
+  (parent === "novelx-character-editor" && child === "novelx-character-writer") ||
   (parent === "novelx-story-editor" && child === "novelx-story-writer") ||
   (parent === "novelx-story-editor" && child === "novelx-visual-editor")
 
@@ -150,7 +157,10 @@ export const TaskTool = Tool.define(
       const editorialNestedLeaf =
         depth === 1 &&
         isNovelXEditorialDispatch(ctx.agent, params.subagent_type) &&
-        (ctx.agent === "novelx-stage-editor" || ctx.agent === "novelx-publication-editor" || ctx.agent === "novelx-story-editor")
+        (ctx.agent === "novelx-stage-editor" ||
+          ctx.agent === "novelx-publication-editor" ||
+          ctx.agent === "novelx-character-editor" ||
+          ctx.agent === "novelx-story-editor")
       if (depth >= (cfg.subagent_depth ?? 1) && !editorialNestedLeaf) {
         return yield* Effect.fail(
           new Error(
@@ -179,9 +189,11 @@ export const TaskTool = Tool.define(
         (next.name === "novelx-stage-editor" ||
           next.name === "novelx-visual-editor" ||
           next.name === "novelx-publication-editor" ||
+          next.name === "novelx-character-editor" ||
           next.name === "novelx-story-editor" ||
           next.name === "novelx-world-writer" ||
           next.name === "novelx-world-prose-writer" ||
+          next.name === "novelx-character-writer" ||
           next.name === "novelx-story-writer") &&
         !isNovelXEditorialDispatch(ctx.agent, next.name)
       ) {

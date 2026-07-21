@@ -59,6 +59,8 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("novelx-world-prose-writer")
     expect(names).toContain("novelx-story-editor")
     expect(names).toContain("novelx-story-writer")
+    expect(names).toContain("novelx-character-editor")
+    expect(names).toContain("novelx-character-writer")
     expect(names).not.toContain("novelx-cover-editor")
     expect(names).toContain("general")
     expect(names).toContain("explore")
@@ -94,6 +96,7 @@ it.instance(
       expect(evalPerm(growth, "task", "novelx-visual-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-publication-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-story-editor")).toBe("allow")
+      expect(evalPerm(growth, "task", "novelx-character-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-cover-editor")).toBe("deny")
       expect(evalPerm(growth, "task", "novelx-world-writer")).toBe("deny")
       expect(evalPerm(growth, "task", "novelx-geography")).toBe("deny")
@@ -109,6 +112,29 @@ it.instance(
       expect(growth?.prompt).toContain("resume that exact stage-editor task/session")
     }),
   { timeout: 15_000 },
+)
+
+it.instance("character editor owns one source-bound protagonist writer and no image branch", () =>
+  Effect.gen(function* () {
+    const editor = yield* load((svc) => svc.get("novelx-character-editor"))
+    expect(evalPerm(editor, "novelx_prepare_character")).toBe("allow")
+    expect(evalPerm(editor, "novelx_read_character_world")).toBe("allow")
+    expect(evalPerm(editor, "novelx_register_character")).toBe("allow")
+    expect(evalPerm(editor, "novelx_prepare_character_document")).toBe("allow")
+    expect(evalPerm(editor, "novelx_commit_character_document")).toBe("allow")
+    expect(evalPerm(editor, "novelx_finish_character")).toBe("allow")
+    expect(evalPerm(editor, "novelx_prepare_story")).toBe("deny")
+    expect(evalPerm(editor, "task", "novelx-character-writer")).toBe("allow")
+    expect(evalPerm(editor, "task", "novelx-visual-editor")).toBe("deny")
+    expect(editor?.prompt).toContain("exactly one protagonist")
+    expect(editor?.prompt).toContain("read every frozen world source")
+
+    const writer = yield* load((svc) => svc.get("novelx-character-writer"))
+    expect(evalPerm(writer, "read")).toBe("allow")
+    expect(evalPerm(writer, "write")).toBe("deny")
+    expect(evalPerm(writer, "task", "general")).toBe("deny")
+    expect(writer?.prompt).toContain("Do not decide the protagonist's completed arc or ending")
+  }),
 )
 
 it.instance("story editor splits the existing visual tool branch instead of a cover editor", () =>
