@@ -110,6 +110,8 @@ it.instance(
       expect(growth?.prompt).toContain("Do not assume a fixed fantasy or science-fiction taxonomy")
       expect(growth?.prompt).toContain("do not ask the user whether to retry")
       expect(growth?.prompt).toContain("resume that exact stage-editor task/session")
+      expect(growth?.prompt).toContain("Never call recovery merely because novelx_route_growth reports")
+      expect(growth?.prompt).toContain("story_required")
       expect(growth?.prompt).toContain("A child handoff is never the terminal proof")
       expect(growth?.prompt).toContain("Never expose Agent or tool names, Session IDs, internal paths, or SHA-256")
     }),
@@ -136,6 +138,8 @@ it.instance("character editor owns one source-bound protagonist writer and no im
     expect(evalPerm(writer, "write")).toBe("deny")
     expect(evalPerm(writer, "task", "general")).toBe("deny")
     expect(writer?.prompt).toContain("Do not decide the protagonist's completed arc or ending")
+    expect(writer?.prompt).toContain("document.sourceEntityIds")
+    expect(writer?.prompt).toContain("exactly the same characters")
   }),
 )
 
@@ -154,6 +158,8 @@ it.instance("story editor splits the existing visual tool branch instead of a co
     expect(evalPerm(story, "task", "novelx-visual-editor")).toBe("allow")
     expect(story?.prompt).toContain("strictly one at a time")
     expect(story?.prompt).toContain("the exact sealed protagonist dossier")
+    expect(story?.prompt).toContain("task_id")
+    expect(story?.prompt).toContain("same task session ID")
     expect(story?.prompt).toContain("This text-first batch does not dispatch visual tools")
 
     const writer = yield* load((svc) => svc.get("novelx-story-writer"))
@@ -163,6 +169,8 @@ it.instance("story editor splits the existing visual tool branch instead of a co
     expect(writer?.prompt).toContain("centered on the supplied protagonist")
     expect(writer?.prompt).toContain("Preserve every proper noun exactly")
     expect(writer?.prompt).toContain("Do not replace the dossier's opening incident")
+    expect(writer?.prompt).toContain("exactSourceTitles")
+    expect(writer?.prompt).toContain("previousNovelChapter")
 
     const visual = yield* load((svc) => svc.get("novelx-visual-editor"))
     expect(evalPerm(visual, "read")).toBe("allow")

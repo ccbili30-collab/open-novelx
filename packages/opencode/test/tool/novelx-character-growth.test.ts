@@ -99,7 +99,10 @@ describe("NovelX Character Growth tools", () => {
         const rootContext = context(root.id, rootAssistant.id, "growth", "call-route")
         const route = yield* (yield* NovelXRouteGrowthTool).init()
         const initialRoute = yield* route.execute({}, rootContext)
-        expect(initialRoute.metadata).toMatchObject({ route: "character_required", nextAgent: "novelx-character-editor" })
+        expect(initialRoute.metadata).toMatchObject({
+          route: "character_required",
+          nextAgent: "novelx-character-editor",
+        })
         const prematureStoryEditor = yield* sessions.create({
           parentID: root.id,
           title: "故事：越权提前开始",
@@ -161,10 +164,7 @@ describe("NovelX Character Growth tools", () => {
         expect(registered.metadata.targetPath).toBe("Characters/弥娅·雪痕.md")
 
         const prepareDocument = yield* (yield* NovelXPrepareCharacterDocumentTool).init()
-        const document = yield* prepareDocument.execute(
-          {},
-          { ...editorContext, callID: "call-character-document" },
-        )
+        const document = yield* prepareDocument.execute({}, { ...editorContext, callID: "call-character-document" })
         expect(document.metadata.contextPackPath).toContain("character-context")
 
         const wrongChild = yield* sessions.create({
@@ -227,9 +227,7 @@ describe("NovelX Character Growth tools", () => {
             JSON.stringify(mismatched, null, 2) + "\n",
           ),
         )
-        const drift = yield* route
-          .execute({}, { ...rootContext, callID: "call-route-drift" })
-          .pipe(Effect.exit)
+        const drift = yield* route.execute({}, { ...rootContext, callID: "call-route-drift" }).pipe(Effect.exit)
         expect(Exit.isFailure(drift)).toBe(true)
 
         yield* Effect.promise(() =>
@@ -249,10 +247,7 @@ describe("NovelX Character Growth tools", () => {
         expect(storyPrepared.output).toContain("弥娅·雪痕")
 
         const readStoryWorld = yield* (yield* NovelXReadStoryWorldTool).init()
-        yield* readStoryWorld.execute(
-          { entityIds: [world.entityId] },
-          { ...storyContext, callID: "call-story-world" },
-        )
+        yield* readStoryWorld.execute({ entityIds: [world.entityId] }, { ...storyContext, callID: "call-story-world" })
         const readStoryCharacter = yield* (yield* NovelXReadStoryCharacterTool).init()
         const storyCharacter = yield* readStoryCharacter.execute(
           {},
@@ -291,6 +286,12 @@ describe("NovelX Character Growth tools", () => {
           id: registered.metadata.protagonistId,
           markdown: dossier,
         })
+        const replayedStoryDocument = yield* prepareStoryDocumentTool.execute(
+          { documentId: storyManifest.documents[0].id },
+          { ...storyContext, callID: "call-story-document-replay" },
+        )
+        expect(replayedStoryDocument.metadata.replayed).toBe(true)
+        expect(replayedStoryDocument.metadata.contextPackPath).toBe(firstDocument.metadata.contextPackPath)
         yield* Effect.promise(() =>
           fs.writeFile(path.join(test.directory, "Characters", "弥娅·雪痕.md"), `${dossier}\n被篡改的内容`),
         )
@@ -435,7 +436,10 @@ async function seedFrozenWorld(directory: string) {
 
   await fs.mkdir(path.join(directory, ".novelx", "growth"), { recursive: true })
   await fs.mkdir(path.dirname(path.join(directory, ...committed.record.targetPath.split("/"))), { recursive: true })
-  await fs.writeFile(path.join(directory, ".novelx", "growth", "world-blueprint.json"), JSON.stringify(blueprint, null, 2) + "\n")
+  await fs.writeFile(
+    path.join(directory, ".novelx", "growth", "world-blueprint.json"),
+    JSON.stringify(blueprint, null, 2) + "\n",
+  )
   await fs.writeFile(
     path.join(directory, ".novelx", "growth", "world-materialization.json"),
     JSON.stringify(manifest, null, 2) + "\n",
@@ -464,6 +468,13 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
     sha256: worldSha256(characterMarkdown),
     characterIntegritySha256: "c".repeat(64),
   }
+  const protagonistContinuity = {
+    id: protagonist.id,
+    name: protagonist.name,
+    openingState: "临时商队困在雪线下，封关钟响前必须越过北侧旧道。",
+    wound: "她曾误判雪崩征兆，使同行者失踪，因此不肯再次放弃受困的商队。",
+    initialRelationships: ["她欠霜口商队一笔必须以这次带路偿还的旧债。"],
+  }
   const planning = createStoryMaterialization({
     world: {
       title: world.title,
@@ -490,6 +501,7 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
   let manifest = registerStory({
     manifest: characterRead,
     editorSessionId,
+    protagonistContinuity,
     profile: {
       contextSha256: characterRead.preparedContextSha256,
       historyBooks: [
@@ -519,7 +531,10 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
         theme: { title: "风雪封关", summary: "六章组成一条连续且付出代价的边境故事。" },
         chapters: Array.from({ length: 6 }, (_, index) => ({
           title: `第${index + 1}章 风雪旧路`,
-          brief: "推进封关期间连续发生的选择、冲突与后果。",
+          brief:
+            index === 0
+              ? "临时商队在雪线下整队，必须赶在封关钟响之前踏上北侧旧道，并承担选择带来的后果。"
+              : "推进封关期间连续发生的选择、冲突与后果。",
           sourceEntityIds: [world.entityId],
           historyReferences: [{ historyBookIndex: 0, chapterIndex: index % 3 }],
           documentIndices: [index % 2],
@@ -537,18 +552,29 @@ function completedLegacyStory(world: Awaited<ReturnType<typeof seedFrozenWorld>>
       editorMessageId: `msg-legacy-${document.ordinal}`,
       committedContents,
       protagonistMarkdown: characterMarkdown,
+      protagonistContinuity,
       now: 20 + document.ordinal,
     })
     manifest = prepared.manifest
     const minimum = document.kind === "novel_chapter" ? 1_600 : document.kind === "history_chapter" ? 1_300 : 400
-    const markdown = `# ${document.title}\n\n${"霜脊关隘的风雪、商路和双印制度共同约束人物选择。".repeat(Math.ceil(minimum / 24))}\n`
+    const sourceTitles = document.sourceEntityIds.map(
+      (entityId) => manifest.world.sources.find((source) => source.entityId === entityId)!.title,
+    )
+    const openingAnchors =
+      document.kind === "novel_chapter" && manifest.novel?.chapters[0] === document.id
+        ? "临时商队在雪线下已经整队，封关钟响之前，他们必须踏上北侧旧道。"
+        : ""
+    const markdown = `# ${document.title}\n\n${sourceTitles.join("、")}。${openingAnchors}\n\n${"霜脊关隘的风雪、商路和双印制度共同约束人物选择。".repeat(Math.ceil(minimum / 24))}\n`
+    const taskSessionId =
+      document.kind === "novel_chapter" ? "ses-legacy-novel-writer" : `ses-legacy-writer-${document.ordinal}`
     const committed = commitStoryDocument({
       manifest,
       documentId: document.id,
       editorSessionId,
-      taskSessionId: `ses-legacy-writer-${document.ordinal}`,
+      taskSessionId,
       leaseId: prepared.record.lease!.id,
       markdown,
+      protagonistContinuity,
       now: 40 + document.ordinal,
     })
     manifest = committed.manifest
@@ -594,7 +620,10 @@ function storyProfile(contextSha256: string, entityId: string) {
       theme: { title: "风雪封关", summary: "六章围绕弥娅的选择构成一条连续且付出代价的故事。" },
       chapters: Array.from({ length: 6 }, (_, index) => ({
         title: `第${index + 1}章 风雪旧路`,
-        brief: "让弥娅依据既有能力与限制推进封关期间连续发生的选择、冲突与后果。",
+        brief:
+          index === 0
+            ? "故事开始时，弥娅接下带路任务；她受雇带一支临时商队；必须赶在封关钟前越过北侧旧道。"
+            : "让弥娅依据既有能力与限制推进封关期间连续发生的选择、冲突与后果。",
         sourceEntityIds: [entityId],
         historyReferences: [{ historyBookIndex: 0, chapterIndex: index % 3 }],
         documentIndices: [index % 2],

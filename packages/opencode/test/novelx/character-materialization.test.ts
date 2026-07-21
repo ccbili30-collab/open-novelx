@@ -88,7 +88,8 @@ const registered = () => {
   }).manifest
 }
 
-const dossier = `# ${profile.name}\n\n${"她在风雪封关前检查每一枚关印，也记得每条旧路曾经吞没过谁。".repeat(45)}\n`
+const exactSourceTitles = world.sources.map((source) => source.title).join("、")
+const dossier = `# ${profile.name}\n\n她的来路同时受${exactSourceTitles}约束。\n\n${"她在风雪封关前检查每一枚关印，也记得每条旧路曾经吞没过谁。".repeat(45)}\n`
 
 describe("NovelX character materialization", () => {
   test("creates a frozen world snapshot and registers exactly one stable protagonist after every source was read", () => {
@@ -199,7 +200,7 @@ describe("NovelX character materialization", () => {
         editorSessionId: "ses-character-editor",
         writerSessionId: "ses-character-writer",
         leaseId,
-        markdown: `# 错误标题\n\n${"正文。".repeat(300)}`,
+        markdown: `# 错误标题\n\n${exactSourceTitles}。${"正文。".repeat(300)}`,
         now: 50,
       }),
     ).toThrow("NOVELX_CHARACTER_DOCUMENT_TITLE_INVALID")
@@ -209,10 +210,30 @@ describe("NovelX character materialization", () => {
         editorSessionId: "ses-character-editor",
         writerSessionId: "ses-character-writer",
         leaseId,
-        markdown: `# ${profile.name}\n\n阶段主编调用 Agent 后输出。${"正文。".repeat(300)}`,
+        markdown: `# ${profile.name}\n\n${exactSourceTitles}。阶段主编调用 Agent 后输出。${"正文。".repeat(300)}`,
         now: 50,
       }),
     ).toThrow("NOVELX_CHARACTER_DOCUMENT_INTERNAL_LEAK")
+    expect(() =>
+      commitCharacterDocument({
+        manifest: prepared.manifest,
+        editorSessionId: "ses-character-editor",
+        writerSessionId: "ses-character-writer",
+        leaseId,
+        markdown: `# ${profile.name}\n\n${"她在风雪封关前检查每一枚关印。".repeat(80)}`,
+        now: 50,
+      }),
+    ).toThrow("NOVELX_CHARACTER_SOURCE_TITLE_MISSING")
+    expect(() =>
+      commitCharacterDocument({
+        manifest: prepared.manifest,
+        editorSessionId: "ses-character-editor",
+        writerSessionId: "ses-character-writer",
+        leaseId,
+        markdown: `# ${profile.name}\n\n${exactSourceTitles}。她沿三汊母河三条支流辨路。${"她在风雪封关前检查每一枚关印。".repeat(80)}`,
+        now: 50,
+      }),
+    ).toThrow("NOVELX_CHARACTER_PROPER_NAME_DRIFT")
 
     const committed = commitCharacterDocument({
       manifest: prepared.manifest,
@@ -246,9 +267,9 @@ describe("NovelX character materialization", () => {
   })
 
   test("finishes only after the dossier is committed and detects persisted tampering", () => {
-    expect(() => finishCharacterText({ manifest: registered(), editorSessionId: "ses-character-editor", now: 50 })).toThrow(
-      "NOVELX_CHARACTER_TEXT_INCOMPLETE",
-    )
+    expect(() =>
+      finishCharacterText({ manifest: registered(), editorSessionId: "ses-character-editor", now: 50 }),
+    ).toThrow("NOVELX_CHARACTER_TEXT_INCOMPLETE")
 
     const prepared = prepareCharacterDocument({
       manifest: registered(),
@@ -271,6 +292,8 @@ describe("NovelX character materialization", () => {
       now: 60,
     })
     expect(finished.status).toBe("text_completed")
-    expect(() => verifyCharacterMaterialization({ ...finished, updatedAt: 61 })).toThrow("NOVELX_CHARACTER_INTEGRITY_INVALID")
+    expect(() => verifyCharacterMaterialization({ ...finished, updatedAt: 61 })).toThrow(
+      "NOVELX_CHARACTER_INTEGRITY_INVALID",
+    )
   })
 })

@@ -6,8 +6,9 @@ Hard boundaries:
 - Register exactly one protagonist with `novelx_register_character`. The profile must be compatible with the world sources and contain a useful contradiction, desire, fear, wound, voice, capabilities, limitations, initial relationships and opening state.
 - Do not decide a completed character arc, ending, final allegiance, victory or death. Those belong to the later novel.
 - Call `novelx_prepare_character_document` once, then dispatch exactly one foreground `novelx-character-writer` with only the CONTROL line and Context Pack path.
+- Require the dossier leaf to include every exact frozen source title selected by the registered document and to reject one-character near-spellings of any frozen world title. If commit reports all missing titles or name drifts, resume the same writer once with that complete error list.
 - Commit only that owned child with `novelx_commit_character_document`, then call `novelx_finish_character`.
 - Never create a second character, write project files yourself, dispatch the visual editor, start Story Growth, or ask the user for confirmation.
 - On a resumable Provider/tool failure, resume this exact editor or writer session. Never replace the result with a template.
 
-The dossier is reader-facing Chinese prose. Never expose Agent names, tools, registration, hashes, Context Packs, orchestration, placeholders or implementation language in it.
+The dossier is reader-facing Chinese prose. Never expose Agent names, tools, registration, hashes, Context Packs, orchestration, placeholders or implementation language in it. Its opening state, wound and initial relationships become immutable continuity authority for Story; inspect them for concrete identity before commit.

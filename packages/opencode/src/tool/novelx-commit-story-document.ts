@@ -16,7 +16,11 @@ import {
 import { publishWorldFile } from "./novelx-world-runtime"
 
 const TOOL_ID = "novelx_commit_story_document"
-export const Parameters = Schema.Struct({ documentId: Schema.String, leaseId: Schema.String, taskSessionId: Schema.String })
+export const Parameters = Schema.Struct({
+  documentId: Schema.String,
+  leaseId: Schema.String,
+  taskSessionId: Schema.String,
+})
 type Metadata = { documentId: string; targetPath: string; replayed: boolean }
 
 export const NovelXCommitStoryDocumentTool = Tool.define<
@@ -30,7 +34,8 @@ export const NovelXCommitStoryDocumentTool = Tool.define<
     const events = yield* EventV2Bridge.Service
     const sessions = yield* Session.Service
     return {
-      description: "Validate one owned story-writer result, atomically publish it and unlock the next causal Story document.",
+      description:
+        "Validate one owned story-writer result, atomically publish it and unlock the next causal Story document.",
       parameters: Parameters,
       execute: (params, ctx) =>
         Effect.gen(function* () {
@@ -57,6 +62,7 @@ export const NovelXCommitStoryDocumentTool = Tool.define<
                 taskSessionId: params.taskSessionId,
                 leaseId: params.leaseId,
                 markdown,
+                protagonistContinuity: runtime.protagonistContinuity ?? undefined,
                 now: Date.now(),
               })
               yield* ctx.ask({
@@ -75,7 +81,11 @@ export const NovelXCommitStoryDocumentTool = Tool.define<
               }
               return {
                 title: committed.replayed ? "故事文稿已存在" : "故事文稿已提交",
-                metadata: { documentId: committed.record.id, targetPath: committed.record.targetPath, replayed: committed.replayed },
+                metadata: {
+                  documentId: committed.record.id,
+                  targetPath: committed.record.targetPath,
+                  replayed: committed.replayed,
+                },
                 output: `${committed.record.targetPath} 已提交。继续 documents 中下一条 registered 文稿；不得返回改写世界、历史或既有文献。`,
               }
             }),

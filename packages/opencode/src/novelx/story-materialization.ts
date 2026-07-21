@@ -1,4 +1,5 @@
 import * as NovelXStory from "@opencode-ai/schema/novelx-story"
+import { inspectSourceTitleGrounding, longestCommonHanFragments } from "./text-grounding"
 import { worldSha256 } from "./world-blueprint"
 
 export class StoryMaterializationError extends Error {
@@ -18,6 +19,14 @@ export type CompletedStoryMaterialization = RegisteredStoryMaterialization & {
   status: "text_completed"
 }
 
+export type StoryContinuityAuthority = {
+  id: string
+  name: string
+  openingState: string
+  wound: string
+  initialRelationships: readonly string[]
+}
+
 export function createStoryMaterialization(input: {
   world: { title: string; materializationIntegritySha256: string; sources: readonly NovelXStory.WorldSource[] }
   protagonist: NovelXStory.ProtagonistSource
@@ -28,7 +37,10 @@ export function createStoryMaterialization(input: {
   if (!input.protagonist) {
     fail("NOVELX_STORY_CHARACTER_REQUIRED", "New Story Growth requires one completed protagonist dossier.")
   }
-  unique(input.world.sources.map((source) => source.entityId), "world source ID")
+  unique(
+    input.world.sources.map((source) => source.entityId),
+    "world source ID",
+  )
   const world = {
     title: concreteLabel(input.world.title, "world.title"),
     materializationIntegritySha256: sha256(input.world.materializationIntegritySha256, "world integrity"),
@@ -80,7 +92,10 @@ export function recordStoryCharacterRead(input: {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
   if (current.schemaVersion !== 2) {
-    fail("NOVELX_STORY_LEGACY_CHARACTER_UNSUPPORTED", "Legacy Story v1 cannot acquire a retroactive protagonist source.")
+    fail(
+      "NOVELX_STORY_LEGACY_CHARACTER_UNSUPPORTED",
+      "Legacy Story v1 cannot acquire a retroactive protagonist source.",
+    )
   }
   const protagonist = current.protagonist
   if (!protagonist) fail("NOVELX_STORY_CHARACTER_REQUIRED", "Story v2 is missing its protagonist source.")
@@ -110,7 +125,8 @@ export function recordStorySourceReads(input: {
 }) {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
-  if (current.status !== "planning") fail("NOVELX_STORY_PLANNING_REQUIRED", "World sources are read only while planning.")
+  if (current.status !== "planning")
+    fail("NOVELX_STORY_PLANNING_REQUIRED", "World sources are read only while planning.")
   unique([...input.sourceEntityIds], "source read")
   const sources = new Map(current.world.sources.map((source) => [source.entityId, source]))
   const reads = new Map(current.sourceReads.map((read) => [read.entityId, read]))
@@ -126,11 +142,13 @@ export function registerStory(input: {
   manifest: NovelXStory.Materialization
   editorSessionId: string
   profile: NovelXStory.RegistrationProfile
+  protagonistContinuity?: StoryContinuityAuthority
   now: number
 }): { manifest: RegisteredStoryMaterialization; replayed: false } {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
-  if (current.status !== "planning") fail("NOVELX_STORY_REGISTRATION_CONFLICT", "The story has already been registered.")
+  if (current.status !== "planning")
+    fail("NOVELX_STORY_REGISTRATION_CONFLICT", "The story has already been registered.")
   if (input.profile.contextSha256 !== current.preparedContextSha256) {
     fail("NOVELX_STORY_CONTEXT_STALE", "Story registration was not planned from the current frozen world context.")
   }
@@ -156,6 +174,16 @@ export function registerStory(input: {
   if (input.profile.novel.chapters.length < 6 || input.profile.novel.chapters.length > 8) {
     fail("NOVELX_STORY_NOVEL_CHAPTER_COUNT_INVALID", "The single novel must contain six to eight chapters.")
   }
+  const continuity = requireStoryContinuityAuthority(current, input.protagonistContinuity)
+  if (
+    continuity &&
+    longestCommonHanFragments(input.profile.novel.chapters[0]!.brief, continuity.openingState).length < 3
+  ) {
+    fail(
+      "NOVELX_STORY_OPENING_ANCHORS_INSUFFICIENT",
+      "The first novel brief and sealed opening state must share at least three exact Chinese continuity anchors.",
+    )
+  }
   const sources = new Map(current.world.sources.map((source) => [source.entityId, source]))
   const reads = new Map(current.sourceReads.map((read) => [read.entityId, read.sourceSha256]))
   const assertSources = (ids: readonly string[], field: string) => {
@@ -175,7 +203,10 @@ export function registerStory(input: {
   let ordinal = 1
   input.profile.historyBooks.forEach((profile, bookIndex) => {
     if (profile.chapters.length < 3 || profile.chapters.length > 5) {
-      fail("NOVELX_STORY_HISTORY_CHAPTER_COUNT_INVALID", `History book ${bookIndex + 1} requires three to five chapters.`)
+      fail(
+        "NOVELX_STORY_HISTORY_CHAPTER_COUNT_INVALID",
+        `History book ${bookIndex + 1} requires three to five chapters.`,
+      )
     }
     const title = concreteLabel(profile.title, `historyBooks[${bookIndex}].title`)
     const workId = stableId("history", bookIndex, title)
@@ -211,7 +242,10 @@ export function registerStory(input: {
       chapterIds,
     })
   })
-  unique(historyBooks.map((book) => book.title), "history book title")
+  unique(
+    historyBooks.map((book) => book.title),
+    "history book title",
+  )
 
   const references: NovelXStory.ReferenceDocument[] = input.profile.references.map((profile, index) => {
     assertSources(profile.sourceEntityIds, `references[${index}]`)
@@ -220,7 +254,8 @@ export function registerStory(input: {
     const upstreamDocumentIds = profile.historyReferences.map((reference) => {
       const book = historyBooks[reference.historyBookIndex]
       const documentId = book?.chapterIds[reference.chapterIndex]
-      if (!documentId) fail("NOVELX_STORY_HISTORY_REFERENCE_INVALID", `Reference ${title} cites an unknown history chapter.`)
+      if (!documentId)
+        fail("NOVELX_STORY_HISTORY_REFERENCE_INVALID", `Reference ${title} cites an unknown history chapter.`)
       return documentId
     })
     unique(upstreamDocumentIds, `${title} history reference`)
@@ -251,7 +286,10 @@ export function registerStory(input: {
       documentId: id,
     }
   })
-  unique(references.map((reference) => reference.title), "reference title")
+  unique(
+    references.map((reference) => reference.title),
+    "reference title",
+  )
 
   const novelTitle = concreteLabel(input.profile.novel.title, "novel.title")
   const novelId = stableId("novel", novelTitle)
@@ -263,7 +301,8 @@ export function registerStory(input: {
     const title = concreteLabel(profile.title, `novel.chapters[${index}].title`)
     const historyDependencies = profile.historyReferences.map((reference) => {
       const id = historyBooks[reference.historyBookIndex]?.chapterIds[reference.chapterIndex]
-      if (!id) fail("NOVELX_STORY_HISTORY_REFERENCE_INVALID", `Novel chapter ${title} cites an unknown history chapter.`)
+      if (!id)
+        fail("NOVELX_STORY_HISTORY_REFERENCE_INVALID", `Novel chapter ${title} cites an unknown history chapter.`)
       return id
     })
     const documentDependencies = profile.documentIndices.map((documentIndex) => {
@@ -285,20 +324,29 @@ export function registerStory(input: {
         ordinal: ordinal++,
         sourceEntityIds: profile.sourceEntityIds,
         sourceSha256s: profile.sourceEntityIds.map((sourceId) => sources.get(sourceId)!.sha256),
-        upstreamDocumentIds: [...new Set([...historyDependencies, ...documentDependencies, ...(previous ? [previous] : [])])],
+        upstreamDocumentIds: [
+          ...new Set([...historyDependencies, ...documentDependencies, ...(previous ? [previous] : [])]),
+        ],
         targetPath: `${NovelXStory.STORY_DIRECTORY}/小说/${safeSegment(novelTitle)}/${safeSegment(themeTitle)}/${String(index + 1).padStart(2, "0")}-${safeSegment(title)}.md`,
         now: input.now,
       }),
     )
     novelChapterIds.push(id)
   })
-  unique(input.profile.novel.chapters.map((chapter) => chapter.title), "novel chapter title")
+  unique(
+    input.profile.novel.chapters.map((chapter) => chapter.title),
+    "novel chapter title",
+  )
   const novel: NovelXStory.NovelWork = {
     id: novelId,
     title: novelTitle,
     author: concreteLabel(input.profile.novel.author, "novel.author"),
     summary: detail(input.profile.novel.summary, "novel.summary"),
-    theme: { id: themeId, title: themeTitle, summary: detail(input.profile.novel.theme.summary, "novel.theme.summary") },
+    theme: {
+      id: themeId,
+      title: themeTitle,
+      summary: detail(input.profile.novel.theme.summary, "novel.theme.summary"),
+    },
     chapters: novelChapterIds,
   }
   const manifest = withIntegrity({
@@ -322,13 +370,16 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
   committedContents: Record<string, string>
   worldContents?: Record<string, string>
   protagonistMarkdown?: string
+  protagonistContinuity?: StoryContinuityAuthority
   now: number
 }) {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
-  if (current.status !== "writing") fail("NOVELX_STORY_WRITING_REQUIRED", "Story documents can only be prepared while writing.")
+  if (current.status !== "writing")
+    fail("NOVELX_STORY_WRITING_REQUIRED", "Story documents can only be prepared while writing.")
   const record = requireDocument(current, input.documentId)
   const protagonist = protagonistContext(current, input.protagonistMarkdown)
+  const continuity = requireStoryContinuityAuthority(current, input.protagonistContinuity)
   for (const prior of current.documents.filter((document) => document.ordinal < record.ordinal)) {
     const content = input.committedContents[prior.id]
     if (prior.status !== "committed" || !content || worldSha256(normalizeMarkdown(content)) !== prior.committedSha256) {
@@ -337,7 +388,8 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
   }
   const context = {
     world: current.world,
-    document: record,
+    document: contextDocument(record),
+    exactSourceTitles: exactSourceTitles(current, record),
     worldSources: record.sourceEntityIds.map((id) => {
       const source = current.world.sources.find((candidate) => candidate.entityId === id)!
       const markdown = input.worldContents?.[id]
@@ -351,6 +403,9 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
       markdown: requireCommittedContent(current, id, input.committedContents),
     })),
     protagonist,
+    ...(record.kind === "novel_chapter" && continuity
+      ? novelContinuityContext(current, record, input.committedContents, continuity)
+      : {}),
   }
   if (record.status === "committed") return { manifest: current, record, context, replayed: true }
   // A lease belongs to the long-lived stage editor session, not to one model
@@ -368,7 +423,12 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
     acquiredAt: input.now,
   }
   const nextRecord = { ...record, status: "leased" as const, lease, updatedAt: input.now, errorCode: null }
-  return { manifest: updateDocument(current, nextRecord, input.now), record: nextRecord, context, replayed: Boolean(record.lease) }
+  return {
+    manifest: updateDocument(current, nextRecord, input.now),
+    record: nextRecord,
+    context,
+    replayed: Boolean(record.lease),
+  }
 }
 
 export function commitStoryDocument<T extends NovelXStory.Materialization>(input: {
@@ -378,15 +438,42 @@ export function commitStoryDocument<T extends NovelXStory.Materialization>(input
   taskSessionId: string
   leaseId: string
   markdown: string
+  protagonistContinuity?: StoryContinuityAuthority
   now: number
 }) {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
   const record = requireDocument(current, input.documentId)
-  const markdown = normalizeStoryDocument(record, input.markdown)
+  if (current.schemaVersion === 1 && record.status === "committed") {
+    const markdown = normalizeMarkdown(input.markdown)
+    if (record.committedSha256 !== worldSha256(markdown)) {
+      fail("NOVELX_STORY_DOCUMENT_COMMIT_CONFLICT", `${record.targetPath} already has different content.`)
+    }
+    return { manifest: current, record, markdown, replayed: true }
+  }
+  const continuity = requireStoryContinuityAuthority(current, input.protagonistContinuity)
+  const markdown = normalizeStoryDocument(current, record, input.markdown)
+  assertNovelWriterSession(current, record, input.taskSessionId)
+  if (record.kind === "novel_chapter" && continuity && current.novel?.chapters[0] === record.id) {
+    const anchors = requiredOpeningAnchors(current, continuity)
+    if (anchors.length < 3) {
+      fail(
+        "NOVELX_STORY_OPENING_ANCHORS_INSUFFICIENT",
+        "The first novel brief and sealed opening state must share at least three exact Chinese continuity anchors.",
+      )
+    }
+    const missingAnchors = anchors.filter((anchor) => !markdown.includes(anchor))
+    if (missingAnchors.length) {
+      fail(
+        "NOVELX_STORY_OPENING_ANCHORS_MISSING",
+        `The first novel chapter is missing required opening anchors: ${missingAnchors.map((anchor) => JSON.stringify(anchor)).join(", ")}.`,
+      )
+    }
+  }
   const hash = worldSha256(markdown)
   if (record.status === "committed") {
-    if (record.committedSha256 !== hash) fail("NOVELX_STORY_DOCUMENT_COMMIT_CONFLICT", `${record.targetPath} already has different content.`)
+    if (record.committedSha256 !== hash)
+      fail("NOVELX_STORY_DOCUMENT_COMMIT_CONFLICT", `${record.targetPath} already has different content.`)
     return { manifest: current, record, markdown, replayed: true }
   }
   if (!record.lease || record.lease.id !== input.leaseId || record.lease.ownerSessionId !== input.editorSessionId) {
@@ -412,17 +499,34 @@ export function finishStoryText(input: {
   const current = verifyStoryMaterialization(input.manifest)
   assertEditor(current, input.editorSessionId)
   if (!current.documents.length || current.documents.some((document) => document.status !== "committed")) {
-    fail("NOVELX_STORY_TEXT_INCOMPLETE", "Every history, reference and novel document must be committed before Story text completes.")
+    fail(
+      "NOVELX_STORY_TEXT_INCOMPLETE",
+      "Every history, reference and novel document must be committed before Story text completes.",
+    )
   }
-  return withIntegrity({ ...withoutIntegrity(current), status: "text_completed" as const, updatedAt: input.now }) as CompletedStoryMaterialization
+  return withIntegrity({
+    ...withoutIntegrity(current),
+    status: "text_completed" as const,
+    updatedAt: input.now,
+  }) as CompletedStoryMaterialization
 }
 
 export function verifyStoryMaterialization<T extends NovelXStory.Materialization>(manifest: T): T {
   const { integritySha256, ...draft } = manifest
-  if (worldSha256(draft) !== integritySha256) fail("NOVELX_STORY_INTEGRITY_INVALID", "Story materialization integrity check failed.")
-  unique(manifest.world.sources.map((source) => source.entityId), "world source ID")
-  unique(manifest.documents.map((document) => document.id), "story document ID")
-  unique(manifest.documents.map((document) => document.targetPath.toLocaleLowerCase("zh-CN")), "story target path")
+  if (worldSha256(draft) !== integritySha256)
+    fail("NOVELX_STORY_INTEGRITY_INVALID", "Story materialization integrity check failed.")
+  unique(
+    manifest.world.sources.map((source) => source.entityId),
+    "world source ID",
+  )
+  unique(
+    manifest.documents.map((document) => document.id),
+    "story document ID",
+  )
+  unique(
+    manifest.documents.map((document) => document.targetPath.toLocaleLowerCase("zh-CN")),
+    "story target path",
+  )
   if (manifest.schemaVersion === 2 && !manifest.protagonist) {
     fail("NOVELX_STORY_CHARACTER_REQUIRED", "Story v2 is missing its protagonist source.")
   }
@@ -448,7 +552,13 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
     }
   }
   if (manifest.status === "planning") {
-    if (manifest.registrationSha256 || manifest.historyBooks.length || manifest.references.length || manifest.novel || manifest.documents.length) {
+    if (
+      manifest.registrationSha256 ||
+      manifest.historyBooks.length ||
+      manifest.references.length ||
+      manifest.novel ||
+      manifest.documents.length
+    ) {
       fail("NOVELX_STORY_CONTENT_PREMATURE", "Planning state cannot contain registered story content.")
     }
     return manifest
@@ -468,17 +578,24 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
     ...manifest.references.map((reference) => reference.documentId),
     ...manifest.novel.chapters,
   ]
-  if (expectedIds.length !== manifest.documents.length || expectedIds.some((id, index) => manifest.documents[index]?.id !== id)) {
+  if (
+    expectedIds.length !== manifest.documents.length ||
+    expectedIds.some((id, index) => manifest.documents[index]?.id !== id)
+  ) {
     fail("NOVELX_STORY_DOCUMENT_SET_INVALID", "Story documents do not match history → references → novel order.")
   }
   manifest.documents.forEach((document, index) => {
-    if (document.ordinal !== index + 1 || !safeRelativePath(document.targetPath) || !document.targetPath.startsWith(`${NovelXStory.STORY_DIRECTORY}/`)) {
+    if (
+      document.ordinal !== index + 1 ||
+      !safeRelativePath(document.targetPath) ||
+      !document.targetPath.startsWith(`${NovelXStory.STORY_DIRECTORY}/`)
+    ) {
       fail("NOVELX_STORY_DOCUMENT_SET_INVALID", `Invalid story document record ${document.id}.`)
     }
     if (document.draftPath !== `${NovelXStory.DRAFT_DIRECTORY}/${document.id}.md`) {
       fail("NOVELX_STORY_DOCUMENT_SET_INVALID", `Invalid draft path for ${document.id}.`)
     }
-    if (document.status === "committed" && (!document.committedSha256 || document.lease)) {
+    if (document.status === "committed" && (!document.committedSha256 || !document.taskSessionId || document.lease)) {
       fail("NOVELX_STORY_DOCUMENT_COMMIT_INVALID", `Committed story document ${document.id} is inconsistent.`)
     }
     for (const upstreamId of document.upstreamDocumentIds) {
@@ -488,13 +605,38 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
       }
     }
   })
+  if (manifest.schemaVersion === 2) {
+    const documents = new Map(manifest.documents.map((document) => [document.id, document]))
+    const novelDocuments = manifest.novel.chapters.map((id) => documents.get(id)!)
+    const committedNovelDocuments = novelDocuments.filter((document) => document.status === "committed")
+    if (committedNovelDocuments.length) {
+      const first = novelDocuments[0]!
+      if (first.status !== "committed" || !first.taskSessionId) {
+        fail(
+          "NOVELX_STORY_NOVEL_WRITER_SESSION_REQUIRED",
+          "Committed novel chapters require the committed first chapter writer task session.",
+        )
+      }
+      if (committedNovelDocuments.some((document) => document.taskSessionId !== first.taskSessionId)) {
+        fail(
+          "NOVELX_STORY_NOVEL_WRITER_SESSION_INVALID",
+          "All committed novel chapters must share the first chapter writer task session.",
+        )
+      }
+    }
+  }
   if (manifest.status === "text_completed" && manifest.documents.some((document) => document.status !== "committed")) {
     fail("NOVELX_STORY_TEXT_INCOMPLETE", "Text-completed story contains unfinished documents.")
   }
   return manifest
 }
 
-function documentRecord(input: Omit<NovelXStory.DocumentRecord, "draftPath" | "status" | "lease" | "taskSessionId" | "committedSha256" | "updatedAt" | "errorCode"> & { now: number }): NovelXStory.DocumentRecord {
+function documentRecord(
+  input: Omit<
+    NovelXStory.DocumentRecord,
+    "draftPath" | "status" | "lease" | "taskSessionId" | "committedSha256" | "updatedAt" | "errorCode"
+  > & { now: number },
+): NovelXStory.DocumentRecord {
   const { now, ...record } = input
   return {
     ...record,
@@ -508,13 +650,39 @@ function documentRecord(input: Omit<NovelXStory.DocumentRecord, "draftPath" | "s
   }
 }
 
-function normalizeStoryDocument(record: NovelXStory.DocumentRecord, value: string) {
+function contextDocument(record: NovelXStory.DocumentRecord) {
+  return {
+    id: record.id,
+    kind: record.kind,
+    workId: record.workId,
+    title: record.title,
+    author: record.author,
+    kindLabel: record.kindLabel,
+    brief: record.brief,
+    ordinal: record.ordinal,
+    sourceEntityIds: record.sourceEntityIds,
+    sourceSha256s: record.sourceSha256s,
+    upstreamDocumentIds: record.upstreamDocumentIds,
+    targetPath: record.targetPath,
+    draftPath: record.draftPath,
+  }
+}
+
+function normalizeStoryDocument(
+  current: NovelXStory.Materialization,
+  record: NovelXStory.DocumentRecord,
+  value: string,
+) {
   const normalized = normalizeMarkdown(value)
-  if (!normalized.startsWith(`# ${record.title}\n`)) fail("NOVELX_STORY_DOCUMENT_TITLE_INVALID", `${record.targetPath} must start with its exact title.`)
+  if (!normalized.startsWith(`# ${record.title}\n`))
+    fail("NOVELX_STORY_DOCUMENT_TITLE_INVALID", `${record.targetPath} must start with its exact title.`)
   const minimum = record.kind === "novel_chapter" ? 1_500 : record.kind === "history_chapter" ? 1_200 : 300
   const maximum = record.kind === "reference_document" ? 12_000 : 20_000
   if (normalized.length < minimum || normalized.length > maximum) {
-    fail("NOVELX_STORY_DOCUMENT_LENGTH_INVALID", `${record.targetPath} must contain ${minimum} to ${maximum} readable characters.`)
+    fail(
+      "NOVELX_STORY_DOCUMENT_LENGTH_INVALID",
+      `${record.targetPath} must contain ${minimum} to ${maximum} readable characters.`,
+    )
   }
   if (
     /(?:阶段主编|执行\s*Agent|\bAgent\b|\bPrompt\b|\bHarness\b|\btask\s+session\s*(?:id|identifier)?\b|\bsession\s+(?:id|identifier)\b|\btool\s*call\b|sourceSha256|contextSha256|integritySha256|\.novelx\/|注册(?:骨架|实体)|工具调用|待填充|待补充|TODO|TBD|作为AI|无法确定)/iu.test(
@@ -523,10 +691,147 @@ function normalizeStoryDocument(record: NovelXStory.DocumentRecord, value: strin
   ) {
     fail("NOVELX_STORY_DOCUMENT_INTERNAL_LEAK", `${record.targetPath} exposes orchestration or placeholder text.`)
   }
+  const grounding = inspectSourceTitleGrounding({
+    markdown: normalized,
+    requiredSourceEntityIds: record.sourceEntityIds,
+    worldSources: current.world.sources,
+  })
+  if (grounding.missingTitles.length) {
+    fail(
+      "NOVELX_STORY_SOURCE_TITLE_MISSING",
+      `${record.targetPath} is missing exact frozen source titles: ${grounding.missingTitles
+        .map((title) => JSON.stringify(title))
+        .join(", ")}.`,
+    )
+  }
+  if (grounding.confusableDrifts.length) {
+    fail(
+      "NOVELX_STORY_PROPER_NAME_DRIFT",
+      `${record.targetPath} contains confusable frozen proper-name drift: ${grounding.confusableDrifts
+        .map((drift) => `${JSON.stringify(drift.candidate)} != ${JSON.stringify(drift.authoritativePrefix)}`)
+        .join(", ")}.`,
+    )
+  }
   return normalized
 }
 
-function requireCommittedContent(current: NovelXStory.Materialization, documentId: string, contents: Record<string, string>) {
+function exactSourceTitles(current: NovelXStory.Materialization, record: NovelXStory.DocumentRecord) {
+  const sources = new Map(current.world.sources.map((source) => [source.entityId, source]))
+  return [
+    ...new Set(
+      record.sourceEntityIds.map((entityId) => {
+        const source = sources.get(entityId)
+        if (!source) fail("NOVELX_STORY_SOURCE_UNKNOWN", `${record.id} cites unknown source ${entityId}.`)
+        return source.title
+      }),
+    ),
+  ]
+}
+
+function requireStoryContinuityAuthority(
+  current: NovelXStory.Materialization,
+  authority: StoryContinuityAuthority | undefined,
+) {
+  if (current.schemaVersion === 1) return null
+  if (!authority) {
+    fail(
+      "NOVELX_STORY_CONTINUITY_AUTHORITY_REQUIRED",
+      "Story v2 requires continuity authority from the completed Character materialization.",
+    )
+  }
+  if (authority.id !== current.protagonist?.id || authority.name !== current.protagonist.name) {
+    fail(
+      "NOVELX_STORY_CONTINUITY_PROTAGONIST_MISMATCH",
+      "The continuity authority does not belong to the frozen Story protagonist source.",
+    )
+  }
+  if (!authority.openingState.trim() || !authority.wound.trim() || !authority.initialRelationships.length) {
+    fail("NOVELX_STORY_CONTINUITY_AUTHORITY_INVALID", "The Character continuity authority is incomplete.")
+  }
+  return authority
+}
+
+function novelContinuityContext(
+  current: NovelXStory.Materialization,
+  record: NovelXStory.DocumentRecord,
+  committedContents: Record<string, string>,
+  authority: StoryContinuityAuthority,
+) {
+  const anchors = requiredOpeningAnchors(current, authority)
+  if (anchors.length < 3) {
+    fail(
+      "NOVELX_STORY_OPENING_ANCHORS_INSUFFICIENT",
+      "The first novel brief and sealed opening state must share at least three exact Chinese continuity anchors.",
+    )
+  }
+  const chapterIndex = current.novel?.chapters.indexOf(record.id) ?? -1
+  if (chapterIndex < 0) fail("NOVELX_STORY_NOVEL_DOCUMENT_INVALID", `${record.id} is not a registered novel chapter.`)
+  const first = requireDocument(current, current.novel!.chapters[0]!)
+  if (chapterIndex > 0 && (first.status !== "committed" || !first.taskSessionId)) {
+    fail(
+      "NOVELX_STORY_NOVEL_WRITER_SESSION_REQUIRED",
+      "Later novel chapters require the committed first chapter writer task session.",
+    )
+  }
+  const previousId = chapterIndex > 0 ? current.novel?.chapters[chapterIndex - 1] : undefined
+  const previous = previousId ? requireDocument(current, previousId) : undefined
+  const previousMarkdown = previous ? requireCommittedContent(current, previous.id, committedContents) : undefined
+  return {
+    openingState: authority.openingState,
+    wound: authority.wound,
+    relationships: [...authority.initialRelationships],
+    requiredOpeningAnchors: chapterIndex === 0 ? anchors : [],
+    novelWriterTaskSessionId: chapterIndex === 0 ? null : first.taskSessionId,
+    previousNovelChapter:
+      previous && previousMarkdown
+        ? { title: previous.title, endingExcerpt: [...previousMarkdown.trimEnd()].slice(-1_200).join("") }
+        : null,
+  }
+}
+
+function requiredOpeningAnchors(current: NovelXStory.Materialization, authority: StoryContinuityAuthority) {
+  const firstId = current.novel?.chapters[0]
+  if (!firstId) fail("NOVELX_STORY_NOVEL_DOCUMENT_INVALID", "Story Growth has no registered first novel chapter.")
+  return longestCommonHanFragments(requireDocument(current, firstId).brief, authority.openingState)
+}
+
+function assertNovelWriterSession(
+  current: NovelXStory.Materialization,
+  record: NovelXStory.DocumentRecord,
+  taskSessionId: string,
+) {
+  if (current.schemaVersion !== 2 || record.kind !== "novel_chapter") return
+  const firstId = current.novel?.chapters[0]
+  if (!firstId) fail("NOVELX_STORY_NOVEL_DOCUMENT_INVALID", "Story Growth has no registered first novel chapter.")
+  const first = requireDocument(current, firstId)
+  if (record.id === first.id) {
+    if (first.status === "committed" && first.taskSessionId !== taskSessionId) {
+      fail(
+        "NOVELX_STORY_NOVEL_WRITER_SESSION_INVALID",
+        "Replaying the first novel chapter requires its original writer task session.",
+      )
+    }
+    return
+  }
+  if (first.status !== "committed" || !first.taskSessionId) {
+    fail(
+      "NOVELX_STORY_NOVEL_WRITER_SESSION_REQUIRED",
+      "Later novel chapters require the committed first chapter writer task session.",
+    )
+  }
+  if (taskSessionId !== first.taskSessionId) {
+    fail(
+      "NOVELX_STORY_NOVEL_WRITER_SESSION_INVALID",
+      `All novel chapters must resume the first chapter writer task session ${first.taskSessionId}.`,
+    )
+  }
+}
+
+function requireCommittedContent(
+  current: NovelXStory.Materialization,
+  documentId: string,
+  contents: Record<string, string>,
+) {
   const record = requireDocument(current, documentId)
   const value = contents[documentId]
   if (record.status !== "committed" || !value || worldSha256(normalizeMarkdown(value)) !== record.committedSha256) {
@@ -552,10 +857,15 @@ function requireDocument(current: NovelXStory.Materialization, id: string) {
 }
 
 function assertEditor(current: NovelXStory.Materialization, editorSessionId: string) {
-  if (current.editorSessionId !== editorSessionId) fail("NOVELX_STORY_EDITOR_SESSION_INVALID", "Only the bound Story editor may mutate this run.")
+  if (current.editorSessionId !== editorSessionId)
+    fail("NOVELX_STORY_EDITOR_SESSION_INVALID", "Only the bound Story editor may mutate this run.")
 }
 
-function updateDocument<T extends NovelXStory.Materialization>(current: T, record: NovelXStory.DocumentRecord, now: number): T {
+function updateDocument<T extends NovelXStory.Materialization>(
+  current: T,
+  record: NovelXStory.DocumentRecord,
+  now: number,
+): T {
   return withIntegrity({
     ...withoutIntegrity(current),
     updatedAt: now,
@@ -612,14 +922,19 @@ function safeRelativePath(value: string) {
 }
 
 function safeSegment(value: string) {
-  const normalized = value.replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-").replace(/[. ]+$/u, "").trim().slice(0, 80)
+  const normalized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-")
+    .replace(/[. ]+$/u, "")
+    .trim()
+    .slice(0, 80)
   if (!normalized) fail("NOVELX_STORY_TARGET_PATH_INVALID", "A story path segment is empty.")
   return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(normalized) ? `${normalized}-项目` : normalized
 }
 
 function unique(values: string[], field: string) {
   const normalized = values.map((value) => value.toLocaleLowerCase("zh-CN"))
-  if (new Set(normalized).size !== normalized.length) fail("NOVELX_STORY_VALUE_DUPLICATE", `Duplicate ${field} values are not allowed.`)
+  if (new Set(normalized).size !== normalized.length)
+    fail("NOVELX_STORY_VALUE_DUPLICATE", `Duplicate ${field} values are not allowed.`)
 }
 
 function fail(code: string, message: string): never {

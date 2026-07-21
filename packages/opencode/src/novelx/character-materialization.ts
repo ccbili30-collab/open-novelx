@@ -1,4 +1,5 @@
 import { NovelXCharacter } from "@opencode-ai/schema/novelx-character"
+import { inspectSourceTitleGrounding } from "./text-grounding"
 import { worldSha256 } from "./world-blueprint"
 
 export class CharacterMaterializationError extends Error {
@@ -30,8 +31,14 @@ export function createCharacterMaterialization(input: {
   now: number
 }): NovelXCharacter.Materialization {
   if (!input.world.sources.length) fail("NOVELX_CHARACTER_WORLD_EMPTY", "The frozen world has no readable sources.")
-  unique(input.world.sources.map((source) => source.entityId), "world source ID")
-  unique(input.world.sources.map((source) => source.path), "world source path")
+  unique(
+    input.world.sources.map((source) => source.entityId),
+    "world source ID",
+  )
+  unique(
+    input.world.sources.map((source) => source.path),
+    "world source path",
+  )
   const world = {
     title: concreteLabel(input.world.title, "world.title"),
     materializationIntegritySha256: sha256(input.world.materializationIntegritySha256, "world integrity"),
@@ -112,9 +119,11 @@ export function registerCharacter(input: {
     ...input.profile.originSourceEntityIds,
     ...input.profile.affiliationSourceEntityIds,
   ])
-  if (!sourceEntityIds.length) fail("NOVELX_CHARACTER_SOURCE_REQUIRED", "The protagonist must cite frozen world sources.")
+  if (!sourceEntityIds.length)
+    fail("NOVELX_CHARACTER_SOURCE_REQUIRED", "The protagonist must cite frozen world sources.")
   for (const entityId of sourceEntityIds) {
-    if (!sources.has(entityId)) fail("NOVELX_CHARACTER_SOURCE_UNKNOWN", `The protagonist cites unknown source ${entityId}.`)
+    if (!sources.has(entityId))
+      fail("NOVELX_CHARACTER_SOURCE_UNKNOWN", `The protagonist cites unknown source ${entityId}.`)
   }
   unique(input.profile.aliases, "character alias")
   const name = concreteLabel(input.profile.name, "character.name")
@@ -200,12 +209,10 @@ export function prepareCharacterDocument(input: {
     fail("NOVELX_CHARACTER_DOCUMENT_LEASE_CONFLICT", `${current.document.targetPath} is leased by another editor.`)
   }
   const lease = current.document.lease ?? {
-    id: `nx-lease-${worldSha256([
-      current.document.id,
-      input.editorSessionId,
-      input.editorMessageId,
-      input.now,
-    ]).slice(0, 20)}`,
+    id: `nx-lease-${worldSha256([current.document.id, input.editorSessionId, input.editorMessageId, input.now]).slice(
+      0,
+      20,
+    )}`,
     ownerSessionId: input.editorSessionId,
     ownerMessageId: input.editorMessageId,
     acquiredAt: input.now,
@@ -239,6 +246,25 @@ export function commitCharacterDocument(input: {
     fail("NOVELX_CHARACTER_REGISTRATION_INCOMPLETE", "The protagonist document is not registered.")
   }
   const markdown = normalizeCharacterDocument(current.document, input.markdown)
+  const grounding = inspectSourceTitleGrounding({
+    markdown,
+    requiredSourceEntityIds: current.document.sourceEntityIds,
+    worldSources: current.world.sources,
+  })
+  if (grounding.missingTitles.length) {
+    fail(
+      "NOVELX_CHARACTER_SOURCE_TITLE_MISSING",
+      `The dossier is missing exact frozen source titles: ${grounding.missingTitles.map((title) => JSON.stringify(title)).join(", ")}.`,
+    )
+  }
+  if (grounding.confusableDrifts.length) {
+    fail(
+      "NOVELX_CHARACTER_PROPER_NAME_DRIFT",
+      `The dossier contains confusable frozen proper-name drift: ${grounding.confusableDrifts
+        .map((drift) => `${JSON.stringify(drift.candidate)} != ${JSON.stringify(drift.authoritativePrefix)}`)
+        .join(", ")}.`,
+    )
+  }
   const hash = worldSha256(markdown)
   if (current.document.status === "committed") {
     if (current.document.committedSha256 !== hash) {
@@ -278,7 +304,10 @@ export function finishCharacterText(input: {
     current.document.status !== "committed" ||
     !current.document.committedSha256
   ) {
-    fail("NOVELX_CHARACTER_TEXT_INCOMPLETE", "The protagonist dossier must be committed before Character Growth completes.")
+    fail(
+      "NOVELX_CHARACTER_TEXT_INCOMPLETE",
+      "The protagonist dossier must be committed before Character Growth completes.",
+    )
   }
   return withIntegrity({
     ...withoutIntegrity(current),
@@ -292,9 +321,18 @@ export function verifyCharacterMaterialization<T extends NovelXCharacter.Materia
   if (worldSha256(draft) !== integritySha256) {
     fail("NOVELX_CHARACTER_INTEGRITY_INVALID", "Character materialization integrity check failed.")
   }
-  unique(manifest.world.sources.map((source) => source.entityId), "world source ID")
-  unique(manifest.world.sources.map((source) => source.path), "world source path")
-  unique(manifest.sourceReads.map((read) => read.entityId), "source read")
+  unique(
+    manifest.world.sources.map((source) => source.entityId),
+    "world source ID",
+  )
+  unique(
+    manifest.world.sources.map((source) => source.path),
+    "world source path",
+  )
+  unique(
+    manifest.sourceReads.map((read) => read.entityId),
+    "source read",
+  )
   if (manifest.status === "planning") {
     if (manifest.registrationSha256 || manifest.protagonist || manifest.document) {
       fail("NOVELX_CHARACTER_CONTENT_PREMATURE", "Planning state cannot contain registered character content.")
@@ -339,7 +377,10 @@ function normalizeCharacterDocument(record: NovelXCharacter.DocumentRecord, valu
     fail("NOVELX_CHARACTER_DOCUMENT_TITLE_INVALID", `${record.targetPath} must start with its exact title.`)
   }
   if (normalized.length < 800 || normalized.length > 20_000) {
-    fail("NOVELX_CHARACTER_DOCUMENT_LENGTH_INVALID", `${record.targetPath} must contain 800 to 20000 readable characters.`)
+    fail(
+      "NOVELX_CHARACTER_DOCUMENT_LENGTH_INVALID",
+      `${record.targetPath} must contain 800 to 20000 readable characters.`,
+    )
   }
   if (
     /(?:阶段主编|执行\s*Agent|sourceSha256|\.novelx\/|注册(?:骨架|实体)|工具调用|上下文包|待填充|待补充|TODO|TBD|作为AI|无法确定)/iu.test(
@@ -439,7 +480,11 @@ function safeRelativePath(value: string) {
 }
 
 function safeSegment(value: string) {
-  const normalized = value.replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-").replace(/[. ]+$/u, "").trim().slice(0, 80)
+  const normalized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-")
+    .replace(/[. ]+$/u, "")
+    .trim()
+    .slice(0, 80)
   if (!normalized) fail("NOVELX_CHARACTER_TARGET_PATH_INVALID", "A character path segment is empty.")
   return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(normalized) ? `${normalized}-角色` : normalized
 }

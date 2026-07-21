@@ -8,11 +8,21 @@ import { EventV2 } from "@opencode-ai/core/event"
 import { FileSystem } from "@opencode-ai/core/filesystem"
 import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 import { EventV2Bridge } from "@/event-v2-bridge"
-import { createStoryMaterialization, verifyStoryMaterialization } from "@/novelx/story-materialization"
+import {
+  createStoryMaterialization,
+  verifyStoryMaterialization,
+  type StoryContinuityAuthority,
+} from "@/novelx/story-materialization"
 import { verifyCharacterMaterialization } from "@/novelx/character-materialization"
 import { worldSha256 } from "@/novelx/world-blueprint"
 import type { Tool } from "@/tool/tool"
-import { absoluteWorldPath, loadWorldRuntime, publishWorldFile, withWorldMutation, type WorldRuntime } from "./novelx-world-runtime"
+import {
+  absoluteWorldPath,
+  loadWorldRuntime,
+  publishWorldFile,
+  withWorldMutation,
+  type WorldRuntime,
+} from "./novelx-world-runtime"
 
 export type StoryRuntime = {
   world: WorldRuntime
@@ -20,6 +30,7 @@ export type StoryRuntime = {
   manifestPath: string
   manifestExisted: boolean
   protagonistMarkdown: string | null
+  protagonistContinuity: StoryContinuityAuthority | null
 }
 
 export function loadStoryRuntime(fs: FSUtil.Interface, options: { createForSession?: string } = {}) {
@@ -28,7 +39,9 @@ export function loadStoryRuntime(fs: FSUtil.Interface, options: { createForSessi
     if (world.materialization.status !== "completed") {
       throw new Error("NOVELX_STORY_WORLD_INCOMPLETE: Story Growth requires a frozen completed world.")
     }
-    const entities = new Map(world.materialization.stages.flatMap((stage) => stage.entities.map((entity) => [entity.id, entity])))
+    const entities = new Map(
+      world.materialization.stages.flatMap((stage) => stage.entities.map((entity) => [entity.id, entity])),
+    )
     const sources = world.materialization.documents.map((document) => {
       const entity = entities.get(document.entityId)
       if (!entity || document.status !== "committed" || !document.committedSha256) {
@@ -66,6 +79,7 @@ export function loadStoryRuntime(fs: FSUtil.Interface, options: { createForSessi
       }
       if (
         manifest.protagonist.id !== character.source.id ||
+        manifest.protagonist.name !== character.source.name ||
         manifest.protagonist.path !== character.source.path ||
         manifest.protagonist.sha256 !== character.source.sha256 ||
         manifest.protagonist.characterIntegritySha256 !== character.source.characterIntegritySha256
@@ -79,6 +93,7 @@ export function loadStoryRuntime(fs: FSUtil.Interface, options: { createForSessi
       manifestPath,
       manifestExisted: text !== undefined,
       protagonistMarkdown: character?.markdown ?? null,
+      protagonistContinuity: character?.continuity ?? null,
     }
   })
 }
@@ -118,6 +133,13 @@ function loadCompletedCharacter(fs: FSUtil.Interface, world: WorldRuntime) {
         characterIntegritySha256: manifest.integritySha256,
       },
       markdown: normalizeMarkdown(markdown),
+      continuity: {
+        id: manifest.protagonist.id,
+        name: manifest.protagonist.name,
+        openingState: manifest.protagonist.openingState,
+        wound: manifest.protagonist.wound,
+        initialRelationships: manifest.protagonist.initialRelationships,
+      },
     }
   })
 }
@@ -147,7 +169,9 @@ export function loadCommittedStoryContents(fs: FSUtil.Interface, runtime: StoryR
         .filter((document) => document.status === "committed")
         .map((document) =>
           Effect.gen(function* () {
-            const content = yield* fs.readFileStringSafe(absoluteWorldPath(runtime.world.directory, document.targetPath))
+            const content = yield* fs.readFileStringSafe(
+              absoluteWorldPath(runtime.world.directory, document.targetPath),
+            )
             if (!content || worldSha256(content.replaceAll("\r\n", "\n").trim() + "\n") !== document.committedSha256) {
               throw new Error(`NOVELX_STORY_COMMITTED_DOCUMENT_DRIFT: ${document.targetPath} is absent or changed.`)
             }
@@ -182,7 +206,8 @@ export function withStoryMutation<A, E, R>(effect: Effect.Effect<A, E, R>) {
 }
 
 export function assertStoryEditor(ctx: Tool.Context) {
-  if (ctx.agent !== "novelx-story-editor") throw new Error("NOVELX_STORY_EDITOR_REQUIRED: This tool requires the Story editor.")
+  if (ctx.agent !== "novelx-story-editor")
+    throw new Error("NOVELX_STORY_EDITOR_REQUIRED: This tool requires the Story editor.")
 }
 
 export function absoluteStoryPath(directory: string, relative: string) {

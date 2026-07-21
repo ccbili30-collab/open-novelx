@@ -35,7 +35,8 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     return {
-      description: "Lease the next causal Story document and return exact frozen-world and committed-upstream originals for one writer leaf.",
+      description:
+        "Lease the next causal Story document and return exact frozen-world and committed-upstream originals for one writer leaf.",
       parameters: Parameters,
       execute: (params, ctx) =>
         withStoryMutation(
@@ -52,6 +53,7 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
               committedContents,
               worldContents,
               protagonistMarkdown: runtime.protagonistMarkdown ?? undefined,
+              protagonistContinuity: runtime.protagonistContinuity ?? undefined,
               now: Date.now(),
             })
             if (!prepared.replayed) yield* persistStoryMaterialization(fs, events, runtime, prepared.manifest)
@@ -71,7 +73,9 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
               ) + "\n"
             const existing = yield* fs.readFileStringSafe(contextPackAbsolutePath)
             if (existing !== undefined && existing !== contextPack) {
-              throw new Error("NOVELX_STORY_CONTEXT_PACK_CONFLICT: Existing context pack differs from the authoritative lease.")
+              throw new Error(
+                "NOVELX_STORY_CONTEXT_PACK_CONFLICT: Existing context pack differs from the authoritative lease.",
+              )
             }
             if (existing === undefined) {
               const temporary = `${contextPackAbsolutePath}.${process.pid}.${randomUUID()}.tmp`
@@ -81,6 +85,16 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
                 Effect.onError(() => fs.remove(temporary).pipe(Effect.ignore)),
               )
             }
+            const firstNovelChapterId = prepared.manifest.novel?.chapters[0]
+            const firstNovelWriterSessionId = prepared.manifest.documents.find(
+              (document) => document.id === firstNovelChapterId,
+            )?.taskSessionId
+            const dispatchInstruction =
+              prepared.record.kind !== "novel_chapter"
+                ? "为这篇历史或文献创建一个独立的 foreground novelx-story-writer task。"
+                : prepared.record.id === firstNovelChapterId && !firstNovelWriterSessionId
+                  ? "为第一章创建本书唯一的 foreground novelx-story-writer task，并保留返回的 task_id。"
+                  : `必须用 task_id=${firstNovelWriterSessionId} resume 第一章创建的同一个 novelx-story-writer；禁止新建小说 writer。`
             return {
               title: prepared.replayed ? "故事文稿已准备" : "故事文稿已锁定",
               metadata: {
@@ -93,7 +107,8 @@ export const NovelXPrepareStoryDocumentTool = Tool.define<
               },
               output: [
                 `CONTROL documentId=${prepared.record.id} leaseId=${leaseId} contextPackPath=${contextPackPath}`,
-                "下一步必须调用 task，subagent_type 必须是 novelx-story-writer。只把上面的 CONTROL 行和 contextPackPath 交给叶 Agent。叶 Agent 必须用 read 分页读完整个 Context Pack 后再写正文；不得查询其他规则或创造世界事实。",
+                dispatchInstruction,
+                "subagent_type 必须是 novelx-story-writer。只把上面的 CONTROL 行和 contextPackPath 交给叶 Agent。叶 Agent 必须用 read 分页读完整个 Context Pack 后再写正文；不得查询其他规则或创造世界事实。",
               ].join("\n"),
             }
           }),

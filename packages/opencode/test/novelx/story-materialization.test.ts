@@ -33,6 +33,13 @@ const protagonist = {
   sha256: worldSha256(characterMarkdown),
   characterIntegritySha256: SHA("c"),
 }
+const protagonistContinuity = {
+  id: protagonist.id,
+  name: protagonist.name,
+  openingState: "霜脊山系突降暴雪，临时商队困在北侧旧道。弥娅携带黄铜关印，必须在封关钟响前决定继续前进还是带人回撤。",
+  wound: "她曾因错误判断雪层而让同行者失踪，至今会在救人和核验路线之间迟疑。",
+  initialRelationships: ["临时商队把路线选择交给她。", "霜口双印关议会仍在追索她携带的黄铜关印。"],
+}
 
 const profile = {
   contextSha256: "",
@@ -88,7 +95,10 @@ const profile = {
     },
     chapters: Array.from({ length: 6 }, (_, index) => ({
       title: `第${index + 1}章 ${["封关", "失踪者", "旧印", "雪夜", "山口", "归途"][index]}`,
-      brief: `推进风雪封关主题的第 ${index + 1} 个连续剧情阶段，并保留人物行动造成的实际后果。`,
+      brief:
+        index === 0
+          ? "临时商队等待弥娅在北侧旧道作出决定；霜脊山系暴雪将至，她发现黄铜关印留下的新线索。"
+          : `推进风雪封关主题的第 ${index + 1} 个连续剧情阶段，并保留人物行动造成的实际后果。`,
       sourceEntityIds: index < 3 ? ["world-north", "world-order"] : ["world-north", "world-river"],
       historyReferences: [{ historyBookIndex: 0, chapterIndex: Math.min(index, 2) }],
       documentIndices: [index % 2],
@@ -122,11 +132,13 @@ const registered = () => {
     manifest: characterRead,
     editorSessionId: "ses-story-editor",
     profile: { ...profile, contextSha256: characterRead.preparedContextSha256 },
+    protagonistContinuity,
     now: 30,
   }).manifest
 }
 
-const prose = (title: string, length: number) => `# ${title}\n\n${"正文叙述。".repeat(Math.ceil(length / 5))}\n`
+const prose = (title: string, length: number, required: readonly string[] = []) =>
+  `# ${title}\n\n${[...new Set(required)].join("。")}。\n\n${"正文叙述。".repeat(Math.ceil(length / 5))}\n`
 
 describe("NovelX story materialization", () => {
   test("requires one committed protagonist source and includes it in the new v2 context integrity", () => {
@@ -172,6 +184,40 @@ describe("NovelX story materialization", () => {
     expect(verifyStoryMaterialization(manifest)).toEqual(manifest)
   })
 
+  test("rejects a first-chapter plan that cannot preserve the sealed opening before any prose is written", () => {
+    const read = recordStorySourceReads({
+      manifest: planning(),
+      editorSessionId: "ses-story-editor",
+      sourceEntityIds: world.sources.map((source) => source.entityId),
+      now: 20,
+    })
+    const characterRead = recordStoryCharacterRead({
+      manifest: read,
+      editorSessionId: "ses-story-editor",
+      protagonistId: protagonist.id,
+      sourceSha256: protagonist.sha256,
+      now: 25,
+    })
+    expect(() =>
+      registerStory({
+        manifest: characterRead,
+        editorSessionId: "ses-story-editor",
+        profile: {
+          ...profile,
+          contextSha256: characterRead.preparedContextSha256,
+          novel: {
+            ...profile.novel,
+            chapters: profile.novel.chapters.map((chapter, index) =>
+              index === 0 ? { ...chapter, brief: "陌生旅人在春日港口听见钟声，随后寻找失落王冠。" } : chapter,
+            ),
+          },
+        },
+        protagonistContinuity,
+        now: 30,
+      }),
+    ).toThrow("NOVELX_STORY_OPENING_ANCHORS_INSUFFICIENT")
+  })
+
   test("refuses unread world sources and downstream work whose dependencies are not committed", () => {
     const read = recordStorySourceReads({
       manifest: planning(),
@@ -191,6 +237,7 @@ describe("NovelX story materialization", () => {
         manifest: characterRead,
         editorSessionId: "ses-story-editor",
         profile: { ...profile, contextSha256: characterRead.preparedContextSha256 },
+        protagonistContinuity,
         now: 30,
       }),
     ).toThrow("NOVELX_STORY_SOURCE_UNREAD")
@@ -206,6 +253,7 @@ describe("NovelX story materialization", () => {
         manifest: allWorld,
         editorSessionId: "ses-story-editor",
         profile: { ...profile, contextSha256: allWorld.preparedContextSha256 },
+        protagonistContinuity,
         now: 30,
       }),
     ).toThrow("NOVELX_STORY_CHARACTER_SOURCE_UNREAD")
@@ -220,6 +268,7 @@ describe("NovelX story materialization", () => {
         editorMessageId: "msg-1",
         committedContents: {},
         protagonistMarkdown: characterMarkdown,
+        protagonistContinuity,
         now: 40,
       }),
     ).toThrow("NOVELX_STORY_DEPENDENCY_INCOMPLETE")
@@ -228,6 +277,9 @@ describe("NovelX story materialization", () => {
   test("leases, commits and finishes every document in strict order", () => {
     let manifest = registered()
     const committedContents: Record<string, string> = {}
+    const firstNovelId = manifest.novel.chapters[0]!
+    const novelTaskSessionId = "ses-novel-writer"
+    let checkedWriterDrift = false
 
     for (const document of manifest.documents) {
       const prepared = prepareStoryDocument({
@@ -237,21 +289,67 @@ describe("NovelX story materialization", () => {
         editorMessageId: `msg-${document.ordinal}`,
         committedContents,
         protagonistMarkdown: characterMarkdown,
+        protagonistContinuity,
         now: 100 + document.ordinal,
       })
       manifest = prepared.manifest
+      const continuityContext = prepared.context as typeof prepared.context & {
+        requiredOpeningAnchors?: string[]
+        novelWriterTaskSessionId?: string | null
+        previousNovelChapter?: { title: string; endingExcerpt: string } | null
+      }
       if (document.kind === "novel_chapter") {
         expect(prepared.context.protagonist?.markdown).toBe(characterMarkdown)
+        if (document.id === firstNovelId) {
+          expect(continuityContext.requiredOpeningAnchors?.length).toBeGreaterThanOrEqual(3)
+          expect(continuityContext.previousNovelChapter).toBeNull()
+        } else {
+          expect(continuityContext.novelWriterTaskSessionId).toBe(novelTaskSessionId)
+          expect(continuityContext.previousNovelChapter?.endingExcerpt.length).toBeGreaterThan(0)
+        }
       }
       const minimum = document.kind === "novel_chapter" ? 1_500 : document.kind === "history_chapter" ? 1_200 : 300
-      const markdown = prose(document.title, minimum + 100)
+      const markdown = prose(document.title, minimum + 100, [
+        ...prepared.context.exactSourceTitles,
+        ...(continuityContext.requiredOpeningAnchors ?? []),
+      ])
+      const taskSessionId = document.kind === "novel_chapter" ? novelTaskSessionId : `ses-writer-${document.ordinal}`
+      if (document.id === firstNovelId) {
+        expect(() =>
+          commitStoryDocument({
+            manifest,
+            documentId: document.id,
+            editorSessionId: "ses-story-editor",
+            taskSessionId,
+            leaseId: prepared.record.lease!.id,
+            markdown: prose(document.title, minimum + 100, prepared.context.exactSourceTitles),
+            protagonistContinuity,
+            now: 200 + document.ordinal,
+          }),
+        ).toThrow("NOVELX_STORY_OPENING_ANCHORS_MISSING")
+      } else if (document.kind === "novel_chapter" && !checkedWriterDrift) {
+        expect(() =>
+          commitStoryDocument({
+            manifest,
+            documentId: document.id,
+            editorSessionId: "ses-story-editor",
+            taskSessionId: "ses-different-novel-writer",
+            leaseId: prepared.record.lease!.id,
+            markdown,
+            protagonistContinuity,
+            now: 200 + document.ordinal,
+          }),
+        ).toThrow("NOVELX_STORY_NOVEL_WRITER_SESSION_INVALID")
+        checkedWriterDrift = true
+      }
       const committed = commitStoryDocument({
         manifest,
         documentId: document.id,
         editorSessionId: "ses-story-editor",
-        taskSessionId: `ses-writer-${document.ordinal}`,
+        taskSessionId,
         leaseId: prepared.record.lease!.id,
         markdown,
+        protagonistContinuity,
         now: 200 + document.ordinal,
       })
       manifest = committed.manifest
@@ -261,6 +359,16 @@ describe("NovelX story materialization", () => {
     const finished = finishStoryText({ manifest, editorSessionId: "ses-story-editor", now: 500 })
     expect(finished.status).toBe("text_completed")
     expect(finished.documents.every((document) => document.status === "committed")).toBe(true)
+
+    const driftedDocuments = finished.documents.map((document) =>
+      document.id === finished.novel.chapters[1]
+        ? { ...document, taskSessionId: "ses-different-novel-writer" }
+        : document,
+    )
+    const { integritySha256: _, ...finishedWithoutIntegrity } = finished
+    const driftedDraft = { ...finishedWithoutIntegrity, documents: driftedDocuments }
+    const drifted = { ...driftedDraft, integritySha256: worldSha256(driftedDraft) }
+    expect(() => verifyStoryMaterialization(drifted)).toThrow("NOVELX_STORY_NOVEL_WRITER_SESSION_INVALID")
   })
 
   test("rejects reader-facing production metadata even when it is lowercase English", () => {
@@ -273,6 +381,7 @@ describe("NovelX story materialization", () => {
       editorMessageId: "msg-leak",
       committedContents: {},
       protagonistMarkdown: characterMarkdown,
+      protagonistContinuity,
       now: 100,
     })
 
@@ -284,9 +393,47 @@ describe("NovelX story materialization", () => {
         taskSessionId: "ses-writer-leak",
         leaseId: prepared.record.lease!.id,
         markdown: `# ${document.title}\n\n${"正文内容。".repeat(260)}\n\ntask session ID: null`,
+        protagonistContinuity,
         now: 200,
       }),
     ).toThrow("NOVELX_STORY_DOCUMENT_INTERNAL_LEAK")
+  })
+
+  test("rejects missing or one-character-drifted frozen source titles before commit", () => {
+    const manifest = registered()
+    const document = manifest.documents[0]!
+    const prepared = prepareStoryDocument({
+      manifest,
+      documentId: document.id,
+      editorSessionId: "ses-story-editor",
+      editorMessageId: "msg-source-grounding",
+      committedContents: {},
+      protagonistMarkdown: characterMarkdown,
+      protagonistContinuity,
+      now: 100,
+    })
+    const base = {
+      manifest: prepared.manifest,
+      documentId: document.id,
+      editorSessionId: "ses-story-editor",
+      taskSessionId: "ses-writer-source-grounding",
+      leaseId: prepared.record.lease!.id,
+      protagonistContinuity,
+      now: 200,
+    }
+
+    expect(() =>
+      commitStoryDocument({
+        ...base,
+        markdown: prose(document.title, 1_300),
+      }),
+    ).toThrow("NOVELX_STORY_SOURCE_TITLE_MISSING")
+    expect(() =>
+      commitStoryDocument({
+        ...base,
+        markdown: prose(document.title, 1_300, [...prepared.context.exactSourceTitles, "三汊母河三条支流"]),
+      }),
+    ).toThrow("NOVELX_STORY_PROPER_NAME_DRIFT")
   })
 
   test("replays an unfinished lease across messages in the same editor session and rejects another session", () => {
@@ -299,6 +446,7 @@ describe("NovelX story materialization", () => {
       editorMessageId: "msg-before-provider-failure",
       committedContents: {},
       protagonistMarkdown: characterMarkdown,
+      protagonistContinuity,
       now: 100,
     })
 
@@ -309,12 +457,14 @@ describe("NovelX story materialization", () => {
       editorMessageId: "msg-after-provider-failure",
       committedContents: {},
       protagonistMarkdown: characterMarkdown,
+      protagonistContinuity,
       now: 200,
     })
 
     expect(resumed.replayed).toBe(true)
     expect(resumed.record.lease?.id).toBe(first.record.lease?.id)
     expect(resumed.record.lease?.ownerMessageId).toBe("msg-before-provider-failure")
+    expect(resumed.context).toEqual(first.context)
     expect(() =>
       prepareStoryDocument({
         manifest: first.manifest,
@@ -323,6 +473,7 @@ describe("NovelX story materialization", () => {
         editorMessageId: "msg-other",
         committedContents: {},
         protagonistMarkdown: characterMarkdown,
+        protagonistContinuity,
         now: 300,
       }),
     ).toThrow("NOVELX_STORY_EDITOR_SESSION_INVALID")
@@ -365,17 +516,23 @@ describe("NovelX story materialization", () => {
         editorMessageId: `msg-legacy-${document.ordinal}`,
         committedContents,
         protagonistMarkdown: characterMarkdown,
+        protagonistContinuity,
         now: 100 + document.ordinal,
       })
       current = prepared.manifest
       const minimum = document.kind === "novel_chapter" ? 1_500 : document.kind === "history_chapter" ? 1_200 : 300
+      const continuityContext = prepared.context as typeof prepared.context & { requiredOpeningAnchors?: string[] }
       const committed = commitStoryDocument({
         manifest: current,
         documentId: document.id,
         editorSessionId: "ses-story-editor",
-        taskSessionId: `ses-legacy-${document.ordinal}`,
+        taskSessionId: document.kind === "novel_chapter" ? "ses-legacy-novel" : `ses-legacy-${document.ordinal}`,
         leaseId: prepared.record.lease!.id,
-        markdown: prose(document.title, minimum + 100),
+        markdown: prose(document.title, minimum + 100, [
+          ...prepared.context.exactSourceTitles,
+          ...(continuityContext.requiredOpeningAnchors ?? []),
+        ]),
+        protagonistContinuity,
         now: 200 + document.ordinal,
       })
       current = committed.manifest
@@ -392,5 +549,15 @@ describe("NovelX story materialization", () => {
     const decoded = Schema.decodeUnknownSync(NovelXStory.Materialization)(JSON.parse(JSON.stringify(legacy)))
     expect(verifyStoryMaterialization(decoded)).toEqual(legacy)
     expect(decoded.schemaVersion).toBe(1)
+    const replayed = commitStoryDocument({
+      manifest: decoded,
+      documentId: decoded.documents[0]!.id,
+      editorSessionId: "ses-story-editor",
+      taskSessionId: decoded.documents[0]!.taskSessionId!,
+      leaseId: "legacy-committed-document-has-no-lease",
+      markdown: committedContents[decoded.documents[0]!.id]!,
+      now: 600,
+    })
+    expect(replayed.replayed).toBe(true)
   })
 })
