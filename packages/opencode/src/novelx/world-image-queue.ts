@@ -1,5 +1,7 @@
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import * as http from "node:http"
+import * as https from "node:https"
 import { Effect, Schema } from "effect"
 import { NovelXWorldVisual } from "@opencode-ai/schema"
 import { FSUtil } from "@opencode-ai/core/fs-util"
@@ -162,19 +164,23 @@ function generateImage(input: {
   })
 }
 
-function requestImage(url: string, init: RequestInit, timeout = 300_000) {
+export function requestImage(url: string, init: RequestInit, timeout = 300_000) {
   return Effect.tryPromise({
     try: async () => {
-      const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) })
-      const text = await response.text()
+      const response = shouldUseNativeNodeHttp(init.body)
+        ? await requestWithNodeHttp(url, init, timeout)
+        : await requestWithFetch(url, init, timeout)
+      const text = response.body.toString("utf8")
       if (!response.ok) throw new Error(`NOVELX_IMAGE_PROVIDER_HTTP_${response.status}: ${text.slice(0, 500)}`)
       const parsed = JSON.parse(text) as { data?: Array<{ b64_json?: string; url?: string }> }
       const first = parsed.data?.[0]
       if (first?.b64_json) return Buffer.from(first.b64_json, "base64")
       if (first?.url) {
-        const asset = await fetch(first.url, { signal: AbortSignal.timeout(120_000) })
+        const asset = shouldUseNativeNodeHttp(undefined)
+          ? await requestWithNodeHttp(first.url, { method: "GET" }, 120_000)
+          : await requestWithFetch(first.url, { method: "GET" }, 120_000)
         if (!asset.ok) throw new Error(`NOVELX_IMAGE_ASSET_HTTP_${asset.status}`)
-        return Buffer.from(await asset.arrayBuffer())
+        return asset.body
       }
       throw new Error("NOVELX_IMAGE_PROVIDER_EMPTY: No image payload returned.")
     },
@@ -183,7 +189,79 @@ function requestImage(url: string, init: RequestInit, timeout = 300_000) {
   })
 }
 
-function validateImage(bytes: Buffer) {
+type ImageHttpResponse = {
+  status: number
+  ok: boolean
+  body: Buffer
+}
+
+function shouldUseNativeNodeHttp(body: RequestInit["body"]) {
+  return !process.versions.bun && (body === undefined || typeof body === "string" || Buffer.isBuffer(body))
+}
+
+async function requestWithFetch(url: string, init: RequestInit, timeout: number): Promise<ImageHttpResponse> {
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) })
+  return {
+    status: response.status,
+    ok: response.ok,
+    body: Buffer.from(await response.arrayBuffer()),
+  }
+}
+
+export function requestImageWithNodeHttp(url: string, init: RequestInit, timeout: number): Promise<ImageHttpResponse> {
+  return requestWithNodeHttp(url, init, timeout)
+}
+
+function requestWithNodeHttp(
+  url: string,
+  init: RequestInit,
+  timeout: number,
+  redirects = 0,
+): Promise<ImageHttpResponse> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url)
+    const transport = target.protocol === "https:" ? https : http
+    const headers = Object.fromEntries(new Headers(init.headers).entries())
+    const body = init.body
+    if ((typeof body === "string" || Buffer.isBuffer(body)) && headers["content-length"] === undefined) {
+      headers["content-length"] = String(Buffer.byteLength(body))
+    }
+    const request = transport.request(
+      target,
+      {
+        method: init.method ?? "GET",
+        headers,
+      },
+      (response) => {
+        const status = response.statusCode ?? 0
+        const location = response.headers.location
+        if (status >= 300 && status < 400 && location) {
+          response.resume()
+          if (redirects >= 5) {
+            reject(new Error("NOVELX_IMAGE_PROVIDER_REDIRECT_LIMIT"))
+            return
+          }
+          resolve(requestWithNodeHttp(new URL(location, target).toString(), { method: "GET" }, timeout, redirects + 1))
+          return
+        }
+        const chunks: Buffer[] = []
+        response.on("data", (chunk: Buffer | Uint8Array | string) => chunks.push(Buffer.from(chunk)))
+        response.once("end", () => {
+          resolve({ status, ok: status >= 200 && status < 300, body: Buffer.concat(chunks) })
+        })
+        response.once("error", reject)
+      },
+    )
+    const timer = setTimeout(() => request.destroy(new Error(`NOVELX_IMAGE_PROVIDER_TIMEOUT_${timeout}`)), timeout)
+    timer.unref()
+    request.once("close", () => clearTimeout(timer))
+    request.once("error", reject)
+    if (typeof body === "string" || Buffer.isBuffer(body)) request.end(body)
+    else request.end()
+  })
+}
+
+export function validateImage(bytes: Buffer) {
   return Effect.tryPromise({
     try: async () => {
       const photon = await import("@silvia-odwyer/photon-node")
