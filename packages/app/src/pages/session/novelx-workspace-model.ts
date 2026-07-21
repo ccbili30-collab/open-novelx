@@ -7,6 +7,11 @@ export type ProjectSessionSummary = {
   }
 }
 
+export function projectMonogram(name: string) {
+  const first = Array.from(name.trim())[0]
+  return first ? first.toLocaleUpperCase() : "?"
+}
+
 export function selectProjectSessions<T extends ProjectSessionSummary>(sessions: readonly T[], limit = 30) {
   return sessions
     .filter((session) => !session.parentID && !session.time.archived)

@@ -10,10 +10,9 @@ import { ServerConnection } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
 import { tabKey, useTabs } from "@/context/tabs"
-import { ProjectIcon } from "@/pages/layout/sidebar-items"
 import { sessionTitle } from "@/utils/session-title"
 import { pathKey } from "@/utils/path-key"
-import { selectProjectSessions } from "./novelx-workspace-model"
+import { projectMonogram, selectProjectSessions } from "./novelx-workspace-model"
 import { useSessionKey } from "./session-layout"
 
 type DragItem =
@@ -34,9 +33,13 @@ export function NovelXWorkspaceSidebar() {
   const server = createMemo(() => ServerConnection.key(serverSDK().server))
   const projects = createMemo(() => layout.projects.list())
   const currentDirectory = createMemo(() => sdk().directory)
-  const currentProject = createMemo(() =>
-    projects().find((project) => pathKey(project.worktree) === pathKey(currentDirectory())),
-  )
+  const currentProject = createMemo(() => {
+    const directory = pathKey(currentDirectory())
+    return projects().find(
+      (project) =>
+        pathKey(project.worktree) === directory || project.sandboxes?.some((sandbox) => pathKey(sandbox) === directory),
+    )
+  })
   const view = layout.novelx.project(currentDirectory)
   const resourceOpen = createMemo(() => !!view.activeResource())
   const shortcuts = layout.novelx.shortcuts
@@ -58,8 +61,7 @@ export function NovelXWorkspaceSidebar() {
         return session ? [session] : []
       })
   }
-  const pinned = (shortcut: NovelXShortcut) =>
-    shortcuts().some((item) => shortcutKey(item) === shortcutKey(shortcut))
+  const pinned = (shortcut: NovelXShortcut) => shortcuts().some((item) => shortcutKey(item) === shortcutKey(shortcut))
 
   const newTask = (directory = currentDirectory()) => {
     void tabs.newDraft({ server: server(), directory })
@@ -164,6 +166,7 @@ export function NovelXWorkspaceSidebar() {
               draggable={true}
               class="novelx-project-tile"
               classList={{ "is-current": project === currentProject() }}
+              aria-current={project === currentProject() ? "page" : undefined}
               aria-label={projectName(project)}
               title={projectName(project)}
               onClick={() => openProject(project)}
@@ -172,7 +175,9 @@ export function NovelXWorkspaceSidebar() {
               onDragOver={allowDrop}
               onDrop={(event) => dropProject(project, index(), event)}
             >
-              <ProjectIcon project={project} />
+              <span class="novelx-project-monogram" aria-hidden="true">
+                {projectMonogram(projectName(project))}
+              </span>
             </button>
           )}
         </For>
@@ -195,93 +200,35 @@ export function NovelXWorkspaceSidebar() {
       classList={{ "is-overlay": resourceOpen() }}
       aria-label={language.t("novelx.sidebar.label")}
     >
-      <div class="novelx-project-heading">
-        <h2>{language.t("novelx.sidebar.projects")}</h2>
-        <button
-          type="button"
-          class="novelx-symbol-button"
-          aria-label={language.t("novelx.sidebar.openProject")}
-          title={language.t("novelx.sidebar.openProject")}
-          onClick={() => command.trigger("project.open")}
-        >
-          <Icon name="folder" size="small" />
-        </button>
-      </div>
-
-      <Show when={shortcuts().length > 0}>
-        <div class="novelx-shortcut-section">
-          <div class="novelx-section-label">{language.t("novelx.sidebar.shortcuts")}</div>
-          <For each={shortcuts()}>
-            {(shortcut, index) => {
-              const id = () => shortcutKey(shortcut)
-              return (
-                <div
-                  class="novelx-shortcut-row"
-                  draggable={true}
-                  onDragStart={(event) => startDrag({ type: "shortcut", id: id() }, event)}
-                  onDragEnd={stopDrag}
-                  onDragOver={allowDrop}
-                  onDrop={(event) => dropShortcut(id(), index(), event)}
-                >
-                  <button type="button" class="novelx-shortcut-open" onClick={() => openShortcut(shortcut)}>
-                    <Icon name={shortcut.type === "project" ? "folder" : "prompt"} size="small" />
-                    <span>{shortcutLabel(shortcut)}</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="novelx-symbol-button"
-                    aria-label={language.t("novelx.sidebar.unpin")}
-                    title={language.t("novelx.sidebar.unpin")}
-                    onClick={() => layout.novelx.toggleShortcut(shortcut)}
-                  >
-                    <Icon name="link" size="small" />
-                  </button>
+      <Show
+        when={currentProject()}
+        keyed
+        fallback={
+          <div class="novelx-project-heading">
+            <h2>{getFilename(currentDirectory()) || language.t("novelx.sidebar.projects")}</h2>
+          </div>
+        }
+      >
+        {(project) => {
+          const sessions = () => projectSessions(project)
+          const projectShortcut = { type: "project" as const, directory: project.worktree }
+          return (
+            <>
+              <div class="novelx-project-heading">
+                <div class="novelx-current-project-title">
+                  <h2 title={projectName(project)}>{projectName(project)}</h2>
                 </div>
-              )
-            }}
-          </For>
-        </div>
-      </Show>
-
-      <div class="novelx-project-list">
-        <For each={projects()}>
-          {(project, projectIndex) => {
-            const expanded = () => project.expanded
-            const sessions = () => projectSessions(project)
-            const projectShortcut = { type: "project" as const, directory: project.worktree }
-            return (
-              <section
-                class="novelx-project-group"
-                onDragOver={allowDrop}
-                onDrop={(event) => dropProject(project, projectIndex(), event)}
-              >
-                <div
-                  class="novelx-project-row"
-                  classList={{ "is-current": project === currentProject() }}
-                  draggable={true}
-                  onDragStart={(event) => startDrag({ type: "project", id: project.worktree }, event)}
-                  onDragEnd={stopDrag}
-                >
-                  <button
-                    type="button"
-                    class="novelx-project-expand"
-                    aria-label={expanded() ? language.t("common.collapse") : language.t("common.expand")}
-                    aria-expanded={expanded()}
-                    onClick={() =>
-                      expanded() ? layout.projects.collapse(project.worktree) : layout.projects.expand(project.worktree)
-                    }
-                  >
-                    <Icon name="chevron-down" size="small" classList={{ "-rotate-90": !expanded() }} />
-                  </button>
-                  <button type="button" class="novelx-project-open" onClick={() => openProject(project)}>
-                    <Icon name="folder" size="small" />
-                    <span title={projectName(project)}>{projectName(project)}</span>
-                  </button>
+                <div class="novelx-project-heading-actions">
                   <button
                     type="button"
                     class="novelx-symbol-button"
-                    aria-label={pinned(projectShortcut) ? language.t("novelx.sidebar.unpin") : language.t("novelx.sidebar.pin")}
+                    aria-label={
+                      pinned(projectShortcut) ? language.t("novelx.sidebar.unpin") : language.t("novelx.sidebar.pin")
+                    }
                     aria-pressed={pinned(projectShortcut)}
+                    title={
+                      pinned(projectShortcut) ? language.t("novelx.sidebar.unpin") : language.t("novelx.sidebar.pin")
+                    }
                     onClick={() => layout.novelx.toggleShortcut(projectShortcut)}
                   >
                     <Icon name="link" size="small" />
@@ -296,68 +243,113 @@ export function NovelXWorkspaceSidebar() {
                     <Icon name="plus-small" size="small" />
                   </button>
                 </div>
+              </div>
 
-                <Show when={expanded()}>
-                  <nav class="novelx-session-tree" aria-label={`${projectName(project)} · ${language.t("novelx.sidebar.sessions")}`}>
-                    <Show
-                      when={sessions().length > 0}
-                      fallback={<div class="novelx-session-empty">{language.t("novelx.sidebar.noSessions")}</div>}
-                    >
-                      <For each={sessions()}>
-                        {(session, index) => {
-                          const selected = () => route.params.id === session.id
-                          const [projectStore] = serverSync().child(project.worktree, { bootstrap: false })
-                          const running = () => projectStore.session_working(session.id)
-                          const shortcut = { type: "session" as const, directory: project.worktree, sessionID: session.id }
-                          return (
-                            <div
-                              class="novelx-session-row"
-                              classList={{ "is-selected": selected() }}
-                              draggable={true}
-                              onDragStart={(event) =>
-                                startDrag({ type: "session", id: session.id, directory: project.worktree }, event)
+              <Show when={shortcuts().length > 0}>
+                <div class="novelx-shortcut-section">
+                  <div class="novelx-section-label">{language.t("novelx.sidebar.shortcuts")}</div>
+                  <For each={shortcuts()}>
+                    {(shortcut, index) => {
+                      const id = () => shortcutKey(shortcut)
+                      return (
+                        <div
+                          class="novelx-shortcut-row"
+                          draggable={true}
+                          onDragStart={(event) => startDrag({ type: "shortcut", id: id() }, event)}
+                          onDragEnd={stopDrag}
+                          onDragOver={allowDrop}
+                          onDrop={(event) => dropShortcut(id(), index(), event)}
+                        >
+                          <button type="button" class="novelx-shortcut-open" onClick={() => openShortcut(shortcut)}>
+                            <Icon name={shortcut.type === "project" ? "folder" : "prompt"} size="small" />
+                            <span>{shortcutLabel(shortcut)}</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="novelx-symbol-button"
+                            aria-label={language.t("novelx.sidebar.unpin")}
+                            title={language.t("novelx.sidebar.unpin")}
+                            onClick={() => layout.novelx.toggleShortcut(shortcut)}
+                          >
+                            <Icon name="link" size="small" />
+                          </button>
+                        </div>
+                      )
+                    }}
+                  </For>
+                </div>
+              </Show>
+
+              <div class="novelx-project-list">
+                <div class="novelx-section-label">{language.t("novelx.sidebar.sessions")}</div>
+                <nav
+                  class="novelx-session-tree is-current-project"
+                  aria-label={`${projectName(project)} · ${language.t("novelx.sidebar.sessions")}`}
+                >
+                  <Show
+                    when={sessions().length > 0}
+                    fallback={<div class="novelx-session-empty">{language.t("novelx.sidebar.noSessions")}</div>}
+                  >
+                    <For each={sessions()}>
+                      {(session, index) => {
+                        const selected = () => route.params.id === session.id
+                        const [projectStore] = serverSync().child(project.worktree, { bootstrap: false })
+                        const running = () => projectStore.session_working(session.id)
+                        const shortcut = {
+                          type: "session" as const,
+                          directory: project.worktree,
+                          sessionID: session.id,
+                        }
+                        return (
+                          <div
+                            class="novelx-session-row"
+                            classList={{ "is-selected": selected() }}
+                            draggable={true}
+                            onDragStart={(event) =>
+                              startDrag({ type: "session", id: session.id, directory: project.worktree }, event)
+                            }
+                            onDragEnd={stopDrag}
+                            onDragOver={allowDrop}
+                            onDrop={(event) => dropSession(project, session.id, index(), event)}
+                          >
+                            <button type="button" class="novelx-session-open" onClick={() => openSession(session.id)}>
+                              <Icon name="prompt" size="small" />
+                              <span>{sessionTitle(session.title) || language.t("command.session.new")}</span>
+                              <Show when={running()}>
+                                <span class="novelx-running-dot" aria-label={language.t("novelx.sidebar.running")} />
+                              </Show>
+                            </button>
+                            <button
+                              type="button"
+                              class="novelx-symbol-button"
+                              aria-label={
+                                pinned(shortcut) ? language.t("novelx.sidebar.unpin") : language.t("novelx.sidebar.pin")
                               }
-                              onDragEnd={stopDrag}
-                              onDragOver={allowDrop}
-                              onDrop={(event) => dropSession(project, session.id, index(), event)}
+                              aria-pressed={pinned(shortcut)}
+                              onClick={() => layout.novelx.toggleShortcut(shortcut)}
                             >
-                              <button type="button" class="novelx-session-open" onClick={() => openSession(session.id)}>
-                                <Icon name="prompt" size="small" />
-                                <span>{sessionTitle(session.title) || language.t("command.session.new")}</span>
-                                <Show when={running()}>
-                                  <span class="novelx-running-dot" aria-label={language.t("novelx.sidebar.running")} />
-                                </Show>
-                              </button>
-                              <button
-                                type="button"
-                                class="novelx-symbol-button"
-                                aria-label={pinned(shortcut) ? language.t("novelx.sidebar.unpin") : language.t("novelx.sidebar.pin")}
-                                aria-pressed={pinned(shortcut)}
-                                onClick={() => layout.novelx.toggleShortcut(shortcut)}
-                              >
-                                <Icon name="link" size="small" />
-                              </button>
-                            </div>
-                          )
-                        }}
-                      </For>
-                    </Show>
-                  </nav>
-                </Show>
-              </section>
-            )
-          }}
-        </For>
-      </div>
+                              <Icon name="link" size="small" />
+                            </button>
+                          </div>
+                        )
+                      }}
+                    </For>
+                  </Show>
+                </nav>
+              </div>
+            </>
+          )
+        }}
+      </Show>
     </aside>
   )
 
   return (
     <div
-      class="novelx-project-navigation hidden md:block"
+      class="novelx-project-navigation hidden md:flex"
       classList={{ "is-expanded": view.leftExpanded() && !resourceOpen(), "has-resource": resourceOpen() }}
     >
-      <Show when={!view.leftExpanded() || resourceOpen()}>{projectRail()}</Show>
+      {projectRail()}
       <Show when={view.leftExpanded()}>{projectPanel()}</Show>
     </div>
   )

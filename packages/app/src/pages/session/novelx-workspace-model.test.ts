@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test"
-import { selectProjectSessions, worldTreeStatus } from "./novelx-workspace-model"
+import { projectMonogram, selectProjectSessions, worldTreeStatus } from "./novelx-workspace-model"
+
+describe("projectMonogram", () => {
+  test("uses the first visible project-name character without assigning a project color", () => {
+    expect(projectMonogram("  novelx world  ")).toBe("N")
+    expect(projectMonogram("群山与河谷")).toBe("群")
+  })
+
+  test("keeps the rail readable when a project name is empty", () => {
+    expect(projectMonogram("   ")).toBe("?")
+  })
+})
 
 describe("selectProjectSessions", () => {
   test("keeps recent root project sessions and excludes archived or child sessions", () => {

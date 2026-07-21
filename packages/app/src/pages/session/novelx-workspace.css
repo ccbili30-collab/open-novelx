@@ -76,8 +76,6 @@
 
 .novelx-symbol-button:focus-visible,
 .novelx-session-open:focus-visible,
-.novelx-project-open:focus-visible,
-.novelx-project-expand:focus-visible,
 .novelx-project-tile:focus-visible,
 .novelx-shortcut-open:focus-visible,
 .novelx-resource-heading-button:focus-visible,
@@ -87,6 +85,7 @@
 }
 
 .novelx-project-navigation {
+  display: flex;
   position: relative;
   z-index: 20;
   width: var(--novelx-project-rail-width);
@@ -97,8 +96,8 @@
 }
 
 .novelx-project-navigation.is-expanded {
-  width: var(--novelx-project-sidebar-width);
-  min-width: var(--novelx-project-sidebar-width);
+  width: calc(var(--novelx-project-rail-width) + var(--novelx-project-sidebar-width));
+  min-width: calc(var(--novelx-project-rail-width) + var(--novelx-project-sidebar-width));
 }
 
 .novelx-project-rail,
@@ -137,19 +136,27 @@
   background: transparent;
 }
 
-.novelx-project-tile > * {
-  max-width: 34px;
-  max-height: 34px;
+.novelx-project-monogram {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #4d4843;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-size: 15px;
+  font-weight: 620;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-.novelx-project-tile:hover,
-.novelx-project-tile.is-current {
+.novelx-project-tile:hover {
   border-color: var(--novelx-line-strong);
-  background: rgba(63, 53, 45, 0.055);
+  background: rgba(63, 53, 45, 0.035);
 }
 
-.novelx-project-tile.is-add {
-  border-style: dashed;
+.novelx-project-tile.is-current {
+  border-color: #c9c1b9;
+  background: rgba(63, 53, 45, 0.06);
 }
 
 .novelx-project-sidebar {
@@ -170,9 +177,7 @@
 }
 
 .novelx-project-heading,
-.novelx-project-row,
 .novelx-shortcut-row,
-.novelx-project-open,
 .novelx-session-open,
 .novelx-shortcut-open {
   display: flex;
@@ -187,9 +192,30 @@
 }
 
 .novelx-project-heading h2 {
+  min-width: 0;
+  overflow: hidden;
   margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 650;
+}
+
+.novelx-current-project-title,
+.novelx-project-heading-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.novelx-current-project-title {
+  flex: 1;
+  gap: 9px;
+}
+
+.novelx-project-heading-actions {
+  flex: none;
+  gap: 2px;
 }
 
 .novelx-shortcut-section {
@@ -205,8 +231,7 @@
   font-size: 11px;
 }
 
-.novelx-shortcut-row,
-.novelx-project-row {
+.novelx-shortcut-row {
   min-height: 38px;
   gap: 8px;
   border-radius: 4px;
@@ -214,16 +239,12 @@
   font-size: 13px;
 }
 
-.novelx-shortcut-row:hover,
-.novelx-project-row:hover,
-.novelx-project-row.is-current {
+.novelx-shortcut-row:hover {
   background: rgba(97, 79, 64, 0.045);
 }
 
 .novelx-shortcut-open,
-.novelx-project-open,
-.novelx-session-open,
-.novelx-project-expand {
+.novelx-session-open {
   min-width: 0;
   border: 0;
   color: inherit;
@@ -232,37 +253,22 @@
 }
 
 .novelx-shortcut-open,
-.novelx-project-open,
 .novelx-session-open {
   gap: 8px;
 }
 
-.novelx-shortcut-open,
-.novelx-project-open {
+.novelx-shortcut-open {
   min-height: 34px;
   flex: 1;
 }
 
 .novelx-shortcut-open span,
-.novelx-project-open span,
 .novelx-session-open span:first-of-type {
   min-width: 0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.novelx-project-expand {
-  display: grid;
-  width: 24px;
-  height: 32px;
-  flex: none;
-  place-items: center;
-}
-
-.novelx-project-expand [data-component="icon"] {
-  transition: transform 120ms ease;
 }
 
 .novelx-symbol-button {
@@ -284,12 +290,12 @@
   padding: 8px 12px 16px;
 }
 
-.novelx-project-group + .novelx-project-group {
-  margin-top: 4px;
-}
-
 .novelx-session-tree {
   padding: 0 0 5px 24px;
+}
+
+.novelx-session-tree.is-current-project {
+  padding-left: 0;
 }
 
 .novelx-session-row {
