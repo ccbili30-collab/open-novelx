@@ -135,6 +135,24 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("exposes the one-way NovelX Story and cover toolchain", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+      expect(ids).toContain("novelx_route_growth")
+      expect(ids).toContain("novelx_prepare_story")
+      expect(ids).toContain("novelx_read_story_world")
+      expect(ids).toContain("novelx_register_story")
+      expect(ids).toContain("novelx_prepare_story_document")
+      expect(ids).toContain("novelx_commit_story_document")
+      expect(ids).toContain("novelx_finish_story")
+      expect(ids).toContain("novelx_prepare_story_covers")
+      expect(ids).toContain("novelx_register_story_covers")
+      expect(ids).not.toContain("novelx_retry_story_covers")
+      expect(ids).not.toContain("novelx_resume_story_cover_queue")
+    }),
+  )
+
   it.instance("does not expose execute unless code mode is enabled", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

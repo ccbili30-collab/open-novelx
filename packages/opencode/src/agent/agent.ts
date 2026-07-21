@@ -21,6 +21,8 @@ import PROMPT_NOVELX_PUBLICATION_EDITOR from "./prompt/novelx-publication-editor
 import PROMPT_NOVELX_GEOGRAPHY_WRITER from "./prompt/novelx-geography-writer.txt"
 import PROMPT_NOVELX_WORLD_WRITER from "./prompt/novelx-world-writer.txt"
 import PROMPT_NOVELX_WORLD_PROSE_WRITER from "./prompt/novelx-world-prose-writer.txt"
+import PROMPT_NOVELX_STORY_EDITOR from "./prompt/novelx-story-editor.txt"
+import PROMPT_NOVELX_STORY_WRITER from "./prompt/novelx-story-writer.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -151,6 +153,7 @@ const layer = Layer.effect(
           Permission.fromConfig({
             "*": "deny",
             novelx_register_world_blueprint: "allow",
+            novelx_route_growth: "allow",
             novelx_checkpoint_growth_memory: "allow",
             novelx_recover_growth_context: "allow",
             novelx_finish_world: "allow",
@@ -159,11 +162,13 @@ const layer = Layer.effect(
               "novelx-stage-editor": "allow",
               "novelx-visual-editor": "allow",
               "novelx-publication-editor": "allow",
+              "novelx-story-editor": "allow",
             },
           }),
           [
             { permission: "doom_loop", pattern: "*", action: "deny" },
             { permission: "doom_loop", pattern: "novelx_register_world_blueprint", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_route_growth", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_checkpoint_growth_memory", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_recover_growth_context", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_finish_world", action: "allow" },
@@ -200,12 +205,17 @@ const layer = Layer.effect(
             novelx_prepare_world_visuals: "allow",
             novelx_read_world_visual_sources: "allow",
             novelx_register_world_visuals: "allow",
+            read: "allow",
+            novelx_prepare_story_covers: "allow",
+            novelx_register_story_covers: "allow",
           }),
           [
             { permission: "doom_loop", pattern: "*", action: "deny" },
             { permission: "doom_loop", pattern: "novelx_prepare_world_visuals", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_read_world_visual_sources", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_register_world_visuals", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_prepare_story_covers", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_story_covers", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
         const publicationEditorRestriction = Permission.merge(
@@ -234,6 +244,32 @@ const layer = Layer.effect(
           glob: "allow",
           grep: "allow",
           list: "allow",
+          external_directory: novelxLeafExternalDirectory,
+        })
+        const storyEditorRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_prepare_story: "allow",
+            novelx_read_story_world: "allow",
+            novelx_register_story: "allow",
+            novelx_prepare_story_document: "allow",
+            novelx_commit_story_document: "allow",
+            novelx_finish_story: "allow",
+            task: { "*": "deny", "novelx-story-writer": "allow", "novelx-visual-editor": "allow" },
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_prepare_story", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_read_story_world", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_story", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_prepare_story_document", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_commit_story_document", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_story", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const storyWriterRestriction = Permission.fromConfig({
+          "*": "deny",
+          read: "allow",
           external_directory: novelxLeafExternalDirectory,
         })
         const worldWriterRestriction = Permission.fromConfig({
@@ -320,13 +356,13 @@ const layer = Layer.effect(
           },
           "novelx-visual-editor": {
             name: "novelx-visual-editor",
-            description: "NovelX 世界视觉主编。读取封存档案，注册权威地图空间和稀疏风貌图片任务。",
+            description: "NovelX 阶段视觉工具分身。依据本阶段封存原文形成最终图片 Prompt 并提交异步队列。",
             options: {},
             permission: Permission.merge(defaults, user, visualEditorRestriction),
             mode: "subagent",
             native: true,
             hidden: true,
-            steps: 18,
+            steps: 24,
             prompt: PROMPT_NOVELX_VISUAL_EDITOR,
           },
           "novelx-publication-editor": {
@@ -339,6 +375,17 @@ const layer = Layer.effect(
             hidden: true,
             steps: 120,
             prompt: PROMPT_NOVELX_PUBLICATION_EDITOR,
+          },
+          "novelx-story-editor": {
+            name: "novelx-story-editor",
+            description: "NovelX 故事主编。只从冻结世界单向生成具名历史书、关键文献与一部完整小说。",
+            options: {},
+            permission: Permission.merge(defaults, user, storyEditorRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 160,
+            prompt: PROMPT_NOVELX_STORY_EDITOR,
           },
           "novelx-geography": {
             name: "novelx-geography",
@@ -372,6 +419,17 @@ const layer = Layer.effect(
             hidden: true,
             steps: 4,
             prompt: PROMPT_NOVELX_WORLD_PROSE_WRITER,
+          },
+          "novelx-story-writer": {
+            name: "novelx-story-writer",
+            description: "NovelX 故事写作叶节点。依据冻结事实和已提交上游原文撰写一份历史、文献或小说章节。",
+            options: {},
+            permission: Permission.merge(defaults, user, storyWriterRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 4,
+            prompt: PROMPT_NOVELX_STORY_WRITER,
           },
           general: {
             name: "general",
@@ -467,6 +525,8 @@ const layer = Layer.effect(
             key === "novelx-geography" ||
             key === "novelx-world-writer" ||
             key === "novelx-world-prose-writer"
+            || key === "novelx-story-editor"
+            || key === "novelx-story-writer"
           )
             continue
           if (value.disable) {

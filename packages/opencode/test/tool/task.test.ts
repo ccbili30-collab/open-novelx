@@ -690,7 +690,7 @@ describe("tool.task", () => {
     }),
   )
 
-  it.instance("allows only the built-in NovelX root to stage-editor to dossier-leaf chain", () =>
+  it.instance("allows only the built-in NovelX editorial chains, including the Story-owned visual tool branch", () =>
     Effect.gen(function* () {
       const sessions = yield* Session.Service
       const { chat, assistant } = yield* seed("Growth", "growth")
@@ -730,6 +730,14 @@ describe("tool.task", () => {
         },
         { ...rootContext, sessionID: stageSession.id, messageID: stageAssistant.id, agent: "novelx-stage-editor" },
       )
+      const worldVisualTool = yield* def.execute(
+        {
+          description: "世界视觉：地图与风貌",
+          prompt: "WORLD_VISUALS frozen-world-integrity",
+          subagent_type: "novelx-visual-editor",
+        },
+        rootContext,
+      )
       const publication = yield* def.execute(
         {
           description: "世界图志与纪行",
@@ -760,6 +768,39 @@ describe("tool.task", () => {
           agent: "novelx-publication-editor",
         },
       )
+      const story = yield* def.execute(
+        {
+          description: "故事：历史、文献与小说",
+          prompt: "Frozen world integrity",
+          subagent_type: "novelx-story-editor",
+        },
+        rootContext,
+      )
+      const storySession = yield* sessions.get(story.metadata.sessionId)
+      const storyAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: storySession.id,
+        mode: "novelx-story-editor",
+        agent: "novelx-story-editor",
+      })
+      const storyWriter = yield* def.execute(
+        {
+          description: "小说：第一章",
+          prompt: "Exact source-bound Story Context Pack",
+          subagent_type: "novelx-story-writer",
+        },
+        { ...rootContext, sessionID: storySession.id, messageID: storyAssistant.id, agent: "novelx-story-editor" },
+      )
+      const storyVisualTool = yield* def.execute(
+        {
+          description: "故事工具：封面入队",
+          prompt: "Completed Story integrity",
+          subagent_type: "novelx-visual-editor",
+        },
+        { ...rootContext, sessionID: storySession.id, messageID: storyAssistant.id, agent: "novelx-story-editor" },
+      )
       const rootToLeaf = yield* def
         .execute(
           {
@@ -780,13 +821,81 @@ describe("tool.task", () => {
           { ...rootContext, sessionID: stageSession.id, messageID: stageAssistant.id, agent: "novelx-stage-editor" },
         )
         .pipe(Effect.exit)
+      const rootToRemovedCoverEditor = yield* def
+        .execute(
+          {
+            description: "旧封面主编",
+            prompt: "invalid",
+            subagent_type: "novelx-cover-editor",
+          },
+          rootContext,
+        )
+        .pipe(Effect.exit)
 
       expect(stageSession.parentID).toBe(chat.id)
       expect((yield* sessions.get(leaf.metadata.sessionId)).parentID).toBe(stageSession.id)
       expect(publicationSession.parentID).toBe(chat.id)
       expect((yield* sessions.get(prose.metadata.sessionId)).parentID).toBe(publicationSession.id)
+      expect(storySession.parentID).toBe(chat.id)
+      expect((yield* sessions.get(storyWriter.metadata.sessionId)).parentID).toBe(storySession.id)
+      const worldVisualSession = yield* sessions.get(worldVisualTool.metadata.sessionId)
+      expect(worldVisualSession.parentID).toBe(chat.id)
+      expect(worldVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_story_covers")?.action).toBe("deny")
+      const storyVisualSession = yield* sessions.get(storyVisualTool.metadata.sessionId)
+      expect(storyVisualSession.parentID).toBe(storySession.id)
+      expect(storyVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")?.action).toBe("deny")
+      expect(storyVisualSession.permission?.findLast((rule) => rule.permission === "novelx_register_world_visuals")?.action).toBe("deny")
       expect(rootToLeaf._tag).toBe("Failure")
       expect(stageToStage._tag).toBe("Failure")
+      expect(rootToRemovedCoverEditor._tag).toBe("Failure")
+    }),
+  )
+
+  it.instance("repairs Story branch denials when resuming a pre-gate visual session", () =>
+    Effect.gen(function* () {
+      const sessions = yield* Session.Service
+      const { chat, assistant } = yield* seed("Growth", "growth")
+      const story = yield* sessions.create({
+        parentID: chat.id,
+        title: "故事：恢复",
+        agent: "novelx-story-editor",
+      })
+      const storyAssistant = yield* sessions.updateMessage({
+        ...assistant,
+        id: MessageID.ascending(),
+        parentID: MessageID.ascending(),
+        sessionID: story.id,
+        mode: "novelx-story-editor",
+        agent: "novelx-story-editor",
+      })
+      const legacyVisual = yield* sessions.create({
+        parentID: story.id,
+        title: "故事工具：封面入队 (@novelx-visual-editor subagent)",
+        agent: "novelx-visual-editor",
+        permission: [],
+      })
+      const def = yield* (yield* TaskTool).init()
+      yield* def.execute(
+        {
+          description: "故事工具：封面入队",
+          prompt: "STORY_COVERS sealed-story-integrity",
+          subagent_type: "novelx-visual-editor",
+          task_id: legacyVisual.id,
+        },
+        {
+          sessionID: story.id,
+          messageID: storyAssistant.id,
+          agent: "novelx-story-editor",
+          abort: new AbortController().signal,
+          extra: { promptOps: stubOps() },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        },
+      )
+      const resumed = yield* sessions.get(legacyVisual.id)
+      expect(resumed.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")?.action).toBe("deny")
+      expect(resumed.permission?.findLast((rule) => rule.permission === "novelx_register_world_visuals")?.action).toBe("deny")
     }),
   )
 

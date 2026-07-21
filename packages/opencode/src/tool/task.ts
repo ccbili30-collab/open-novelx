@@ -2,6 +2,7 @@ import * as Tool from "./tool"
 import DESCRIPTION from "./task.txt"
 import { ToolJsonSchema } from "./json-schema"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
+import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { BackgroundJob } from "@/background/job"
 import { Session } from "@/session/session"
 import { SessionID, MessageID } from "../session/schema"
@@ -27,18 +28,39 @@ const novelXLeafInvocations = new Map<string, number>()
 const novelXLeafExecution = Semaphore.makeUnsafe(2)
 
 const isNovelXOwnedLeaf = (name: string) =>
-  name === "novelx-geography" || name === "novelx-world-writer" || name === "novelx-world-prose-writer"
+  name === "novelx-geography" || name === "novelx-world-writer" || name === "novelx-world-prose-writer" || name === "novelx-story-writer"
 const isNovelXOwnedChild = (name: string) =>
   name === "novelx-stage-editor" ||
   name === "novelx-visual-editor" ||
   name === "novelx-publication-editor" ||
+  name === "novelx-story-editor" ||
   isNovelXOwnedLeaf(name)
 const isNovelXEditorialDispatch = (parent: string, child: string) =>
   (parent === "growth" && child === "novelx-stage-editor") ||
   (parent === "growth" && child === "novelx-visual-editor") ||
   (parent === "growth" && child === "novelx-publication-editor") ||
+  (parent === "growth" && child === "novelx-story-editor") ||
   (parent === "novelx-stage-editor" && child === "novelx-world-writer") ||
-  (parent === "novelx-publication-editor" && child === "novelx-world-prose-writer")
+  (parent === "novelx-publication-editor" && child === "novelx-world-prose-writer") ||
+  (parent === "novelx-story-editor" && child === "novelx-story-writer") ||
+  (parent === "novelx-story-editor" && child === "novelx-visual-editor")
+
+const visualBranchDenies = (parent: string, child: string): PermissionV1.Ruleset => {
+  if (child !== "novelx-visual-editor") return []
+  if (parent === "novelx-story-editor") {
+    return ["novelx_prepare_world_visuals", "novelx_read_world_visual_sources", "novelx_register_world_visuals"].map(
+      (permission) => ({ permission, pattern: "*", action: "deny" as const }),
+    )
+  }
+  if (parent === "growth") {
+    return ["novelx_prepare_story_covers", "novelx_register_story_covers"].map((permission) => ({
+      permission,
+      pattern: "*",
+      action: "deny" as const,
+    }))
+  }
+  return []
+}
 const BACKGROUND_DESCRIPTION = [
   "Background mode: background=true launches the subagent asynchronously and returns immediately.",
   "Foreground is the default; use it when you need the result before continuing.",
@@ -128,7 +150,7 @@ export const TaskTool = Tool.define(
       const editorialNestedLeaf =
         depth === 1 &&
         isNovelXEditorialDispatch(ctx.agent, params.subagent_type) &&
-        (ctx.agent === "novelx-stage-editor" || ctx.agent === "novelx-publication-editor")
+        (ctx.agent === "novelx-stage-editor" || ctx.agent === "novelx-publication-editor" || ctx.agent === "novelx-story-editor")
       if (depth >= (cfg.subagent_depth ?? 1) && !editorialNestedLeaf) {
         return yield* Effect.fail(
           new Error(
@@ -157,8 +179,10 @@ export const TaskTool = Tool.define(
         (next.name === "novelx-stage-editor" ||
           next.name === "novelx-visual-editor" ||
           next.name === "novelx-publication-editor" ||
+          next.name === "novelx-story-editor" ||
           next.name === "novelx-world-writer" ||
-          next.name === "novelx-world-prose-writer") &&
+          next.name === "novelx-world-prose-writer" ||
+          next.name === "novelx-story-writer") &&
         !isNovelXEditorialDispatch(ctx.agent, next.name)
       ) {
         return yield* Effect.fail(
@@ -219,23 +243,39 @@ export const TaskTool = Tool.define(
           action: "deny" as const,
         })) ?? []),
       ]
+      const branchDenies = visualBranchDenies(ctx.agent, next.name)
+      const sessionPermission = [
+        ...childPermission,
+        ...childToolDenies.filter(
+          (deny) =>
+            !childPermission.some(
+              (rule) =>
+                rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
+            ),
+        ),
+        ...branchDenies,
+      ]
       const nextSession =
         requestedSession ??
         (yield* sessions.create({
           parentID: ctx.sessionID,
           title: params.description + ` (@${next.name} subagent)`,
           agent: next.name,
-          permission: [
-            ...childPermission,
-            ...childToolDenies.filter(
-              (deny) =>
-                !childPermission.some(
-                  (rule) =>
-                    rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
-                ),
-            ),
-          ],
+          permission: sessionPermission,
         }))
+      if (requestedSession && branchDenies.length > 0) {
+        const permission = [
+          ...(requestedSession.permission ?? []),
+          ...branchDenies.filter(
+            (deny) =>
+              !(requestedSession.permission ?? []).some(
+                (rule) =>
+                  rule.permission === deny.permission && rule.pattern === deny.pattern && rule.action === deny.action,
+              ),
+          ),
+        ]
+        yield* sessions.setPermission({ sessionID: requestedSession.id, permission })
+      }
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),

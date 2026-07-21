@@ -57,6 +57,9 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("novelx-geography")
     expect(names).toContain("novelx-world-writer")
     expect(names).toContain("novelx-world-prose-writer")
+    expect(names).toContain("novelx-story-editor")
+    expect(names).toContain("novelx-story-writer")
+    expect(names).not.toContain("novelx-cover-editor")
     expect(names).toContain("general")
     expect(names).toContain("explore")
     expect(names).toContain("compaction")
@@ -74,6 +77,7 @@ it.instance(
       expect(growth?.mode).toBe("primary")
       expect(growth?.hidden).toBe(true)
       expect(evalPerm(growth, "novelx_register_world_blueprint")).toBe("allow")
+      expect(evalPerm(growth, "novelx_route_growth")).toBe("allow")
       expect(evalPerm(growth, "novelx_prepare_world_stage")).toBe("deny")
       expect(evalPerm(growth, "novelx_register_world_stage")).toBe("deny")
       expect(evalPerm(growth, "novelx_prepare_world_document")).toBe("deny")
@@ -89,6 +93,8 @@ it.instance(
       expect(evalPerm(growth, "task", "novelx-stage-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-visual-editor")).toBe("allow")
       expect(evalPerm(growth, "task", "novelx-publication-editor")).toBe("allow")
+      expect(evalPerm(growth, "task", "novelx-story-editor")).toBe("allow")
+      expect(evalPerm(growth, "task", "novelx-cover-editor")).toBe("deny")
       expect(evalPerm(growth, "task", "novelx-world-writer")).toBe("deny")
       expect(evalPerm(growth, "task", "novelx-geography")).toBe("deny")
       expect(evalPerm(growth, "task", "general")).toBe("deny")
@@ -105,7 +111,43 @@ it.instance(
   { timeout: 15_000 },
 )
 
-it.instance("visual editor is hidden and can only register source-bound map and scenery tasks", () =>
+it.instance("story editor splits the existing visual tool branch instead of a cover editor", () =>
+  Effect.gen(function* () {
+    const story = yield* load((svc) => svc.get("novelx-story-editor"))
+    expect(evalPerm(story, "novelx_prepare_story")).toBe("allow")
+    expect(evalPerm(story, "novelx_read_story_world")).toBe("allow")
+    expect(evalPerm(story, "novelx_register_story")).toBe("allow")
+    expect(evalPerm(story, "novelx_prepare_story_document")).toBe("allow")
+    expect(evalPerm(story, "novelx_commit_story_document")).toBe("allow")
+    expect(evalPerm(story, "novelx_finish_story")).toBe("allow")
+    expect(evalPerm(story, "novelx_register_world_stage")).toBe("deny")
+    expect(evalPerm(story, "task", "novelx-story-writer")).toBe("allow")
+    expect(evalPerm(story, "task", "novelx-visual-editor")).toBe("allow")
+    expect(story?.prompt).toContain("strictly one at a time")
+    expect(story?.prompt).toContain("If status is text_completed")
+    expect(story?.prompt).toContain("do not read sources, register, prepare documents, commit documents or call novelx_finish_story again")
+    expect(story?.prompt).toContain("STORY_COVERS <completed Story integrity SHA-256>")
+
+    const writer = yield* load((svc) => svc.get("novelx-story-writer"))
+    expect(evalPerm(writer, "write")).toBe("deny")
+    expect(evalPerm(writer, "task", "general")).toBe("deny")
+    expect(writer?.prompt).toContain("You may infer local connective detail")
+
+    const visual = yield* load((svc) => svc.get("novelx-visual-editor"))
+    expect(evalPerm(visual, "read")).toBe("allow")
+    expect(evalPerm(visual, "novelx_prepare_story_covers")).toBe("allow")
+    expect(evalPerm(visual, "novelx_register_story_covers")).toBe("allow")
+    expect(evalPerm(visual, "novelx_retry_story_covers")).toBe("deny")
+    expect(evalPerm(visual, "novelx_resume_story_cover_queue")).toBe("deny")
+    expect(evalPerm(visual, "novelx_prepare_story")).toBe("deny")
+    expect(visual?.prompt).toContain("one and only one CoverProfile")
+    expect(visual?.prompt).toContain("final prompt sent unchanged")
+    expect(visual?.prompt).toContain("Do not echo, paraphrase or submit that authority field")
+    expect(visual?.prompt).toContain("Runtime permissions independently deny every tool belonging to the other branch")
+  }),
+)
+
+it.instance("visual tool branch is hidden and can only register source-bound world or Story image tasks", () =>
   Effect.gen(function* () {
     const editor = yield* load((svc) => svc.get("novelx-visual-editor"))
     expect(editor?.mode).toBe("subagent")
@@ -113,10 +155,10 @@ it.instance("visual editor is hidden and can only register source-bound map and 
     expect(evalPerm(editor, "novelx_prepare_world_visuals")).toBe("allow")
     expect(evalPerm(editor, "novelx_read_world_visual_sources")).toBe("allow")
     expect(evalPerm(editor, "novelx_register_world_visuals")).toBe("allow")
-    expect(evalPerm(editor, "read")).toBe("deny")
+    expect(evalPerm(editor, "read")).toBe("allow")
     expect(evalPerm(editor, "write")).toBe("deny")
     expect(evalPerm(editor, "task", "general")).toBe("deny")
-    expect(editor?.prompt).toContain("Do not draw SVG maps or write image files yourself")
+    expect(editor?.prompt).toContain("Do not wait, poll, call the image Provider directly")
     expect(editor?.prompt).toContain("at most three genuinely world-influential natural wonders")
   }),
 )

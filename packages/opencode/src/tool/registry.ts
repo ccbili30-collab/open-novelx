@@ -77,6 +77,15 @@ import { NovelXPrepareWorldPublicationTool } from "./novelx-prepare-world-public
 import { NovelXReadWorldPublicationSourceTool } from "./novelx-read-world-publication-source"
 import { NovelXCommitWorldPublicationTool } from "./novelx-commit-world-publication"
 import { NovelXFinishWorldPublicationTool } from "./novelx-finish-world-publication"
+import { NovelXRouteGrowthTool } from "./novelx-route-growth"
+import { NovelXPrepareStoryTool } from "./novelx-prepare-story"
+import { NovelXReadStoryWorldTool } from "./novelx-read-story-world"
+import { NovelXRegisterStoryTool } from "./novelx-register-story"
+import { NovelXPrepareStoryDocumentTool } from "./novelx-prepare-story-document"
+import { NovelXCommitStoryDocumentTool } from "./novelx-commit-story-document"
+import { NovelXFinishStoryTool } from "./novelx-finish-story"
+import { NovelXPrepareStoryCoversTool } from "./novelx-prepare-story-covers"
+import { NovelXRegisterStoryCoversTool } from "./novelx-register-story-covers"
 import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
@@ -156,6 +165,15 @@ const layer = Layer.effect(
     const readWorldPublicationSource = yield* NovelXReadWorldPublicationSourceTool
     const commitWorldPublication = yield* NovelXCommitWorldPublicationTool
     const finishWorldPublication = yield* NovelXFinishWorldPublicationTool
+    const routeGrowth = yield* NovelXRouteGrowthTool
+    const prepareStory = yield* NovelXPrepareStoryTool
+    const readStoryWorld = yield* NovelXReadStoryWorldTool
+    const registerStory = yield* NovelXRegisterStoryTool
+    const prepareStoryDocument = yield* NovelXPrepareStoryDocumentTool
+    const commitStoryDocument = yield* NovelXCommitStoryDocumentTool
+    const finishStory = yield* NovelXFinishStoryTool
+    const prepareStoryCovers = yield* NovelXPrepareStoryCoversTool
+    const registerStoryCovers = yield* NovelXRegisterStoryCoversTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -286,6 +304,15 @@ const layer = Layer.effect(
           readWorldPublicationSource: Tool.init(readWorldPublicationSource),
           commitWorldPublication: Tool.init(commitWorldPublication),
           finishWorldPublication: Tool.init(finishWorldPublication),
+          routeGrowth: Tool.init(routeGrowth),
+          prepareStory: Tool.init(prepareStory),
+          readStoryWorld: Tool.init(readStoryWorld),
+          registerStory: Tool.init(registerStory),
+          prepareStoryDocument: Tool.init(prepareStoryDocument),
+          commitStoryDocument: Tool.init(commitStoryDocument),
+          finishStory: Tool.init(finishStory),
+          prepareStoryCovers: Tool.init(prepareStoryCovers),
+          registerStoryCovers: Tool.init(registerStoryCovers),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -331,6 +358,15 @@ const layer = Layer.effect(
             tool.readWorldPublicationSource,
             tool.commitWorldPublication,
             tool.finishWorldPublication,
+            tool.routeGrowth,
+            tool.prepareStory,
+            tool.readStoryWorld,
+            tool.registerStory,
+            tool.prepareStoryDocument,
+            tool.commitStoryDocument,
+            tool.finishStory,
+            tool.prepareStoryCovers,
+            tool.registerStoryCovers,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
