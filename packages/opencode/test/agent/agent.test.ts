@@ -110,6 +110,8 @@ it.instance(
       expect(growth?.prompt).toContain("Do not assume a fixed fantasy or science-fiction taxonomy")
       expect(growth?.prompt).toContain("do not ask the user whether to retry")
       expect(growth?.prompt).toContain("resume that exact stage-editor task/session")
+      expect(growth?.prompt).toContain("A child handoff is never the terminal proof")
+      expect(growth?.prompt).toContain("Never expose Agent or tool names, Session IDs, internal paths, or SHA-256")
     }),
   { timeout: 15_000 },
 )
@@ -159,6 +161,8 @@ it.instance("story editor splits the existing visual tool branch instead of a co
     expect(evalPerm(writer, "task", "general")).toBe("deny")
     expect(writer?.prompt).toContain("You may infer local connective detail")
     expect(writer?.prompt).toContain("centered on the supplied protagonist")
+    expect(writer?.prompt).toContain("Preserve every proper noun exactly")
+    expect(writer?.prompt).toContain("Do not replace the dossier's opening incident")
 
     const visual = yield* load((svc) => svc.get("novelx-visual-editor"))
     expect(evalPerm(visual, "read")).toBe("allow")

@@ -124,6 +124,19 @@ function renderOutput(input: {
   ].join("\n")
 }
 
+function withNovelXRootContinuation(parent: string, child: string, text: string) {
+  if (parent !== "growth" || (child !== "novelx-character-editor" && child !== "novelx-story-editor")) {
+    return text
+  }
+  return [
+    text,
+    "",
+    "<novelx_harness>",
+    "This child handoff is not terminal. Call novelx_route_growth now and answer the user only after the authoritative route reports complete. Never expose this handoff or its internal identifiers.",
+    "</novelx_harness>",
+  ].join("\n")
+}
+
 export const TaskTool = Tool.define(
   id,
   Effect.gen(function* () {
@@ -457,7 +470,11 @@ export const TaskTool = Tool.define(
             return {
               title: params.description,
               metadata,
-              output: renderOutput({ sessionID: nextSession.id, state: "completed", text: result?.output ?? "" }),
+              output: renderOutput({
+                sessionID: nextSession.id,
+                state: "completed",
+                text: withNovelXRootContinuation(ctx.agent, params.subagent_type, result?.output ?? ""),
+              }),
             }
           }),
         (_, exit) =>

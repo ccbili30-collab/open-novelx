@@ -516,7 +516,11 @@ function normalizeStoryDocument(record: NovelXStory.DocumentRecord, value: strin
   if (normalized.length < minimum || normalized.length > maximum) {
     fail("NOVELX_STORY_DOCUMENT_LENGTH_INVALID", `${record.targetPath} must contain ${minimum} to ${maximum} readable characters.`)
   }
-  if (/(?:阶段主编|执行\s*Agent|sourceSha256|\.novelx\/|注册(?:骨架|实体)|工具调用|待填充|待补充|TODO|TBD|作为AI|无法确定)/iu.test(normalized)) {
+  if (
+    /(?:阶段主编|执行\s*Agent|\bAgent\b|\bPrompt\b|\bHarness\b|\btask\s+session\s*(?:id|identifier)?\b|\bsession\s+(?:id|identifier)\b|\btool\s*call\b|sourceSha256|contextSha256|integritySha256|\.novelx\/|注册(?:骨架|实体)|工具调用|待填充|待补充|TODO|TBD|作为AI|无法确定)/iu.test(
+      normalized,
+    )
+  ) {
     fail("NOVELX_STORY_DOCUMENT_INTERNAL_LEAK", `${record.targetPath} exposes orchestration or placeholder text.`)
   }
   return normalized

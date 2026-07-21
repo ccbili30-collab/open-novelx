@@ -263,6 +263,32 @@ describe("NovelX story materialization", () => {
     expect(finished.documents.every((document) => document.status === "committed")).toBe(true)
   })
 
+  test("rejects reader-facing production metadata even when it is lowercase English", () => {
+    const manifest = registered()
+    const document = manifest.documents[0]!
+    const prepared = prepareStoryDocument({
+      manifest,
+      documentId: document.id,
+      editorSessionId: "ses-story-editor",
+      editorMessageId: "msg-leak",
+      committedContents: {},
+      protagonistMarkdown: characterMarkdown,
+      now: 100,
+    })
+
+    expect(() =>
+      commitStoryDocument({
+        manifest: prepared.manifest,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        taskSessionId: "ses-writer-leak",
+        leaseId: prepared.record.lease!.id,
+        markdown: `# ${document.title}\n\n${"正文内容。".repeat(260)}\n\ntask session ID: null`,
+        now: 200,
+      }),
+    ).toThrow("NOVELX_STORY_DOCUMENT_INTERNAL_LEAK")
+  })
+
   test("replays an unfinished lease across messages in the same editor session and rejects another session", () => {
     const manifest = registered()
     const document = manifest.documents[0]!
