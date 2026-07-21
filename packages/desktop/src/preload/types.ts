@@ -41,6 +41,13 @@ export type FatalRendererError = {
   os?: string
 }
 
+export type CreateProjectDirectoryResult =
+  | { status: "created"; directory: string; projectID: string }
+  | { status: "cancelled" }
+  | { status: "invalid-name" }
+  | { status: "git-unavailable" }
+  | { status: "conflict"; directory: string }
+
 export type ElectronAPI = {
   killSidecar: () => Promise<void>
   installCli: () => Promise<string>
@@ -75,6 +82,11 @@ export type ElectronAPI = {
     title?: string
     defaultPath?: string
   }) => Promise<string | string[] | null>
+  createProjectDirectory: (opts: {
+    name: string
+    title?: string
+    defaultPath?: string
+  }) => Promise<CreateProjectDirectoryResult>
   openFilePicker: (opts?: {
     multiple?: boolean
     title?: string

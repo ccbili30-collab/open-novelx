@@ -1,9 +1,13 @@
 import { getFilename } from "@opencode-ai/core/util/path"
 import { Icon } from "@opencode-ai/ui/icon"
 import { ContextMenu } from "@opencode-ai/ui/context-menu"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { MenuV2 } from "@opencode-ai/ui/v2/menu-v2"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { produce } from "solid-js/store"
 import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
+import { DialogCreateProject } from "@/components/dialog-create-project"
+import { openCreatedProject } from "@/components/project-create-flow"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLayout, type LocalProject } from "@/context/layout"
@@ -28,6 +32,7 @@ type DragItem =
 
 export function NovelXWorkspaceSidebar() {
   const command = useCommand()
+  const dialog = useDialog()
   const language = useLanguage()
   const layout = useLayout()
   const platform = usePlatform()
@@ -53,6 +58,13 @@ export function NovelXWorkspaceSidebar() {
 
   const [drag, setDrag] = createSignal<DragItem>()
   const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set())
+
+  const canCreateProject = createMemo(
+    () =>
+      platform.platform === "desktop" &&
+      !!platform.createProjectDirectory &&
+      ServerConnection.local(serverSDK().server),
+  )
 
   const setPendingKey = (key: string, value: boolean) => {
     setPending((current) => {
@@ -110,6 +122,30 @@ export function NovelXWorkspaceSidebar() {
       return
     }
     newTask(project.worktree)
+  }
+
+  const activateCreatedProject = async (directory: string, expectedProjectID: string) => {
+    const client = serverSDK().createClient({ directory, throwOnError: true })
+    await openCreatedProject({
+      directory,
+      verify: async () => {
+        const project = (await client.project.current()).data
+        return project?.id === expectedProjectID && pathKey(project.worktree) === pathKey(directory)
+      },
+      register: (value) => layout.projects.open(value),
+      unregister: (value) => layout.projects.remove(value),
+      activate: async (value) => {
+        await tabs.newDraft({ server: server(), directory: value })
+      },
+    })
+  }
+
+  const showCreateProject = () => {
+    if (!canCreateProject()) {
+      showToast({ title: language.t("novelx.project.create.unavailable") })
+      return
+    }
+    dialog.show(() => <DialogCreateProject openProject={activateCreatedProject} />)
   }
 
   const shortcutLabel = (shortcut: NovelXShortcut) => {
@@ -394,15 +430,29 @@ export function NovelXWorkspaceSidebar() {
             </ContextMenu>
           )}
         </For>
-        <button
-          type="button"
-          class="novelx-project-tile is-add"
-          aria-label={language.t("novelx.sidebar.openProject")}
-          title={language.t("novelx.sidebar.openProject")}
-          onClick={() => command.trigger("project.open")}
-        >
-          <Icon name="plus" size="small" />
-        </button>
+        <MenuV2 modal={false} placement="right-start" gutter={4}>
+          <MenuV2.Trigger
+            as="button"
+            type="button"
+            class="novelx-project-tile is-add"
+            aria-label={language.t("session.new.project.add")}
+            title={language.t("session.new.project.add")}
+          >
+            <Icon name="plus" size="small" />
+          </MenuV2.Trigger>
+          <MenuV2.Portal>
+            <MenuV2.Content>
+              <MenuV2.Item disabled={!canCreateProject()} onSelect={showCreateProject}>
+                <Icon name="plus" size="small" />
+                {language.t("session.new.project.new")}
+              </MenuV2.Item>
+              <MenuV2.Item onSelect={() => command.trigger("project.open")}>
+                <Icon name="folder" size="small" />
+                {language.t("novelx.sidebar.openProject")}
+              </MenuV2.Item>
+            </MenuV2.Content>
+          </MenuV2.Portal>
+        </MenuV2>
       </div>
 
       <div

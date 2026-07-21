@@ -8,6 +8,13 @@ import type { UpdaterPlatform } from "../updater"
 
 type PickerPaths = string | string[] | null
 type OpenDirectoryPickerOptions = { title?: string; multiple?: boolean }
+export type CreateProjectDirectoryResult =
+  | { status: "created"; directory: string; projectID: string }
+  | { status: "cancelled" }
+  | { status: "invalid-name" }
+  | { status: "git-unavailable" }
+  | { status: "conflict"; directory: string }
+type CreateProjectDirectoryOptions = { name: string; title?: string; defaultPath?: string }
 type OpenAttachmentPickerOptions = {
   title?: string
   multiple?: boolean
@@ -43,6 +50,9 @@ type PlatformBase = {
   /** Move one validated local project directory to the OS recycle bin/trash (desktop only). */
   authorizeProjectDirectoryTrash?(path: string): Promise<string | null>
   trashProjectDirectory?(authorization: string): Promise<void>
+
+  /** Ask for a parent folder and atomically create one validated project directory (desktop only). */
+  createProjectDirectory?(opts: CreateProjectDirectoryOptions): Promise<CreateProjectDirectoryResult>
 
   /** Restart the app  */
   restart(): Promise<void>

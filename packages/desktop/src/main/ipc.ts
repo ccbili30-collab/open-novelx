@@ -2,7 +2,7 @@ import { execFile } from "node:child_process"
 import { stat } from "node:fs/promises"
 import { basename } from "node:path"
 import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from "electron"
-import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
+import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from "electron"
 import type { DesktopMenuAction } from "@opencode-ai/app/desktop-menu"
 
 import type { FatalRendererError, ServerReadyData, TitlebarTheme } from "../preload/types"
@@ -17,6 +17,7 @@ import {
   resolveTrashProjectDirectory,
   trashProjectDirectory,
 } from "./trash-project-directory"
+import { createProjectDirectory, ensureGitAvailable, validateProjectDirectoryName } from "./create-project-directory"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -131,6 +132,38 @@ export function registerIpcHandlers(deps: Deps) {
       })
       if (result.canceled) return null
       return opts?.multiple ? result.filePaths : result.filePaths[0]
+    },
+  )
+
+  ipcMain.handle(
+    "create-project-directory",
+    async (
+      event: IpcMainInvokeEvent,
+      opts: { name: string; title?: string; defaultPath?: string },
+    ) => {
+      let name: string
+      try {
+        name = validateProjectDirectoryName(opts?.name)
+      } catch {
+        return { status: "invalid-name" as const }
+      }
+      try {
+        await ensureGitAvailable(app.getPath("home"))
+      } catch {
+        return { status: "git-unavailable" as const }
+      }
+      const pickerOptions: OpenDialogOptions = {
+        properties: ["openDirectory", "createDirectory"],
+        title: typeof opts?.title === "string" ? opts.title : "Choose where to create the project",
+        defaultPath: typeof opts?.defaultPath === "string" ? opts.defaultPath : undefined,
+      }
+      const owner = BrowserWindow.fromWebContents(event.sender)
+      const result = owner
+        ? await dialog.showOpenDialog(owner, pickerOptions)
+        : await dialog.showOpenDialog(pickerOptions)
+      const parent = result.filePaths[0]
+      if (result.canceled || !parent) return { status: "cancelled" as const }
+      return createProjectDirectory(parent, name)
     },
   )
 
