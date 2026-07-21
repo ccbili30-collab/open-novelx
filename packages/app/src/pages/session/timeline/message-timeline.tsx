@@ -66,6 +66,7 @@ import { useServerSDK } from "@/context/server-sdk"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { useTabs } from "@/context/tabs"
+import { useLayout } from "@/context/layout"
 import { legacySessionHref, requireServerKey, sessionHref } from "@/utils/session-route"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -76,6 +77,8 @@ import { observeElementOffsetReconnectAware } from "./observe-element-offset"
 import { createTimelineProjection } from "./projection"
 import { MessageComment, SummaryDiff, TimelineRow, TimelineRowMap } from "./rows"
 import { filterVirtualIndexes } from "./virtual-items"
+import { requestSessionDeletion, sessionExistsFromGetResult } from "../session-delete"
+import { isNovelXGrowthSession, projectNovelXTimelineParts } from "../novelx-workspace-model"
 
 const emptyMessages: MessageType[] = []
 const emptyParts: PartType[] = []
@@ -266,6 +269,7 @@ export function MessageTimeline(props: {
   const sync = useSync()
   const settings = useSettings()
   const tabs = useTabs()
+  const layout = useLayout()
   const dialog = useDialog()
   const language = useLanguage()
   const { params, sessionKey } = useSessionKey()
@@ -304,7 +308,13 @@ export function MessageTimeline(props: {
     return sync().data.message[id] ?? emptyMessages
   })
   const parentTitle = createMemo(() => sessionTitle(parent()?.title) ?? language.t("command.session.new"))
-  const getMsgParts = (msgId: string) => sync().data.part[msgId] ?? emptyParts
+  const novelXPublicTimeline = createMemo(() => isNovelXGrowthSession(info(), sessionMessages()))
+  const rawMessageByID = createMemo(() => new Map(sessionMessages().map((message) => [message.id, message] as const)))
+  const getMsgParts = (msgId: string) => {
+    const parts = sync().data.part[msgId] ?? emptyParts
+    if (!novelXPublicTimeline()) return parts
+    return projectNovelXTimelineParts(rawMessageByID().get(msgId)?.role ?? "", parts)
+  }
   const getMsgPart = (messageID: string, partID: string) => getMsgParts(messageID).find((part) => part.id === partID)
   const childTaskDescription = createMemo(() => {
     const id = sessionID()
@@ -327,7 +337,7 @@ export function MessageTimeline(props: {
     userMessages: () => props.userMessages,
     parts: getMsgParts,
     status: sessionStatus,
-    showReasoningSummaries: settings.general.showReasoningSummaries,
+    showReasoningSummaries: () => novelXPublicTimeline() || settings.general.showReasoningSummaries(),
     inlineComments: settings.general.newLayoutDesigns,
   })
   const activeMessageID = projection.activeMessageID
@@ -837,59 +847,43 @@ export function MessageTimeline(props: {
     const index = sessions.findIndex((s) => s.id === sessionID)
     const nextSession = index === -1 ? undefined : (sessions[index + 1] ?? sessions[index - 1])
 
-    const result = await sdk()
-      .client.session.delete({ sessionID })
-      .then((x) => x.data)
-      .catch((err) => {
-        showToast({
-          title: language.t("session.delete.failed.title"),
-          description: errorMessage(err),
-        })
-        return false
+    const verifier = serverSDK().createClient({ directory: sdk().directory })
+    const removed = await requestSessionDeletion({
+      sessionID,
+      children: async (id) => {
+        const result = await sdk().client.session.children({ sessionID: id })
+        if (!result.data) throw new Error("Unable to enumerate child sessions")
+        return result.data
+      },
+      abort: async (id) => {
+        await sdk().client.session.abort({ sessionID: id })
+      },
+      remove: async (id) => Boolean((await sdk().client.session.delete({ sessionID: id })).data),
+      exists: async (id) => sessionExistsFromGetResult(await verifier.session.get({ sessionID: id })),
+    }).catch((err) => {
+      showToast({
+        title: language.t("session.delete.failed.title"),
+        description: errorMessage(err),
       })
+      return undefined
+    })
 
-    if (!result) return false
-
-    const removed = new Set<string>([sessionID])
-    const byParent = new Map<string, string[]>()
-    for (const item of sync().data.session) {
-      const parentID = item.parentID
-      if (!parentID) continue
-      const existing = byParent.get(parentID)
-      if (existing) {
-        existing.push(item.id)
-        continue
-      }
-      byParent.set(parentID, [item.id])
-    }
-
-    const stack = [sessionID]
-    while (stack.length) {
-      const parentID = stack.pop()
-      if (!parentID) continue
-
-      const children = byParent.get(parentID)
-      if (!children) continue
-
-      for (const child of children) {
-        if (removed.has(child)) continue
-        removed.add(child)
-        stack.push(child)
-      }
-    }
+    if (!removed) return false
+    const removedSet = new Set(removed)
 
     navigateAfterSessionRemoval(sessionID, session.parentID, nextSession?.id)
 
     sync().set(
       produce((draft) => {
-        draft.session = draft.session.filter((s) => !removed.has(s.id))
+        draft.session = draft.session.filter((s) => !removedSet.has(s.id))
       }),
     )
 
     for (const id of removed) {
       sync().session.evict(id)
     }
-    notifySessionTabsRemoved({ directory: sdk().directory, sessionIDs: [...removed] })
+    layout.novelx.removeSessions(sync().data.path.worktree || sdk().directory, removed)
+    notifySessionTabsRemoved({ directory: sdk().directory, sessionIDs: removed })
     return true
   }
 
@@ -906,8 +900,7 @@ export function MessageTimeline(props: {
       () => sessionTitle(sync().session.get(props.sessionID)?.title) ?? language.t("command.session.new"),
     )
     const handleDelete = async () => {
-      await deleteSession(props.sessionID)
-      dialog.close()
+      if (await deleteSession(props.sessionID)) dialog.close()
     }
 
     if (settings.general.newLayoutDesigns())
@@ -1200,7 +1193,7 @@ export function MessageTimeline(props: {
             <div data-slot="session-turn-message-container" class="w-full px-4 md:px-5">
               <TimelineThinkingRow
                 reasoningHeading={thinkingRow().reasoningHeading}
-                showReasoningSummaries={settings.general.showReasoningSummaries()}
+                showReasoningSummaries={novelXPublicTimeline() || settings.general.showReasoningSummaries()}
               />
             </div>
           </TimelineRowFrame>

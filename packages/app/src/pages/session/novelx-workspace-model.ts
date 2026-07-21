@@ -19,6 +19,101 @@ export function selectProjectSessions<T extends ProjectSessionSummary>(sessions:
     .slice(0, Math.max(0, limit))
 }
 
+type DraftMessage = { id: string; role: string }
+type DraftPart = { type: string; text?: string; synthetic?: boolean; ignored?: boolean }
+
+type NovelXSessionSummary = { parentID?: string; agent?: string }
+type NovelXMessageSummary = { role: string; agent?: string }
+
+export function isNovelXInternalSession(
+  session: NovelXSessionSummary | undefined,
+): session is NovelXSessionSummary & { parentID: string; agent: string } {
+  return !!session?.parentID && !!session.agent?.startsWith("novelx-")
+}
+
+export function isNovelXGrowthSession(
+  session: NovelXSessionSummary | undefined,
+  messages: readonly NovelXMessageSummary[],
+) {
+  return (
+    session?.agent === "growth" || messages.some((message) => message.role === "user" && message.agent === "growth")
+  )
+}
+
+export function sanitizeNovelXAssistantText(input: string) {
+  const transportBoundary = /^\s*(?:(?:to|recipient)=|[({]?\s*["']?subagent_type["']?\s*:)/u
+  const internal = /\bnovelx_[a-z0-9_]+\b|\bWORLD_VISUALS\b|\bContext Epoch\b|\bSHA-256\b/u
+  const reportHeading = /^(?:#{1,6}\s*)?(?:Active|Blocked|Next Move|Relevant Files)\s*:?\s*$/iu
+  const lines = input.split(/\r?\n/u)
+  const privateStart = lines.findIndex((line) => transportBoundary.test(line) || reportHeading.test(line.trim()))
+  return lines
+    .slice(0, privateStart < 0 ? undefined : privateStart)
+    .filter((line) => !internal.test(line))
+    .join("\n")
+    .trim()
+}
+
+function isLegacyNovelXGrowthPrompt(text: string) {
+  const value = text.trimStart()
+  return (
+    value.startsWith("为当前 NovelX 项目启动 Growth（生长）") &&
+    value.includes("用户补充要求：") &&
+    value.includes("蓝图注册完成不是终点")
+  )
+}
+
+export function projectNovelXTimelineParts<T extends DraftPart>(role: string, parts: readonly T[]) {
+  if (role === "assistant") {
+    return parts.flatMap((part) => {
+      if (part.type !== "text" || part.synthetic || part.ignored) return []
+      const text = sanitizeNovelXAssistantText(part.text ?? "")
+      return text ? [{ ...part, text }] : []
+    })
+  }
+  if (role === "user") {
+    return parts.filter(
+      (part) =>
+        (part.type === "text" && !part.synthetic && !isLegacyNovelXGrowthPrompt(part.text ?? "")) ||
+        part.type === "file",
+    )
+  }
+  return []
+}
+
+export function projectNovelXDraftText(
+  messages: readonly DraftMessage[],
+  parts: Readonly<Record<string, readonly DraftPart[] | undefined>>,
+) {
+  const latest = messages.findLast((message) => message.role === "assistant")
+  if (!latest) return ""
+  const text = (parts[latest.id] ?? [])
+    .filter(
+      (part): part is DraftPart & { type: "text"; text: string } =>
+        part.type === "text" && typeof part.text === "string" && !part.synthetic && !part.ignored,
+    )
+    .map((part) => part.text)
+    .join("\n")
+  return sanitizeNovelXAssistantText(text)
+}
+
+export function novelXRootSessionID(
+  sessions: readonly { id: string; parentID?: string }[],
+  sessionID: string,
+): string | undefined {
+  const byID = new Map(sessions.map((session) => [session.id, session]))
+  let current = byID.get(sessionID)
+  if (!current) return undefined
+  const seen = new Set<string>()
+  while (current.parentID) {
+    if (seen.has(current.id)) return undefined
+    seen.add(current.id)
+    const parent = byID.get(current.parentID)
+    if (!parent) return current.parentID
+    current = parent
+  }
+  return current.id
+}
+
 export type WorldTreeState = {
   loaded?: boolean
   error?: string

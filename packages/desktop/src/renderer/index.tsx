@@ -221,6 +221,12 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     async revealPath(path: string) {
       return window.api.revealPath(path)
     },
+    async authorizeProjectDirectoryTrash(path: string) {
+      return window.api.authorizeProjectDirectoryTrash(path)
+    },
+    async trashProjectDirectory(authorization: string) {
+      return window.api.trashProjectDirectory(authorization)
+    },
 
     back() {
       window.history.back()

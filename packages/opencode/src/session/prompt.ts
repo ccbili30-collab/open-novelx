@@ -57,6 +57,7 @@ import { SessionTable } from "@opencode-ai/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
+import { novelXGrowthMessageParts } from "./novelx-growth-message"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1454,7 +1455,13 @@ const layer = Layer.effect(
               prompt: templateParts.find((y) => y.type === "text")?.text ?? "",
             },
           ]
-        : [...uniqueTemplateParts, ...(input.parts ?? [])]
+        : input.command === Command.Default.GROWTH
+          ? novelXGrowthMessageParts({
+              arguments: input.arguments,
+              templateParts: uniqueTemplateParts,
+              attachmentParts: input.parts ?? [],
+            })
+          : [...uniqueTemplateParts, ...(input.parts ?? [])]
 
       const userAgent = isSubtask ? (input.agent ?? (yield* agents.defaultInfo()).name) : agent.name
       const userModel = isSubtask

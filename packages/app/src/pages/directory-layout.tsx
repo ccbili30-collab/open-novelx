@@ -12,6 +12,7 @@ import { Schema } from "effect"
 import type { ServerConnection } from "@/context/server"
 import { sessionHref } from "@/utils/session-route"
 import { useServerSync } from "@/context/server-sync"
+import { isNovelXInternalSession, novelXRootSessionID } from "@/pages/session/novelx-workspace-model"
 
 export function DirectoryDataProvider(
   props: ParentProps<{
@@ -57,8 +58,22 @@ export function DirectoryDataProvider(
     onCleanup(() => serverSync().session.unpin(sessionID))
   })
 
+  const routeSession = createMemo(() => (params.id ? sync().session.get(params.id) : undefined))
+  const internalRoot = createMemo<string | undefined>(() => {
+    const current = routeSession()
+    if (!isNovelXInternalSession(current)) return undefined
+    return novelXRootSessionID(sync().data.session, current.id)
+  })
+  createEffect(() => {
+    const root = internalRoot()
+    if (!root || root === params.id) return
+    navigate(href(root), { replace: true })
+  })
+  const safeToRender = createMemo(() => !params.id || (!!routeSession() && !isNovelXInternalSession(routeSession())))
+  const renderDirectory = createMemo(() => (safeToRender() ? directory() : ""))
+
   return (
-    <Show when={directory()} keyed>
+    <Show when={renderDirectory()} keyed>
       {(directory) => (
         <DataProvider
           data={sync().data}

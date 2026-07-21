@@ -1,6 +1,9 @@
 import { getFilename } from "@opencode-ai/core/util/path"
 import { Icon } from "@opencode-ai/ui/icon"
-import { For, Show, createEffect, createMemo, onCleanup } from "solid-js"
+import { ContextMenu } from "@opencode-ai/ui/context-menu"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
+import { produce } from "solid-js/store"
+import { notifySessionTabsRemoved } from "@/components/titlebar-session-events"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLayout, type LocalProject } from "@/context/layout"
@@ -9,11 +12,14 @@ import { useSDK } from "@/context/sdk"
 import { ServerConnection } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
+import { usePlatform } from "@/context/platform"
 import { tabKey, useTabs } from "@/context/tabs"
+import { showToast } from "@/utils/toast"
 import { sessionTitle } from "@/utils/session-title"
 import { pathKey } from "@/utils/path-key"
 import { projectMonogram, selectProjectSessions } from "./novelx-workspace-model"
 import { useSessionKey } from "./session-layout"
+import { assertCompleteSessionList, requestSessionDeletion, sessionExistsFromGetResult } from "./session-delete"
 
 type DragItem =
   | { type: "project"; id: string }
@@ -24,6 +30,7 @@ export function NovelXWorkspaceSidebar() {
   const command = useCommand()
   const language = useLanguage()
   const layout = useLayout()
+  const platform = usePlatform()
   const sdk = useSDK()
   const serverSDK = useServerSDK()
   const serverSync = useServerSync()
@@ -44,7 +51,19 @@ export function NovelXWorkspaceSidebar() {
   const resourceOpen = createMemo(() => !!view.activeResource())
   const shortcuts = layout.novelx.shortcuts
 
-  let drag: DragItem | undefined
+  const [drag, setDrag] = createSignal<DragItem>()
+  const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set())
+
+  const setPendingKey = (key: string, value: boolean) => {
+    setPending((current) => {
+      const next = new Set(current)
+      if (value) next.add(key)
+      if (!value) next.delete(key)
+      return next
+    })
+  }
+
+  const errorText = (error: unknown) => (error instanceof Error && error.message ? error.message : String(error))
 
   const projectName = (project: LocalProject) => project.name || getFilename(project.worktree)
   const projectSessions = (project: LocalProject) => {
@@ -110,40 +129,166 @@ export function NovelXWorkspaceSidebar() {
   }
 
   const startDrag = (item: DragItem, event: DragEvent) => {
-    drag = item
+    setDrag(item)
     event.dataTransfer?.setData("text/plain", item.id)
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"
   }
   const stopDrag = () => {
-    drag = undefined
+    setDrag(undefined)
   }
   const allowDrop = (event: DragEvent) => {
-    if (!drag) return
+    if (!drag()) return
     event.preventDefault()
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
   }
   const dropProject = (project: LocalProject, index: number, event: DragEvent) => {
     event.preventDefault()
-    if (drag?.type !== "project") return
-    layout.projects.move(drag.id, index)
-    drag = undefined
+    const item = drag()
+    if (item?.type !== "project") return
+    layout.projects.move(item.id, index)
+    setDrag(undefined)
   }
   const dropSession = (project: LocalProject, sessionID: string, index: number, event: DragEvent) => {
     event.preventDefault()
-    if (drag?.type !== "session" || drag.directory !== project.worktree) return
+    const item = drag()
+    if (item?.type !== "session" || item.directory !== project.worktree) return
     layout.novelx.moveSession(
       project.worktree,
       projectSessions(project).map((session) => session.id),
-      drag.id,
+      item.id,
       index,
     )
-    drag = undefined
+    setDrag(undefined)
   }
-  const dropShortcut = (id: string, index: number, event: DragEvent) => {
+  const pinDraggedItem = (event: DragEvent, toIndex?: number) => {
     event.preventDefault()
-    if (drag?.type !== "shortcut") return
-    layout.novelx.moveShortcut(drag.id, index)
-    drag = undefined
+    const item = drag()
+    if (!item) return
+    if (item.type === "shortcut") {
+      if (toIndex !== undefined) layout.novelx.moveShortcut(item.id, toIndex)
+      setDrag(undefined)
+      return
+    }
+    const shortcut: NovelXShortcut =
+      item.type === "project"
+        ? { type: "project", directory: item.id }
+        : { type: "session", directory: item.directory, sessionID: item.id }
+    layout.novelx.pinShortcut(shortcut)
+    setDrag(undefined)
+  }
+
+  const removeProjectTabs = (project: LocalProject, sessionIDs: ReadonlySet<string>) => {
+    for (let index = tabs.store.length - 1; index >= 0; index--) {
+      const tab = tabs.store[index]
+      if (!tab) continue
+      if (tab.type === "draft") {
+        if (pathKey(tab.directory) === pathKey(project.worktree)) tabs.removeTab(index)
+        continue
+      }
+      const directory = tabs.info[tabKey(tab)]?.directory
+      if (
+        (directory && pathKey(directory) === pathKey(project.worktree)) ||
+        (!directory && sessionIDs.has(tab.sessionId))
+      ) {
+        tabs.removeTab(index)
+      }
+    }
+  }
+
+  const deleteSession = async (project: LocalProject, sessionID: string) => {
+    const key = `session:${project.worktree}:${sessionID}`
+    if (pending().has(key)) return
+    const [projectStore, setProjectStore] = serverSync().child(project.worktree, { bootstrap: false })
+    const session = projectStore.session.find((item) => item.id === sessionID)
+    if (!session) return
+    const title = sessionTitle(session.title) || language.t("command.session.new")
+    if (!window.confirm(`永久删除会话“${title}”？此操作无法撤销。`)) return
+
+    setPendingKey(key, true)
+    const client = serverSDK().createClient({ directory: project.worktree, throwOnError: true })
+    const verifier = serverSDK().createClient({ directory: project.worktree })
+    try {
+      const removed = await requestSessionDeletion({
+        sessionID,
+        children: async (id) => (await client.session.children({ sessionID: id })).data ?? [],
+        abort: async (id) => {
+          await client.session.abort({ sessionID: id })
+        },
+        remove: async (id) => Boolean((await client.session.delete({ sessionID: id })).data),
+        exists: async (id) => sessionExistsFromGetResult(await verifier.session.get({ sessionID: id })),
+      })
+      const removedSet = new Set(removed)
+      setProjectStore(
+        "session",
+        produce((sessions) => {
+          for (let index = sessions.length - 1; index >= 0; index--) {
+            if (removedSet.has(sessions[index].id)) sessions.splice(index, 1)
+          }
+        }),
+      )
+      layout.novelx.removeSessions(project.worktree, removed)
+      notifySessionTabsRemoved({ server: server(), directory: project.worktree, sessionIDs: removed })
+    } catch (error) {
+      showToast({ title: "删除会话失败", description: errorText(error) })
+    } finally {
+      setPendingKey(key, false)
+    }
+  }
+
+  const trashProject = async (project: LocalProject) => {
+    const key = `project:${project.worktree}`
+    if (pending().has(key)) return
+    if (
+      !ServerConnection.local(serverSDK().server) ||
+      !platform.authorizeProjectDirectoryTrash ||
+      !platform.trashProjectDirectory
+    ) {
+      showToast({ title: "无法移入回收站", description: "只有本机 NovelX 项目支持此操作。" })
+      return
+    }
+
+    setPendingKey(key, true)
+    const client = serverSDK().createClient({ directory: project.worktree, throwOnError: true })
+    try {
+      const authorization = await platform.authorizeProjectDirectoryTrash(project.worktree)
+      if (!authorization) return
+      const sessionLimit = 10_000
+      const listedSessions = (await client.session.list({ scope: "project", roots: false, limit: sessionLimit })).data
+      const sessions = listedSessions && assertCompleteSessionList(listedSessions, sessionLimit)
+      if (!sessions) throw new Error("无法确认项目会话，项目文件夹未移动")
+      for (const session of sessions) {
+        await client.session.abort({ sessionID: session.id })
+      }
+      await platform.trashProjectDirectory(authorization)
+      const sessionIDs = new Set(sessions.map((session) => session.id))
+      removeProjectTabs(project, sessionIDs)
+      layout.novelx.removeProject(project.worktree)
+      layout.projects.remove(project.worktree)
+      showToast({ title: "已移入回收站", description: projectName(project) })
+    } catch (error) {
+      showToast({ title: "项目未删除", description: errorText(error) })
+    } finally {
+      setPendingKey(key, false)
+    }
+  }
+
+  const dropTrash = (event: DragEvent) => {
+    event.preventDefault()
+    const item = drag()
+    setDrag(undefined)
+    if (!item) return
+    if (item.type === "shortcut") {
+      const shortcut = shortcuts().find((candidate) => shortcutKey(candidate) === item.id)
+      if (shortcut) layout.novelx.removeShortcut(shortcut)
+      return
+    }
+    if (item.type === "project") {
+      const project = projects().find((candidate) => pathKey(candidate.worktree) === pathKey(item.id))
+      if (project) void trashProject(project)
+      return
+    }
+    const project = projects().find((candidate) => pathKey(candidate.worktree) === pathKey(item.directory))
+    if (project) void deleteSession(project, item.id)
   }
 
   createEffect(() => {
@@ -157,28 +302,96 @@ export function NovelXWorkspaceSidebar() {
   })
 
   const projectRail = () => (
-    <aside class="novelx-project-rail" aria-label={language.t("novelx.sidebar.projects")}>
+    <aside
+      class="novelx-project-rail"
+      classList={{ "is-dragging": !!drag() }}
+      aria-label={language.t("novelx.sidebar.projects")}
+    >
+      <div
+        class="novelx-shortcut-dock"
+        classList={{ "is-pin-target": !!drag() && drag()?.type !== "shortcut" }}
+        aria-label="固定快捷方式"
+        onDragOver={allowDrop}
+        onDrop={pinDraggedItem}
+      >
+        <For each={shortcuts()}>
+          {(shortcut, index) => {
+            const id = () => shortcutKey(shortcut)
+            const label = () => shortcutLabel(shortcut)
+            return (
+              <ContextMenu>
+                <ContextMenu.Trigger
+                  as="button"
+                  type="button"
+                  draggable={true}
+                  class="novelx-project-tile novelx-shortcut-tile"
+                  aria-label={`快捷方式：${label()}`}
+                  title={label()}
+                  onClick={() => openShortcut(shortcut)}
+                  onDragStart={(event: DragEvent) => startDrag({ type: "shortcut", id: id() }, event)}
+                  onDragEnd={stopDrag}
+                  onDragOver={allowDrop}
+                  onDrop={(event: DragEvent) => pinDraggedItem(event, index())}
+                >
+                  <Show
+                    when={shortcut.type === "session"}
+                    fallback={
+                      <span class="novelx-project-monogram" aria-hidden="true">
+                        {projectMonogram(label())}
+                      </span>
+                    }
+                  >
+                    <Icon name="prompt" size="small" />
+                  </Show>
+                </ContextMenu.Trigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.Content>
+                    <ContextMenu.Item onSelect={() => layout.novelx.removeShortcut(shortcut)}>
+                      <ContextMenu.ItemLabel>取消固定</ContextMenu.ItemLabel>
+                    </ContextMenu.Item>
+                  </ContextMenu.Content>
+                </ContextMenu.Portal>
+              </ContextMenu>
+            )
+          }}
+        </For>
+        <div class="novelx-pin-drop-target" aria-hidden="true">
+          <Icon name="link" size="small" />
+        </div>
+      </div>
+
       <div class="novelx-project-tiles">
         <For each={projects()}>
           {(project, index) => (
-            <button
-              type="button"
-              draggable={true}
-              class="novelx-project-tile"
-              classList={{ "is-current": project === currentProject() }}
-              aria-current={project === currentProject() ? "page" : undefined}
-              aria-label={projectName(project)}
-              title={projectName(project)}
-              onClick={() => openProject(project)}
-              onDragStart={(event) => startDrag({ type: "project", id: project.worktree }, event)}
-              onDragEnd={stopDrag}
-              onDragOver={allowDrop}
-              onDrop={(event) => dropProject(project, index(), event)}
-            >
-              <span class="novelx-project-monogram" aria-hidden="true">
-                {projectMonogram(projectName(project))}
-              </span>
-            </button>
+            <ContextMenu>
+              <ContextMenu.Trigger
+                as="button"
+                type="button"
+                draggable={true}
+                class="novelx-project-tile"
+                classList={{ "is-current": project === currentProject() }}
+                aria-current={project === currentProject() ? "page" : undefined}
+                aria-label={projectName(project)}
+                title={projectName(project)}
+                disabled={pending().has(`project:${project.worktree}`)}
+                onClick={() => openProject(project)}
+                onDragStart={(event: DragEvent) => startDrag({ type: "project", id: project.worktree }, event)}
+                onDragEnd={stopDrag}
+                onDragOver={allowDrop}
+                onDrop={(event: DragEvent) => dropProject(project, index(), event)}
+              >
+                <span class="novelx-project-monogram" aria-hidden="true">
+                  {projectMonogram(projectName(project))}
+                </span>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content>
+                  <ContextMenu.Item onSelect={() => void trashProject(project)}>
+                    <ContextMenu.ItemLabel>将项目文件夹移入回收站</ContextMenu.ItemLabel>
+                  </ContextMenu.Item>
+                </ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu>
           )}
         </For>
         <button
@@ -190,6 +403,17 @@ export function NovelXWorkspaceSidebar() {
         >
           <Icon name="plus" size="small" />
         </button>
+      </div>
+
+      <div
+        class="novelx-trash-drop-target"
+        classList={{ "is-active": !!drag() }}
+        aria-label="垃圾桶"
+        title={drag()?.type === "shortcut" ? "取消固定" : "拖到这里删除"}
+        onDragOver={allowDrop}
+        onDrop={dropTrash}
+      >
+        <Icon name="trash" size="small" />
       </div>
     </aside>
   )
@@ -245,41 +469,6 @@ export function NovelXWorkspaceSidebar() {
                 </div>
               </div>
 
-              <Show when={shortcuts().length > 0}>
-                <div class="novelx-shortcut-section">
-                  <div class="novelx-section-label">{language.t("novelx.sidebar.shortcuts")}</div>
-                  <For each={shortcuts()}>
-                    {(shortcut, index) => {
-                      const id = () => shortcutKey(shortcut)
-                      return (
-                        <div
-                          class="novelx-shortcut-row"
-                          draggable={true}
-                          onDragStart={(event) => startDrag({ type: "shortcut", id: id() }, event)}
-                          onDragEnd={stopDrag}
-                          onDragOver={allowDrop}
-                          onDrop={(event) => dropShortcut(id(), index(), event)}
-                        >
-                          <button type="button" class="novelx-shortcut-open" onClick={() => openShortcut(shortcut)}>
-                            <Icon name={shortcut.type === "project" ? "folder" : "prompt"} size="small" />
-                            <span>{shortcutLabel(shortcut)}</span>
-                          </button>
-                          <button
-                            type="button"
-                            class="novelx-symbol-button"
-                            aria-label={language.t("novelx.sidebar.unpin")}
-                            title={language.t("novelx.sidebar.unpin")}
-                            onClick={() => layout.novelx.toggleShortcut(shortcut)}
-                          >
-                            <Icon name="link" size="small" />
-                          </button>
-                        </div>
-                      )
-                    }}
-                  </For>
-                </div>
-              </Show>
-
               <div class="novelx-project-list">
                 <div class="novelx-section-label">{language.t("novelx.sidebar.sessions")}</div>
                 <nav
@@ -301,36 +490,53 @@ export function NovelXWorkspaceSidebar() {
                           sessionID: session.id,
                         }
                         return (
-                          <div
-                            class="novelx-session-row"
-                            classList={{ "is-selected": selected() }}
-                            draggable={true}
-                            onDragStart={(event) =>
-                              startDrag({ type: "session", id: session.id, directory: project.worktree }, event)
-                            }
-                            onDragEnd={stopDrag}
-                            onDragOver={allowDrop}
-                            onDrop={(event) => dropSession(project, session.id, index(), event)}
-                          >
-                            <button type="button" class="novelx-session-open" onClick={() => openSession(session.id)}>
-                              <Icon name="prompt" size="small" />
-                              <span>{sessionTitle(session.title) || language.t("command.session.new")}</span>
-                              <Show when={running()}>
-                                <span class="novelx-running-dot" aria-label={language.t("novelx.sidebar.running")} />
-                              </Show>
-                            </button>
-                            <button
-                              type="button"
-                              class="novelx-symbol-button"
-                              aria-label={
-                                pinned(shortcut) ? language.t("novelx.sidebar.unpin") : language.t("novelx.sidebar.pin")
+                          <ContextMenu>
+                            <ContextMenu.Trigger
+                              as="div"
+                              class="novelx-session-row"
+                              classList={{ "is-selected": selected() }}
+                              draggable={true}
+                              onDragStart={(event: DragEvent) =>
+                                startDrag({ type: "session", id: session.id, directory: project.worktree }, event)
                               }
-                              aria-pressed={pinned(shortcut)}
-                              onClick={() => layout.novelx.toggleShortcut(shortcut)}
+                              onDragEnd={stopDrag}
+                              onDragOver={allowDrop}
+                              onDrop={(event: DragEvent) => dropSession(project, session.id, index(), event)}
                             >
-                              <Icon name="link" size="small" />
-                            </button>
-                          </div>
+                              <button
+                                type="button"
+                                class="novelx-session-open"
+                                disabled={pending().has(`session:${project.worktree}:${session.id}`)}
+                                onClick={() => openSession(session.id)}
+                              >
+                                <Icon name="prompt" size="small" />
+                                <span>{sessionTitle(session.title) || language.t("command.session.new")}</span>
+                                <Show when={running()}>
+                                  <span class="novelx-running-dot" aria-label={language.t("novelx.sidebar.running")} />
+                                </Show>
+                              </button>
+                              <button
+                                type="button"
+                                class="novelx-symbol-button"
+                                aria-label={
+                                  pinned(shortcut)
+                                    ? language.t("novelx.sidebar.unpin")
+                                    : language.t("novelx.sidebar.pin")
+                                }
+                                aria-pressed={pinned(shortcut)}
+                                onClick={() => layout.novelx.toggleShortcut(shortcut)}
+                              >
+                                <Icon name="link" size="small" />
+                              </button>
+                            </ContextMenu.Trigger>
+                            <ContextMenu.Portal>
+                              <ContextMenu.Content>
+                                <ContextMenu.Item onSelect={() => void deleteSession(project, session.id)}>
+                                  <ContextMenu.ItemLabel>删除会话</ContextMenu.ItemLabel>
+                                </ContextMenu.Item>
+                              </ContextMenu.Content>
+                            </ContextMenu.Portal>
+                          </ContextMenu>
                         )
                       }}
                     </For>

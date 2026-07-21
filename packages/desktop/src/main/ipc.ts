@@ -12,6 +12,11 @@ import { getStore, removeStoreFileIfEmpty } from "./store"
 import { getPinchZoomEnabled, getWindowID, setPinchZoomEnabled, setTitlebar, updateTitlebar } from "./windows"
 import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
+import {
+  createProjectTrashAuthorizations,
+  resolveTrashProjectDirectory,
+  trashProjectDirectory,
+} from "./trash-project-directory"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -44,7 +49,9 @@ type Deps = {
 
 export function registerIpcHandlers(deps: Deps) {
   const updaterSubscriptions = createUpdaterSubscriptions()
+  const projectTrashAuthorizations = createProjectTrashAuthorizations()
   app.once("will-quit", updaterSubscriptions.clear)
+  app.once("will-quit", () => projectTrashAuthorizations.clear())
 
   ipcMain.handle("kill-sidecar", () => deps.killSidecar())
   ipcMain.handle("await-initialization", () => deps.awaitInitialization())
@@ -194,6 +201,44 @@ export function registerIpcHandlers(deps: Deps) {
     if (!exists) return false
     shell.showItemInFolder(path)
     return true
+  })
+
+  const projectTrashDeps = () => ({
+    blockedPaths: [
+      app.getPath("home"),
+      app.getPath("desktop"),
+      app.getPath("documents"),
+      app.getPath("appData"),
+      app.getPath("userData"),
+      app.getAppPath(),
+    ],
+    stat,
+  })
+
+  ipcMain.handle("authorize-project-directory-trash", async (event: IpcMainInvokeEvent, path: string) => {
+    const target = await resolveTrashProjectDirectory(path, projectTrashDeps())
+    const options = {
+      type: "warning" as const,
+      buttons: ["移入回收站", "取消"],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      title: "移动 NovelX 项目",
+      message: "确认将这个项目文件夹移入 Windows 回收站？",
+      detail: `${target}\n\n仅移动项目文件夹；NovelX 会话记录不会被永久删除。`,
+    }
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const result = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options)
+    if (result.response !== 0) return null
+    return projectTrashAuthorizations.issue(target, event.sender.id)
+  })
+
+  ipcMain.handle("trash-project-directory", async (event: IpcMainInvokeEvent, authorization: string) => {
+    const path = projectTrashAuthorizations.consume(authorization, event.sender.id)
+    await trashProjectDirectory(path, {
+      ...projectTrashDeps(),
+      trashItem: (target) => shell.trashItem(target),
+    })
   })
 
   ipcMain.handle("read-clipboard-image", () => {

@@ -40,6 +40,10 @@ type PlatformBase = {
   /** Reveal a local path in the system file manager; false when the path does not exist (desktop only) */
   revealPath?(path: string): Promise<boolean>
 
+  /** Move one validated local project directory to the OS recycle bin/trash (desktop only). */
+  authorizeProjectDirectoryTrash?(path: string): Promise<string | null>
+  trashProjectDirectory?(authorization: string): Promise<void>
+
   /** Restart the app  */
   restart(): Promise<void>
 

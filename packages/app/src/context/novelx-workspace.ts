@@ -77,6 +77,35 @@ export function toggleNovelXShortcut(shortcuts: readonly NovelXShortcut[], short
   return [...shortcuts, shortcut]
 }
 
+export function pinNovelXShortcut(shortcuts: readonly NovelXShortcut[], shortcut: NovelXShortcut) {
+  const key = shortcutKey(shortcut)
+  if (shortcuts.some((item) => shortcutKey(item) === key)) return [...shortcuts]
+  return [...shortcuts, shortcut]
+}
+
+const directoryKey = (directory: string) => {
+  const normalized = directory.replaceAll("\\", "/").replace(/\/+$/u, "")
+  return /^[a-z]:\//iu.test(normalized) || normalized.startsWith("//") ? normalized.toLocaleLowerCase() : normalized
+}
+
+export function removeNovelXProjectShortcuts(shortcuts: readonly NovelXShortcut[], directory: string) {
+  const key = directoryKey(directory)
+  return shortcuts.filter((shortcut) => directoryKey(shortcut.directory) !== key)
+}
+
+export function removeNovelXSessionShortcuts(
+  shortcuts: readonly NovelXShortcut[],
+  directory: string,
+  sessionIDs: readonly string[],
+) {
+  const key = directoryKey(directory)
+  const removed = new Set(sessionIDs)
+  return shortcuts.filter(
+    (shortcut) =>
+      shortcut.type !== "session" || directoryKey(shortcut.directory) !== key || !removed.has(shortcut.sessionID),
+  )
+}
+
 export function reorderNovelXItems(ids: readonly string[], id: string, toIndex: number) {
   const current = ids.indexOf(id)
   if (current === -1) return [...ids]

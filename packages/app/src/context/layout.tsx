@@ -25,7 +25,11 @@ import {
   activateNovelXResource,
   mergeNovelXOrder,
   normalizeNovelXProjectLayout,
+  pinNovelXShortcut,
+  removeNovelXProjectShortcuts,
+  removeNovelXSessionShortcuts,
   reorderNovelXItems,
+  shortcutKey,
   toggleNovelXRight,
   toggleNovelXShortcut,
   type NovelXProjectLayout,
@@ -654,6 +658,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         close(directory: string) {
           server.projects.close(directory)
         },
+        remove(directory: string) {
+          server.projects.remove(directory)
+        },
         expand(directory: string) {
           server.projects.expand(directory)
         },
@@ -726,6 +733,50 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         shortcuts: createMemo(() => store.novelx?.shortcuts ?? []),
         toggleShortcut(shortcut: NovelXShortcut) {
           setStore("novelx", "shortcuts", toggleNovelXShortcut(store.novelx?.shortcuts ?? [], shortcut))
+        },
+        pinShortcut(shortcut: NovelXShortcut) {
+          setStore("novelx", "shortcuts", pinNovelXShortcut(store.novelx?.shortcuts ?? [], shortcut))
+        },
+        removeShortcut(shortcut: NovelXShortcut) {
+          const key = shortcutKey(shortcut)
+          setStore(
+            "novelx",
+            "shortcuts",
+            (store.novelx?.shortcuts ?? []).filter((item) => shortcutKey(item) !== key),
+          )
+        },
+        removeProject(directory: string) {
+          const key = pathKey(directory)
+          setStore("novelx", "shortcuts", removeNovelXProjectShortcuts(store.novelx?.shortcuts ?? [], directory))
+          setStore(
+            "novelx",
+            "projects",
+            produce((projects) => {
+              delete projects[key]
+            }),
+          )
+          setStore(
+            "novelx",
+            "sessionOrder",
+            produce((order) => {
+              delete order[key]
+            }),
+          )
+        },
+        removeSessions(directory: string, sessionIDs: readonly string[]) {
+          const key = pathKey(directory)
+          const removed = new Set(sessionIDs)
+          setStore(
+            "novelx",
+            "shortcuts",
+            removeNovelXSessionShortcuts(store.novelx?.shortcuts ?? [], directory, sessionIDs),
+          )
+          setStore(
+            "novelx",
+            "sessionOrder",
+            key,
+            (store.novelx?.sessionOrder?.[key] ?? []).filter((id) => !removed.has(id)),
+          )
         },
         moveShortcut(id: string, toIndex: number) {
           const shortcuts = store.novelx?.shortcuts ?? []

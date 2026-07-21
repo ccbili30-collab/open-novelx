@@ -55,8 +55,7 @@ function NovelXWorldAtlas(props: WorldProps) {
       ? undefined
       : props.visual?.atlas.features.find(
           (feature) =>
-            feature.entityId === current.entityId &&
-            feature.layer === (mode() === "geography" ? "geography" : "human"),
+            feature.entityId === current.entityId && feature.layer === (mode() === "geography" ? "geography" : "human"),
         )
   })
   const scenery = createMemo(() => {
@@ -514,7 +513,13 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
               }
               const status = () => props.status(entity.id)
               return (
-                <article class="novelx-geography-draft" data-status={status()}>
+                <article
+                  class="novelx-geography-draft"
+                  data-status={status()}
+                  data-document-locked="true"
+                  aria-busy={status() === "leased" || status() === "drafting" || status() === "reviewing"}
+                  aria-readonly="true"
+                >
                   <header>
                     <div>
                       <span>{entity.typeLabel}</span>

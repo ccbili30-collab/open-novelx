@@ -5,6 +5,9 @@ import {
   mergeNovelXOrder,
   normalizeNovelXProjectLayout,
   reorderNovelXItems,
+  pinNovelXShortcut,
+  removeNovelXProjectShortcuts,
+  removeNovelXSessionShortcuts,
   toggleNovelXRight,
   toggleNovelXShortcut,
 } from "./novelx-workspace"
@@ -62,5 +65,26 @@ describe("NovelX project navigation", () => {
     expect(reorderNovelXItems(["one", "two", "three"], "three", 1)).toEqual(["one", "three", "two"])
     expect(reorderNovelXItems(["one", "two"], "missing", 0)).toEqual(["one", "two"])
     expect(mergeNovelXOrder(["one", "two", "three"], ["two", "gone"])).toEqual(["two", "one", "three"])
+  })
+
+  test("pinning by drop is idempotent and removing a shortcut never toggles it back on", () => {
+    const project = { type: "project" as const, directory: "C:/NovelX/World" }
+    const session = { type: "session" as const, directory: project.directory, sessionID: "ses_one" }
+
+    expect(pinNovelXShortcut([project], project)).toEqual([project])
+    expect(pinNovelXShortcut([project], session)).toEqual([project, session])
+    expect(removeNovelXSessionShortcuts([project, session], project.directory, [session.sessionID])).toEqual([project])
+    expect(removeNovelXSessionShortcuts([project], project.directory, [session.sessionID])).toEqual([project])
+  })
+
+  test("removing a project clears both project and session shortcuts from that directory", () => {
+    const other = { type: "project" as const, directory: "C:/NovelX/Other" }
+    const shortcuts = [
+      { type: "project" as const, directory: "C:/NovelX/World" },
+      { type: "session" as const, directory: "C:/NovelX/World", sessionID: "ses_one" },
+      other,
+    ]
+
+    expect(removeNovelXProjectShortcuts(shortcuts, "c:\\novelx\\world")).toEqual([other])
   })
 })

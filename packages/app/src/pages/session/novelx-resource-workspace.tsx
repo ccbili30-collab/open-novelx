@@ -35,6 +35,7 @@ import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowth
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
+import { projectNovelXDraftText } from "./novelx-workspace-model"
 
 const resourceLabel = (resource: NovelXResource) =>
   ({
@@ -256,7 +257,9 @@ export function NovelXResourceWorkspace(props: {
   const selectedStoryCover = createMemo(() => {
     const item = selectedStoryItem()
     const ownerId = item?.ownerId ?? storyMaterialization()?.novel?.id
-    const task = storyCovers()?.tasks.find((candidate) => candidate.ownerId === ownerId && candidate.status === "attached")
+    const task = storyCovers()?.tasks.find(
+      (candidate) => candidate.ownerId === ownerId && candidate.status === "attached",
+    )
     const source = task ? storyCoverAssets()[task.id] : undefined
     return task && source ? { task, source } : undefined
   })
@@ -442,13 +445,7 @@ export function NovelXResourceWorkspace(props: {
       setSelectedChildText("")
       return
     }
-    const text = (sync().data.message[sessionID] ?? [])
-      .filter((message) => message.role === "assistant")
-      .flatMap((message) => sync().data.part[message.id] ?? [])
-      .filter((part): part is Extract<typeof part, { type: "text" }> => part.type === "text")
-      .map((part) => part.text)
-      .join("\n")
-      .trim()
+    const text = projectNovelXDraftText(sync().data.message[sessionID] ?? [], sync().data.part)
     setSelectedChildText(text)
   })
 
@@ -615,7 +612,9 @@ export function NovelXResourceWorkspace(props: {
         <div class="novelx-growth-error" role="alert">
           <strong>故事生长状态无法读取</strong>
           <span>{storyGrowthErrorMessage()}</span>
-          <button type="button" onClick={storyGrowth.reload}>重新读取</button>
+          <button type="button" onClick={storyGrowth.reload}>
+            重新读取
+          </button>
         </div>
       </Match>
       <Match when={resource === "world" && worldGrowth.state().status === "ready"}>
@@ -765,7 +764,13 @@ export function NovelXResourceWorkspace(props: {
     if (!terrain || !selectedPlanned()) return
     const status = projectedGeographyStatus(terrain.id)
     return (
-      <article class="novelx-geography-draft" data-status={status}>
+      <article
+        class="novelx-geography-draft"
+        data-status={status}
+        data-document-locked="true"
+        aria-busy={status === "leased" || status === "drafting" || status === "reviewing"}
+        aria-readonly="true"
+      >
         <header>
           <div>
             <span>{terrainKindLabel(terrain.kind)}</span>
@@ -836,8 +841,8 @@ export function NovelXResourceWorkspace(props: {
                   <p>
                     {selectedStoryItem()?.kind === "theme"
                       ? storyMaterialization()!.novel?.theme.summary
-                      : storyMaterialization()!.historyBooks.find((book) => book.id === selectedStoryItem()?.id)
-                          ?.summary ?? storyMaterialization()!.novel?.summary}
+                      : (storyMaterialization()!.historyBooks.find((book) => book.id === selectedStoryItem()?.id)
+                          ?.summary ?? storyMaterialization()!.novel?.summary)}
                   </p>
                   <small>
                     {storyProgress().committed}/{storyProgress().total} 份故事文稿已提交
@@ -988,7 +993,10 @@ export function NovelXResourceWorkspace(props: {
                     </button>
                   </Show>
                   <Show
-                    when={(view.activeFile() || selectedTerrain() || selectedWorldStage() || selectedStoryItem()) && !view.inspectorOpen()}
+                    when={
+                      (view.activeFile() || selectedTerrain() || selectedWorldStage() || selectedStoryItem()) &&
+                      !view.inspectorOpen()
+                    }
                   >
                     <button
                       type="button"
@@ -1010,7 +1018,12 @@ export function NovelXResourceWorkspace(props: {
                   </div>
                 </nav>
                 {primary(resource())}
-                <Show when={view.inspectorOpen() && (view.activeFile() || selectedTerrain() || selectedWorldStage() || selectedStoryItem())}>
+                <Show
+                  when={
+                    view.inspectorOpen() &&
+                    (view.activeFile() || selectedTerrain() || selectedWorldStage() || selectedStoryItem())
+                  }
+                >
                   <aside class="novelx-resource-inspector">
                     <div class="novelx-resource-inspector-heading">
                       <strong>

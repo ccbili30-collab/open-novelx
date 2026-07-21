@@ -66,6 +66,7 @@ import { useLocation } from "@solidjs/router"
 import { attached, inline, kind, typeLabel } from "./message-file"
 import { readPartText } from "./message-part-text"
 import { SessionProgressIndicatorV2 } from "../v2/components/session-progress-indicator-v2"
+import { navigableTaskSessionID } from "./novelx-task-navigation"
 
 async function writeClipboard(text: string): Promise<boolean> {
   const body = typeof document === "undefined" ? undefined : document.body
@@ -1569,7 +1570,7 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const taskId = createMemo(() => {
     if (part().tool !== "task") return
     const value = partMetadata().sessionId
-    if (typeof value === "string" && value) return value
+    if (typeof value === "string" && value) return navigableTaskSessionID(input(), value)
   })
   const taskHref = createMemo(() => {
     if (part().tool !== "task") return
@@ -1995,8 +1996,11 @@ ToolRegistry.register({
     const location = useLocation()
     const childSessionId = createMemo(() => {
       const value = props.metadata.sessionId
-      if (typeof value === "string" && value) return value
-      return taskSession(props.input, location.pathname, data.store.session, data.store.agent)
+      const sessionID =
+        typeof value === "string" && value
+          ? value
+          : taskSession(props.input, location.pathname, data.store.session, data.store.agent)
+      return navigableTaskSessionID(props.input, sessionID)
     })
     const agent = createMemo(() => taskAgent(props.input.subagent_type, data.store.agent))
     const title = createMemo(() => agent().name ?? i18n.t("ui.tool.agent.default"))

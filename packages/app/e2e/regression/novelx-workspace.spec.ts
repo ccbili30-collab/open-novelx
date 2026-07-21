@@ -9,9 +9,12 @@ const projectID = "proj_novelx_middle_earth"
 const currentID = "ses_novelx_current"
 const stageEditorID = "ses_novelx_stage_editor"
 const olderID = "ses_novelx_older"
+const regularChildID = "ses_regular_explore_child"
 const assistantID = "msg_novelx_geography_agent"
 const userMessageID = "msg_novelx_user"
 const toolPartID = "prt_novelx_write_readme"
+const resumedAssistantID = "msg_zz_novelx_geography_child_resume"
+const resumedTextPartID = "prt_zz_novelx_geography_text_resume"
 const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${process.env.PLAYWRIGHT_SERVER_PORT ?? "4096"}`
 
 test.use({ viewport: { width: 1672, height: 941 }, deviceScaleFactor: 1 })
@@ -52,10 +55,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       default: { providerID: "opencode", modelID: "test" },
     },
     sessions: [
-      session(currentID, "构建地理", 4),
+      { ...session(currentID, "构建地理", 4), agent: "growth" },
       session(olderID, "建立第一批王国", 2),
       { ...session(stageEditorID, "阶段：恒星与轨道环境", 4.5), parentID: currentID, agent: "novelx-stage-editor" },
       { ...session("ses_child", "世界：赫利俄斯同步环", 5), parentID: stageEditorID, agent: "novelx-world-writer" },
+      { ...session(regularChildID, "普通探索会话", 4.8), parentID: currentID, agent: "explore" },
       { ...session("ses_archived", "已归档草稿", 6), time: { created: 6, updated: 6, archived: 7 } },
     ],
     vcsDiff: [],
@@ -69,8 +73,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       path === "World/Media/world-map.png" || path === "World/Media/scenery/helios-ring.png"
         ? {
             type: "binary",
-            content:
-              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            content: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
             encoding: "base64",
             mimeType: "image/png",
           }
@@ -170,6 +173,19 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(page.locator("html")).toHaveAttribute("lang", "zh")
   await expectSessionTitle(page, "构建地理")
 
+  const conversation = page.locator('[data-component="novelx-session-panel"]')
+  await expect(conversation.getByText("/growth 构建一个中土世界", { exact: true })).toBeVisible()
+  await expect(conversation.getByText("世界已经开始生长。", { exact: true })).toBeVisible()
+  await expect(conversation.getByText("private Growth orchestration prompt", { exact: true })).toHaveCount(0)
+  await expect(conversation.getByText("private chain of thought", { exact: true })).toHaveCount(0)
+  await expect(conversation.locator('[data-component="tool-part"]')).toHaveCount(0)
+
+  await page.goto(`/server/${base64Encode(server)}/session/${stageEditorID}`)
+  await expect(page).toHaveURL(new RegExp(`/session/${currentID}$`))
+  await page.goto(`/server/${base64Encode(server)}/session/${regularChildID}`)
+  await expect(page).toHaveURL(new RegExp(`/session/${regularChildID}$`))
+  await page.goto(`/server/${base64Encode(server)}/session/${currentID}`)
+
   const workspace = page.getByRole("complementary", { name: "NovelX 工作区" })
   await expect(workspace.getByText("构建地理", { exact: true })).toBeVisible()
   await expect(workspace.getByText("建立第一批王国", { exact: true })).toBeVisible()
@@ -178,12 +194,21 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   const olderRow = workspace.locator(".novelx-session-row").filter({ hasText: "建立第一批王国" })
   await olderRow.getByRole("button", { name: "置顶快捷方式" }).click()
-  await expect(workspace.locator(".novelx-shortcut-section").getByText("建立第一批王国", { exact: true })).toBeVisible()
+  const olderShortcut = page.getByRole("button", { name: "快捷方式：建立第一批王国", exact: true })
+  await expect(olderShortcut).toBeVisible()
+  await olderShortcut.click({ button: "right" })
+  await expect(page.getByText("取消固定", { exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await olderRow.click({ button: "right" })
+  await expect(page.getByText("删除会话", { exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
 
   await olderRow.getByRole("button", { name: "建立第一批王国", exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/session/${olderID}$`))
   await workspace.getByRole("button", { name: "构建地理", exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`/session/${currentID}$`))
+  await olderShortcut.dragTo(page.getByLabel("垃圾桶", { exact: true }))
+  await expect(olderShortcut).toHaveCount(0)
 
   const resources = page.locator("#file-tree-panel")
   const dock = page.getByRole("navigation", { name: "项目资源" })
@@ -201,6 +226,17 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(resources.getByText("流式草稿 · 只读", { exact: true })).toBeVisible()
   await expect(resources.locator(".novelx-geography-stream pre")).toContainText(
     "强辐射与散热上限共同限制同步环的连续输出。",
+  )
+  await expect(resources.getByText("Context Pack", { exact: true })).toHaveCount(0)
+  events.push(childResumeMessageEvent())
+  events.push(childResumePartEvent())
+  events.push(childResumeDeltaEvent("# 赫利俄斯同步环\n\n实时增量一"))
+  await expect(resources.locator(".novelx-geography-stream pre")).toHaveText("# 赫利俄斯同步环\n\n实时增量一")
+  await expect(resources.locator('.novelx-geography-draft[data-document-locked="true"]')).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/session/${currentID}$`))
+  events.push(childResumeDeltaEvent("，实时增量二。"))
+  await expect(resources.locator(".novelx-geography-stream pre")).toHaveText(
+    "# 赫利俄斯同步环\n\n实时增量一，实时增量二。",
   )
   await expect(resources.locator(".novelx-resource-inspector-heading")).toContainText("赫利俄斯同步环")
   await expect(
@@ -322,7 +358,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(resources.getByText("真实项目文件", { exact: true })).toBeVisible()
 
   events.push(toolEvent("running"))
-  await expect(editor.getByText("地理 Agent 正在编辑这个文件；该操作停止前，此处只读。", { exact: true })).toBeVisible()
+  await expect(editor.getByText("growth 正在编辑这个文件；该操作停止前，此处只读。", { exact: true })).toBeVisible()
   await expect(source).toBeDisabled()
   events.push(toolEvent("completed"))
   await expect(source).toBeEnabled()
@@ -389,10 +425,34 @@ function agentMessages() {
         role: "user",
         time: { created: 1700000000000 },
         summary: { diffs: [] },
-        agent: "build",
+        agent: "growth",
         model: { providerID: "opencode", modelID: "test" },
       },
-      parts: [],
+      parts: [
+        {
+          id: "prt_novelx_growth_visible_command",
+          sessionID: currentID,
+          messageID: userMessageID,
+          type: "text",
+          text: "/growth 构建一个中土世界",
+          ignored: true,
+        },
+        {
+          id: "prt_novelx_growth_private_prompt",
+          sessionID: currentID,
+          messageID: userMessageID,
+          type: "text",
+          text: "private Growth orchestration prompt",
+          synthetic: true,
+        },
+        {
+          id: "prt_novelx_growth_legacy_private_prompt",
+          sessionID: currentID,
+          messageID: userMessageID,
+          type: "text",
+          text: "为当前 NovelX 项目启动 Growth（生长），完成世界工作面。\n用户补充要求：中土世界\n蓝图注册完成不是终点。",
+        },
+      ],
     },
     {
       info: {
@@ -403,13 +463,21 @@ function agentMessages() {
         parentID: userMessageID,
         modelID: "test",
         providerID: "opencode",
-        mode: "build",
-        agent: "地理 Agent",
+        mode: "growth",
+        agent: "growth",
         path: { cwd: directory, root: directory },
         cost: 0,
         tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
       },
       parts: [
+        {
+          id: "prt_novelx_growth_reasoning",
+          sessionID: currentID,
+          messageID: assistantID,
+          type: "reasoning",
+          text: "private chain of thought",
+          time: { start: 1700000001000, end: 1700000001500 },
+        },
         {
           id: "prt_novelx_geography_task",
           sessionID: currentID,
@@ -427,6 +495,13 @@ function agentMessages() {
             metadata: { sessionId: stageEditorID, parentSessionId: currentID },
             time: { start: 1700000002000 },
           },
+        },
+        {
+          id: "prt_novelx_growth_public_text",
+          sessionID: currentID,
+          messageID: assistantID,
+          type: "text",
+          text: "世界已经开始生长。",
         },
       ],
     },
@@ -534,6 +609,65 @@ function worldChildMessages() {
       ],
     },
   ]
+}
+
+function childResumeMessageEvent() {
+  return {
+    directory,
+    payload: {
+      type: "message.updated",
+      properties: {
+        info: {
+          id: resumedAssistantID,
+          sessionID: "ses_child",
+          role: "assistant",
+          time: { created: 1700000002700 },
+          parentID: "msg_novelx_geography_child_user",
+          modelID: "test",
+          providerID: "opencode",
+          mode: "novelx-world-writer",
+          agent: "novelx-world-writer",
+          path: { cwd: directory, root: directory },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        },
+      },
+    },
+  }
+}
+
+function childResumePartEvent() {
+  return {
+    directory,
+    payload: {
+      type: "message.part.updated",
+      properties: {
+        part: {
+          id: resumedTextPartID,
+          sessionID: "ses_child",
+          messageID: resumedAssistantID,
+          type: "text",
+          text: "",
+        },
+      },
+    },
+  }
+}
+
+function childResumeDeltaEvent(delta: string) {
+  return {
+    directory,
+    payload: {
+      type: "message.part.delta",
+      properties: {
+        sessionID: "ses_child",
+        messageID: resumedAssistantID,
+        partID: resumedTextPartID,
+        field: "text",
+        delta,
+      },
+    },
+  }
 }
 
 function toolEvent(status: "running" | "completed") {
