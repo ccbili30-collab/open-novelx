@@ -21,9 +21,14 @@ it.instance("registers /growth as a hidden-agent command with user arguments", (
     expect(growth?.agent).toBe("growth")
     expect(growth?.source).toBe("command")
     expect(growth?.hints).toEqual(["$ARGUMENTS"])
-    expect(yield* Effect.promise(async () => growth?.template)).toContain("题材自适应")
-    expect(yield* Effect.promise(async () => growth?.template)).toContain("不要把幻想、科技、国家、种族、宗教")
-    expect(yield* Effect.promise(async () => growth?.template)).toContain("禁止编号占位")
+    const template = yield* Effect.promise(async () => growth?.template)
+    expect(template).toContain("题材自适应")
+    expect(template).toContain("不要把幻想、科技、国家、种族、宗教")
+    expect(template).toContain("禁止编号占位")
+    expect(template).toContain("世界 → 唯一主角 OC → 故事")
+    expect(template).toContain("纯文字")
+    expect(template).not.toContain("已有冻结世界直接进入故事")
+    expect(template).not.toContain("生成强制封面")
   }),
 )
 
