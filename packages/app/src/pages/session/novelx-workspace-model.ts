@@ -7,6 +7,20 @@ export type ProjectSessionSummary = {
   }
 }
 
+type ResourceWithProjectPath = "files" | "world" | "characters" | "story" | "graph" | "package"
+
+export function resolveNovelXResourcePath(resource: ResourceWithProjectPath, existingDirectories: readonly string[]) {
+  const normalized = new Set(existingDirectories.map((path) => path.replaceAll("\\", "/").toLowerCase()))
+  const firstExisting = (...candidates: string[]) =>
+    candidates.find((candidate) => normalized.has(candidate.toLowerCase()))
+
+  if (resource === "files") return ""
+  if (resource === "world") return firstExisting("World")
+  if (resource === "characters") return firstExisting("Characters", "World/characters")
+  if (resource === "story") return firstExisting("Stories", "Story")
+  return undefined
+}
+
 export function projectMonogram(name: string) {
   const first = Array.from(name.trim())[0]
   return first ? first.toLocaleUpperCase() : "?"

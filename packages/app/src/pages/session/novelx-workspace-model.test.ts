@@ -6,10 +6,25 @@ import {
   projectMonogram,
   projectNovelXDraftText,
   projectNovelXTimelineParts,
+  resolveNovelXResourcePath,
   sanitizeNovelXAssistantText,
   selectProjectSessions,
   worldTreeStatus,
 } from "./novelx-workspace-model"
+
+describe("resolveNovelXResourcePath", () => {
+  test("uses current and legacy story roots only when they really exist", () => {
+    expect(resolveNovelXResourcePath("story", ["World", "Stories"])).toBe("Stories")
+    expect(resolveNovelXResourcePath("story", ["Story"])).toBe("Story")
+    expect(resolveNovelXResourcePath("story", ["World"])).toBeUndefined()
+  })
+
+  test("does not invent optional character roots", () => {
+    expect(resolveNovelXResourcePath("characters", ["Characters"])).toBe("Characters")
+    expect(resolveNovelXResourcePath("characters", ["World/characters"])).toBe("World/characters")
+    expect(resolveNovelXResourcePath("characters", ["World"])).toBeUndefined()
+  })
+})
 
 describe("projectMonogram", () => {
   test("uses the first visible project-name character without assigning a project color", () => {

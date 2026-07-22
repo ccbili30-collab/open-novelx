@@ -39,7 +39,7 @@ import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowth
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
-import { projectNovelXDraftText } from "./novelx-workspace-model"
+import { projectNovelXDraftText, resolveNovelXResourcePath } from "./novelx-workspace-model"
 
 const resourceLabel = (resource: NovelXResource) =>
   ({
@@ -621,19 +621,8 @@ export function NovelXResourceWorkspace(props: {
   }
 
   const resourcePath = (resource: NovelXResource) => {
-    if (resource === "world") return "World"
-    if (resource === "characters") {
-      if (file.tree.children("").some((node) => file.normalize(node.path) === file.normalize("Characters"))) {
-        return "Characters"
-      }
-      return "World/characters"
-    }
-    if (resource === "story") {
-      if (file.tree.children("").some((node) => file.normalize(node.path) === file.normalize("Stories")))
-        return "Stories"
-      return "Story"
-    }
-    return ""
+    const candidates = ["World", "Characters", "World/characters", "Stories", "Story"].filter(hasDirectory)
+    return resolveNovelXResourcePath(resource, candidates)
   }
 
   const renderTree = (resource: NovelXResource) => {
@@ -644,6 +633,9 @@ export function NovelXResourceWorkspace(props: {
     }
     if (resource === "story" && storyMaterialization()) return
     if (resource === "characters" && characterMaterialization()) return
+    if (path === undefined) {
+      return <div class="novelx-resource-empty">{language.t("novelx.resource.noStructuredData")}</div>
+    }
     if (growthManifest() || worldBlueprint()) {
       if (resource === "world" && props.worldStatus() !== "tree") return
       if (resource !== "files" && !hasDirectory(path)) return
