@@ -2259,6 +2259,17 @@
     stroke 140ms ease;
 }
 
+.novelx-world-map-grid {
+  pointer-events: none;
+}
+
+.novelx-world-map-grid polygon {
+  fill: rgba(255, 249, 232, 0.035);
+  stroke: rgba(255, 244, 207, 0.72);
+  stroke-width: 1.35px;
+  filter: drop-shadow(0 0 2px rgba(67, 48, 24, 0.72));
+}
+
 .novelx-world-map-region {
   cursor: pointer;
   fill: transparent;

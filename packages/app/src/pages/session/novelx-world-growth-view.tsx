@@ -37,6 +37,7 @@ const mapLinePath = (points: readonly { x: number; y: number }[]) =>
 
 function NovelXWorldAtlas(props: WorldProps) {
   const [mode, setMode] = createSignal<NovelXWorldMapMode>("geography")
+  const [showAtlasGrid, setShowAtlasGrid] = createSignal(false)
   const [selection, setSelection] = createSignal<NovelXWorldMapSelection>({ state: "idle" })
   const [zoom, setZoom] = createSignal(1)
   const [publicationKind, setPublicationKind] = createSignal<"atlas" | "travelogue">("atlas")
@@ -152,6 +153,14 @@ function NovelXWorldAtlas(props: WorldProps) {
               </button>
             )}
           </For>
+          <button
+            type="button"
+            classList={{ "is-active": showAtlasGrid() }}
+            aria-pressed={showAtlasGrid()}
+            onClick={() => setShowAtlasGrid((visible) => !visible)}
+          >
+            网格
+          </button>
         </nav>
       </header>
       <div class="novelx-world-atlas-main" classList={{ "is-focused": selection().state === "focused" }}>
@@ -203,6 +212,17 @@ function NovelXWorldAtlas(props: WorldProps) {
                         )
                       }}
                     </For>
+                  </Show>
+                  <Show when={showAtlasGrid() && mode() !== "semantic"}>
+                    <g class="novelx-world-map-grid" aria-label="泰森网格底层">
+                      <For each={visual().atlas.cells}>
+                        {(cell) => (
+                          <polygon
+                            points={cell.polygon.map((point) => `${point.x * 1024},${point.y * 1024}`).join(" ")}
+                          />
+                        )}
+                      </For>
+                    </g>
                   </Show>
                   <For each={layerFeatures()}>
                     {(feature) => {
