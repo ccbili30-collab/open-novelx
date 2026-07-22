@@ -1,145 +1,298 @@
-import { For, Show, createSignal } from "solid-js"
+import { For, Show, createMemo, createSignal } from "solid-js"
 import type { NovelXWorldPackage } from "@/novelx/world-package"
+import { createNovelXWorldPackageStars, excerptNovelXWorldPackage } from "@/novelx/world-package"
 import { downloadNovelXWorldPackage } from "@/novelx/world-package-export"
-import { excerptNovelXWorldPackage } from "@/novelx/world-package"
 import "./novelx-world-package.css"
+
+const PAGE_NAMES = ["封面", "世界地图", "历史与小说", "人物群像", "世界图谱"] as const
+type MapMode = "idle" | "preview" | "detail"
 
 export function NovelXWorldPackageView(props: {
   package: () => NovelXWorldPackage
   onOpenSource?: (path: string) => void
 }) {
-  const [activeRegion, setActiveRegion] = createSignal<string>()
-  const [mapZoomed, setMapZoomed] = createSignal(false)
   const pkg = props.package
-  const selectedRegion = () => pkg().map.regions.find((region) => region.id === activeRegion())
+  const [opened, setOpened] = createSignal(false)
+  const [page, setPage] = createSignal(0)
+  const [locked, setLocked] = createSignal(false)
+  const [mapMode, setMapMode] = createSignal<MapMode>("idle")
+  const [activeRegion, setActiveRegion] = createSignal<string>()
+  const [activeArchive, setActiveArchive] = createSignal<string>()
+  const [activeCharacter, setActiveCharacter] = createSignal<string>()
+  let dragStart = 0
+  let dragDelta = 0
+
+  const stars = createMemo(() => createNovelXWorldPackageStars(pkg().title))
+  const selectedRegion = createMemo(() => pkg().map.regions.find((region) => region.id === activeRegion()))
+  const archiveItems = createMemo(() => {
+    const publications = pkg().publications.map((item) => ({
+      id: item.id,
+      title: item.title,
+      label: item.kind === "atlas" ? "图志" : "纪行",
+      summary: item.summary,
+      sourcePath: item.sourcePath,
+    }))
+    const story = pkg().story.title
+      ? [{
+          id: "novelx-package-story",
+          title: pkg().story.title!,
+          label: "小说",
+          summary: pkg().story.summary ?? "故事尚未提交。",
+          sourcePath: pkg().story.chapters[0]?.sourcePath,
+        }]
+      : []
+    return [...publications.slice(0, 1), ...story, ...publications.slice(1, 2)].slice(0, 3)
+  })
+  const selectedArchive = createMemo(() => archiveItems().find((item) => item.id === activeArchive()))
+  const selectedCharacter = createMemo(() => pkg().characters.find((item) => item.id === activeCharacter()))
+  const graphNodes = createMemo(() => pkg().graph.nodes.slice(0, 10))
+
+  const pageClass = (index: number) => ({
+    "is-active": page() === index,
+    "is-before": page() > index,
+    "is-after": page() < index,
+  })
+  const resetMap = () => {
+    setMapMode("idle")
+    setActiveRegion(undefined)
+  }
+  const go = (next: number) => {
+    if (!opened() || locked() || mapMode() === "detail") return
+    const target = Math.max(1, Math.min(PAGE_NAMES.length - 1, next))
+    if (target === page()) return
+    setLocked(true)
+    setPage(target)
+    if (target !== 1) resetMap()
+    window.setTimeout(() => setLocked(false), 620)
+  }
+  const openWorld = () => {
+    if (opened() || locked()) return
+    setOpened(true)
+    setLocked(true)
+    window.setTimeout(() => {
+      setLocked(false)
+      go(1)
+    }, 820)
+  }
   const selectRegion = (id: string) => {
-    if (activeRegion() === id) {
-      setMapZoomed(!mapZoomed())
+    if (activeRegion() === id && mapMode() === "preview") {
+      setMapMode("detail")
       return
     }
     setActiveRegion(id)
-    setMapZoomed(false)
+    setMapMode("preview")
   }
-  const openSource = (path?: string) => {
-    if (path) props.onOpenSource?.(path)
+  const selectArchive = (id: string, path?: string) => {
+    if (activeArchive() === id && path) {
+      props.onOpenSource?.(path)
+      return
+    }
+    setActiveArchive(id)
   }
+  const selectCharacter = (id: string, path?: string) => {
+    if (activeCharacter() === id && path) {
+      props.onOpenSource?.(path)
+      return
+    }
+    setActiveCharacter(id)
+  }
+  const stateDetail = () => {
+    if (!opened()) return "等待开启"
+    if (mapMode() === "detail") return "正在阅读完整档案"
+    if (mapMode() === "preview") return "地域预览已展开"
+    return `${page()} / ${PAGE_NAMES.length - 1}`
+  }
+  const onWheel = (event: WheelEvent) => {
+    if (!opened() || locked() || mapMode() === "detail" || Math.abs(event.deltaY) < 18) return
+    event.preventDefault()
+    go(page() + (event.deltaY > 0 ? 1 : -1))
+  }
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (!opened() && (event.key === "Enter" || event.key === " ")) return openWorld()
+    if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "PageDown") go(page() + 1)
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "PageUp") go(page() - 1)
+    if (event.key === "Escape" && mapMode() === "detail") setMapMode("preview")
+  }
+
   return (
-    <article class="novelx-world-package-view" aria-label="世界包展览">
-      <div class="novelx-package-stars" aria-hidden="true" />
-      <nav class="novelx-package-rail" aria-label="展览章节">
-        <For each={pkg().sections}>
-          {(section, index) => (
-            <a href={`#package-${section}`} classList={{ "is-current": index() === 0 }}>
-              <span>{String(index() + 1).padStart(2, "0")}</span>
-              <small>{sectionName(section)}</small>
-            </a>
+    <article
+      class="novelx-world-package-view"
+      aria-label="NovelX 世界包展览"
+      tabindex="0"
+      onWheel={onWheel}
+      onKeyDown={onKeyDown}
+    >
+      <div class="novelx-package-void-glow" aria-hidden="true" />
+      <div class="novelx-package-starfield" aria-hidden="true">
+        <For each={stars()}>
+          {(star) => (
+            <i
+              class={`novelx-package-star is-${star.depth} is-${star.tone}`}
+              style={`--x:${star.x}%;--y:${star.y}%;--size:${star.size}px;--alpha:${star.opacity};--duration:${star.duration}s;--delay:${star.delay}s;--drift-x:${star.driftX}px;--drift-y:${star.driftY}px`}
+            />
           )}
         </For>
-      </nav>
-      <header class="novelx-package-topbar">
-        <span>NovelX · 世界展览</span>
-        <div>
-          <button type="button" onClick={() => downloadNovelXWorldPackage(pkg())}>
-            导出 .zib
-          </button>
-          <span class="novelx-package-status">公开展示层</span>
-        </div>
-      </header>
-      <section class="novelx-package-hero" id="package-cover">
-        <div class="novelx-package-hero-orbit" aria-hidden="true" />
-        <div class="novelx-package-hero-copy">
-          <span class="novelx-package-kicker">WORLD PACKAGE · {pkg().cover.status}</span>
-          <Show when={pkg().cover.source}>
-            {(source) => <img class="novelx-package-cover-image" src={source()} alt={`${pkg().title}封面`} />}
-          </Show>
-          <h1>{pkg().title}</h1>
-          <p>{pkg().summary}</p>
-          <a class="novelx-package-enter" href="#package-overview">
-            进入展览 <span aria-hidden="true">↓</span>
-          </a>
-        </div>
-      </section>
-      <section class="novelx-package-section" id="package-overview">
-        <div class="novelx-package-section-heading">
-          <span class="novelx-package-kicker">01 · ORIENTATION</span>
-          <h2>{pkg().overview.title}</h2>
-          <p>{pkg().overview.text}</p>
-        </div>
-        <div class="novelx-package-metric-grid">
-          <Metric label="公开区域" value={String(pkg().map.regions.length)} detail="泰森网格区域" />
-          <Metric label="关系节点" value={String(pkg().graph.nodes.length)} detail="事实与角色" />
-          <Metric label="公开文稿" value={String(pkg().publications.length + pkg().story.chapters.length)} detail="图志与故事" />
-        </div>
-      </section>
-      <section class="novelx-package-section is-map" id="package-map">
-        <div class="novelx-package-section-heading">
-          <span class="novelx-package-kicker">02 · CARTOGRAPHY</span>
-          <h2>地图</h2>
-          <p>第一次点击高亮，第二次点击放大；区域归属永远以泰森网格为准。</p>
-        </div>
-        <div classList={{ "novelx-package-map-frame": true, "is-zoomed": mapZoomed() }}>
-          <svg class="novelx-package-map" viewBox="0 0 1 1" preserveAspectRatio="none" role="img" aria-label="世界泰森网格地图">
-            <defs>
-              <radialGradient id="package-map-glow"><stop stop-color="#9ad8ff" stop-opacity=".22" /><stop offset="1" stop-color="#071123" stop-opacity="0" /></radialGradient>
-            </defs>
-            <rect width="1" height="1" fill="url(#package-map-glow)" />
-            <Show when={pkg().map.raster}>
-              {(source) => <image href={source()} width="1" height="1" preserveAspectRatio="xMidYMid slice" opacity=".72" />}
+      </div>
+
+      <div class="novelx-package-brand"><span class="novelx-package-brand-mark" /><span>NOVELX · WORLD ARCHIVE</span></div>
+      <div class="novelx-package-state" aria-live="polite">
+        <strong>{PAGE_NAMES[page()]}</strong>
+        <span>{stateDetail()}</span>
+        <button type="button" onClick={() => downloadNovelXWorldPackage(pkg())}>导出 .zib</button>
+      </div>
+
+      <section
+        class="novelx-package-stage"
+        classList={{ "is-dragging": dragDelta !== 0 }}
+        onPointerDown={(event) => {
+          dragStart = event.clientX
+          dragDelta = 0
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }}
+        onPointerMove={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
+          dragDelta = event.clientX - dragStart
+        }}
+        onPointerUp={(event) => {
+          if (Math.abs(dragDelta) > 64) go(page() + (dragDelta < 0 ? 1 : -1))
+          dragDelta = 0
+          event.currentTarget.releasePointerCapture(event.pointerId)
+        }}
+      >
+        <article class="novelx-package-page novelx-package-cover-page" classList={{ ...pageClass(0), "is-opening": opened() }}>
+          <button type="button" class="novelx-package-cover-book" onClick={openWorld} aria-label="打开世界包">
+            <Show when={pkg().cover.source}>
+              {(source) => <img src={source()} alt="" />}
             </Show>
-            <For each={pkg().map.regions}>
+            <div class="novelx-package-cover-inscription">
+              <span class="novelx-package-cover-sigil" />
+              <h1>{pkg().title}</h1>
+              <p>点击封面 · 进入世界</p>
+            </div>
+          </button>
+        </article>
+
+        <article class="novelx-package-page novelx-package-map-page" classList={{ ...pageClass(1), "is-detail": mapMode() === "detail" }}>
+          <div class="novelx-package-page-surface">
+            <span class="novelx-package-page-label">I · 世界地图</span>
+            <div class="novelx-package-map-wrap">
+              <svg class="novelx-package-map-sheet" viewBox="0 0 1 1" preserveAspectRatio="none" aria-label="世界地图">
+                <defs>
+                  <radialGradient id="novelx-package-land" cx="48%" cy="48%" r="62%">
+                    <stop stop-color="#354b49" stop-opacity=".94" />
+                    <stop offset="1" stop-color="#151e27" stop-opacity=".96" />
+                  </radialGradient>
+                </defs>
+                <rect width="1" height="1" fill="url(#novelx-package-land)" rx=".34" />
+                <Show when={pkg().map.raster}>{(source) => <image href={source()} width="1" height="1" preserveAspectRatio="xMidYMid slice" opacity=".78" />}</Show>
+                <For each={pkg().map.regions}>
+                  {(region) => (
+                    <g classList={{ "is-selected": activeRegion() === region.id }} onClick={() => selectRegion(region.id)}>
+                      <polygon class="novelx-package-region" points={region.polygon.map((point) => `${point.x},${point.y}`).join(" ")} />
+                      <text class="novelx-package-region-label" x={region.labelPoint.x} y={region.labelPoint.y}>{region.label}</text>
+                    </g>
+                  )}
+                </For>
+              </svg>
+            </div>
+            <Show when={selectedRegion()}>
               {(region) => (
-                <g classList={{ "is-active": activeRegion() === region.id }} onClick={() => selectRegion(region.id)}>
-                  <polygon class="novelx-package-region" points={region.polygon.map((point) => `${point.x},${point.y}`).join(" ")} />
-                  <text class="novelx-package-region-label" x={region.labelPoint.x} y={region.labelPoint.y}>
-                    {region.label}
-                  </text>
-                </g>
+                <button type="button" class="novelx-package-map-caption" classList={{ "is-visible": mapMode() === "preview" }} onClick={() => selectRegion(region().id)}>
+                  <small>区域预览 · 再次点击进入</small>
+                  <h2>{region().label}</h2>
+                  <p>{excerptNovelXWorldPackage(region().summary, 180)}</p>
+                </button>
               )}
-            </For>
-          </svg>
-          <Show when={selectedRegion()} fallback={<div class="novelx-package-map-empty">地图美术尚未返回，泰森网格仍可浏览。</div>}>
-            {(region) => (
-              <aside class="novelx-package-map-card">
-                <span>{region().kind} · {region().surface}</span>
-                <h3>{region().label}</h3>
-                <p>{excerptNovelXWorldPackage(region().summary, 220)}</p>
-                <Show when={region().sourcePath} fallback={<small>正式档案尚未提交</small>}>
-                  {(path) => <button type="button" onClick={() => openSource(path())}>打开完整档案 ↗</button>}
-                </Show>
-              </aside>
-            )}
-          </Show>
-        </div>
+            </Show>
+            <Show when={selectedRegion()}>
+              {(region) => (
+                <button type="button" class="novelx-package-detail-sheet" onClick={() => setMapMode("preview")}>
+                  <small>完整图志 · 点击正文返回地图</small>
+                  <h2>{region().label}</h2>
+                  <p>{region().summary}</p>
+                  <Show when={region().sourcePath}>
+                    {(path) => <span class="novelx-package-source-link" onClick={(event) => { event.stopPropagation(); props.onOpenSource?.(path()) }}>打开完整档案 ↗</span>}
+                  </Show>
+                </button>
+              )}
+            </Show>
+            <Show when={!pkg().map.regions.length}>
+              <div class="novelx-package-stage-empty">地图骨架尚未生成</div>
+            </Show>
+          </div>
+        </article>
+
+        <article class="novelx-package-page" classList={pageClass(2)}>
+          <div class="novelx-package-page-surface">
+            <span class="novelx-package-page-label">II · 历史、文献与小说</span>
+            <div class="novelx-package-floating-collection is-books">
+              <For each={archiveItems()}>
+                {(item) => (
+                  <button type="button" class="novelx-package-book" classList={{ "is-selected": activeArchive() === item.id }} onClick={() => selectArchive(item.id, item.sourcePath)}>
+                    <small>{item.label}</small><strong>{item.title}</strong>
+                  </button>
+                )}
+              </For>
+              <Show when={!archiveItems().length}><div class="novelx-package-stage-empty">历史与故事尚未生成</div></Show>
+            </div>
+            <Show when={selectedArchive()}>
+              {(item) => <aside class="novelx-package-entity-caption"><small>{item().label} · 再次点击打开</small><h2>{item().title}</h2><p>{excerptNovelXWorldPackage(item().summary, 220)}</p></aside>}
+            </Show>
+          </div>
+        </article>
+
+        <article class="novelx-package-page" classList={pageClass(3)}>
+          <div class="novelx-package-page-surface">
+            <span class="novelx-package-page-label">III · 人物群像</span>
+            <div class="novelx-package-floating-collection is-portraits">
+              <For each={pkg().characters.slice(0, 4)}>
+                {(character) => (
+                  <button type="button" class="novelx-package-portrait" classList={{ "is-selected": activeCharacter() === character.id }} onClick={() => selectCharacter(character.id, character.sourcePath)}>
+                    <Show when={character.portrait}>{(source) => <img src={source()} alt="" />}</Show>
+                    <span>{character.name}</span>
+                  </button>
+                )}
+              </For>
+              <Show when={!pkg().characters.length}><div class="novelx-package-stage-empty">人物尚未生成</div></Show>
+            </div>
+            <Show when={selectedCharacter()}>
+              {(item) => <aside class="novelx-package-entity-caption"><small>人物档案 · 再次点击打开</small><h2>{item().name}</h2><p>{excerptNovelXWorldPackage(item().summary, 220)}</p></aside>}
+            </Show>
+          </div>
+        </article>
+
+        <article class="novelx-package-page" classList={pageClass(4)}>
+          <div class="novelx-package-page-surface">
+            <span class="novelx-package-page-label">IV · 世界图谱</span>
+            <div class="novelx-package-graph-space">
+              <div class="novelx-package-graph-orbit" />
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <For each={graphNodes()}>{(_, index) => { const point = graphPoint(index(), graphNodes().length); return <line x1="50" y1="50" x2={point.x} y2={point.y} /> }}</For>
+              </svg>
+              <For each={graphNodes()}>
+                {(node, index) => {
+                  const point = () => graphPoint(index(), graphNodes().length)
+                  return <button type="button" class="novelx-package-node" style={`--node-x:${point().x}%;--node-y:${point().y}%`} onClick={() => node.sourcePath && props.onOpenSource?.(node.sourcePath)}><i /><span>{node.label}</span><small>{node.typeLabel}</small></button>
+                }}
+              </For>
+              <Show when={!graphNodes().length}><div class="novelx-package-stage-empty">图谱尚未生成</div></Show>
+            </div>
+          </div>
+        </article>
       </section>
-      <section class="novelx-package-section" id="package-publications">
-        <div class="novelx-package-section-heading"><span class="novelx-package-kicker">03 · FIELD NOTES</span><h2>图志与纪行</h2><p>一份全面的图志，一组不完全可靠但真实可感的个人视野。</p></div>
-        <div class="novelx-package-card-grid"><For each={pkg().publications}>{(item) => <button type="button" class="novelx-package-card" onClick={() => openSource(item.sourcePath)}><span>{item.kind === "atlas" ? "图志" : "纪行"}</span><h3>{item.title}</h3><p>{item.summary}</p></button>}</For><Show when={!pkg().publications.length}><Empty /></Show></div>
-      </section>
-      <section class="novelx-package-section" id="package-story">
-        <div class="novelx-package-section-heading"><span class="novelx-package-kicker">04 · CHRONICLE</span><h2>{pkg().story.title ?? "故事"}</h2><p>{pkg().story.summary ?? "故事尚未生成。"}</p></div>
-        <div class="novelx-package-card-grid"><For each={pkg().story.chapters}>{(chapter) => <button type="button" class="novelx-package-card" onClick={() => openSource(chapter.sourcePath)}><span>章节</span><h3>{chapter.title}</h3><p>{chapter.summary}</p></button>}</For><Show when={!pkg().story.chapters.length}><Empty /></Show></div>
-      </section>
-      <section class="novelx-package-section" id="package-characters">
-        <div class="novelx-package-section-heading"><span class="novelx-package-kicker">05 · PERSONAE</span><h2>角色</h2><p>从世界事实中长出来的人。</p></div>
-        <div class="novelx-package-card-grid"><For each={pkg().characters}>{(character) => <button type="button" class="novelx-package-card" onClick={() => openSource(character.sourcePath)}><span>角色档案</span><h3>{character.name}</h3><p>{character.summary}</p></button>}</For><Show when={!pkg().characters.length}><Empty /></Show></div>
-      </section>
-      <section class="novelx-package-section is-graph" id="package-graph">
-        <div class="novelx-package-section-heading"><span class="novelx-package-kicker">06 · CONSTELLATION</span><h2>图谱</h2><p>关系不是说明书，而是世界事实留下的星座。</p></div>
-        <div class="novelx-package-node-cloud"><For each={pkg().graph.nodes}>{(node) => <button type="button" class="novelx-package-node" onClick={() => openSource(node.sourcePath)}><span>{node.typeLabel}</span><strong>{node.label}</strong><small>{excerptNovelXWorldPackage(node.summary, 100)}</small></button>}</For><Show when={!pkg().graph.nodes.length}><Empty /></Show></div>
-      </section>
-      <footer class="novelx-package-footer">公开展示层 · 内部 Agent、Prompt、工具调用与会话记录不会进入世界包</footer>
+
+      <nav class="novelx-package-page-rail" aria-label="展览页导航">
+        <For each={PAGE_NAMES}>
+          {(name, index) => <button type="button" classList={{ "is-active": page() === index() }} aria-label={`前往${name}`} onClick={() => index() === 0 ? undefined : go(index())} />}
+        </For>
+      </nav>
+      <div class="novelx-package-hint" classList={{ "is-visible": opened() }}><i /><span>滚轮向下或左右拖动翻页</span></div>
     </article>
   )
 }
 
-function Metric(props: { label: string; value: string; detail: string }) {
-  return <div class="novelx-package-metric"><span>{props.label}</span><strong>{props.value}</strong><small>{props.detail}</small></div>
-}
-
-function Empty() {
-  return <div class="novelx-package-empty"><span>尚未生成</span><small>正式内容完成后会自动出现在这里。</small></div>
-}
-
-function sectionName(section: string) {
-  return ({ cover: "封面", overview: "总览", map: "地图", publications: "文稿", story: "故事", characters: "角色", graph: "图谱" } as Record<string, string>)[section] ?? section
+function graphPoint(index: number, total: number) {
+  const angle = -Math.PI / 2 + (Math.PI * 2 * index) / Math.max(total, 1)
+  const radius = index % 2 === 0 ? 33 : 25
+  return { x: 50 + Math.cos(angle) * radius, y: 50 + Math.sin(angle) * radius }
 }

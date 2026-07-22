@@ -192,3 +192,48 @@ export function excerptNovelXWorldPackage(value: string, max = 180) {
   return text(value, "", max)
 }
 
+export type NovelXWorldPackageStar = {
+  x: number
+  y: number
+  size: number
+  opacity: number
+  duration: number
+  delay: number
+  driftX: number
+  driftY: number
+  tone: "paper" | "blue" | "gold"
+  depth: "far" | "middle" | "near"
+}
+
+export function createNovelXWorldPackageStars(seed: string, count = 220): readonly NovelXWorldPackageStar[] {
+  let state = 2166136261
+  for (let index = 0; index < seed.length; index++) {
+    state ^= seed.charCodeAt(index)
+    state = Math.imul(state, 16777619)
+  }
+  const random = () => {
+    state += 0x6d2b79f5
+    let value = state
+    value = Math.imul(value ^ (value >>> 15), value | 1)
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61)
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
+  }
+  return Array.from({ length: count }, (_, index) => {
+    const depth = index % 11 === 0 ? "near" : index % 3 === 0 ? "middle" : "far"
+    const scale = depth === "near" ? 2 : depth === "middle" ? 1.25 : 0.84
+    const angle = random() * Math.PI * 2
+    const distance = 20 + random() * 78
+    return {
+      x: random() * 100,
+      y: random() * 100,
+      size: (0.65 + random() * 1.35) * scale,
+      opacity: 0.3 + random() * (depth === "near" ? 0.68 : 0.54),
+      duration: (depth === "near" ? 22 : depth === "middle" ? 34 : 52) + random() * 38,
+      delay: -random() * 58,
+      driftX: Math.cos(angle) * distance,
+      driftY: Math.sin(angle) * distance,
+      tone: random() > 0.9 ? "gold" : random() > 0.72 ? "blue" : "paper",
+      depth,
+    }
+  })
+}
