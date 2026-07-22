@@ -61,6 +61,40 @@ export function resolveNovelXWorldMapFeature(
     : undefined
 }
 
+export function resolveNovelXWorldMapRasterTask(
+  visual: NovelXWorldVisual.Manifest,
+  mode: NovelXWorldMapMode,
+  selection: NovelXWorldMapSelection,
+) {
+  const base = visual.tasks.find(
+    (task) => task.type === "map" && (visual.schemaVersion === 2 || task.mapRole === "base"),
+  )
+  if (!base || selection.state === "idle" || mode === "art" || mode === "semantic") return base
+  const layer = mode === "geography" ? "geography" : "human"
+  return (
+    visual.tasks.find(
+      (task) =>
+        task.type === "map" &&
+        task.mapRole === "variant" &&
+        task.layer === layer &&
+        task.entityId === selection.entityId &&
+        task.status === "attached",
+    ) ?? base
+  )
+}
+
+export function novelXWorldMapVariantProgress(
+  visual: NovelXWorldVisual.Manifest,
+  layer?: "geography" | "human",
+) {
+  const variants = visual.tasks.filter(
+    (task) => task.type === "map" && task.mapRole === "variant" && (!layer || task.layer === layer),
+  )
+  const attached = variants.filter((task) => task.status === "attached").length
+  const failed = variants.filter((task) => task.status === "failed").length
+  return { total: variants.length, attached, failed, pending: variants.length - attached - failed }
+}
+
 const errorMessage = (error: unknown) => {
   if (error instanceof Error && error.message) return error.message
   if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
@@ -94,7 +128,7 @@ const matchesWorldPath = (value: string) => {
 
 export async function parseNovelXWorldVisuals(content: string, worldMaterializationIntegritySha256: string) {
   const value = JSON.parse(content) as { schemaVersion?: unknown }
-  if (value.schemaVersion !== 2) throw new Error("地图数据已过期，需要重新生成。")
+  if (value.schemaVersion !== 2 && value.schemaVersion !== 3) throw new Error("地图数据已过期，需要重新生成。")
   const manifest = Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)(value)
   const { integritySha256, ...draft } = manifest
   if ((await sha256(draft)) !== integritySha256) throw new Error("世界视觉状态完整性校验失败。")

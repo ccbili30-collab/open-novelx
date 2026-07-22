@@ -2268,9 +2268,9 @@
 }
 
 .is-selected > .novelx-world-map-region {
-  fill: rgba(246, 216, 132, 0.42);
-  stroke: rgba(124, 88, 31, 0.82);
-  filter: drop-shadow(0 0 5px rgba(118, 87, 36, 0.22));
+  fill: transparent;
+  stroke: transparent;
+  filter: none;
 }
 
 .novelx-world-map-line-hit {

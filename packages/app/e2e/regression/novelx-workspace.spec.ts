@@ -70,7 +70,9 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       return []
     },
     fileContent: (path) =>
-      path === "World/Media/world-map.png" || path === "World/Media/scenery/helios-ring.png"
+      path === "World/Media/world-map.png" ||
+      path.startsWith("World/Media/maps/") ||
+      path === "World/Media/scenery/helios-ring.png"
         ? {
             type: "binary",
             content: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -287,6 +289,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await page.reload()
   await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
   await expect(resources.locator(".novelx-world-atlas image")).toHaveCount(1)
+  await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute("data-map-task-id", "image-world-map")
   await expect(resources.getByText(/Growth 总主编|阶段主编|执行 Agent|注册事实|事实依据|因果推演/u)).toHaveCount(0)
 
   const mapMain = resources.locator(".novelx-world-atlas-main")
@@ -294,11 +297,21 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const geographyLabel = resources.locator(".novelx-world-map-label").first()
   await geographyLabel.click()
   await expect(geographyRegion.locator("..")).toHaveClass(/is-selected/u)
+  await expect(geographyRegion).toHaveCSS("fill", "rgba(0, 0, 0, 0)")
+  await expect(geographyRegion).toHaveCSS("stroke", "rgba(0, 0, 0, 0)")
+  await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute(
+    "data-map-task-id",
+    "image-world-map-geography-selected",
+  )
   await expect(mapMain).not.toHaveClass(/is-focused/u)
   await expect(resources.locator(".novelx-world-map-details")).toHaveCount(0)
 
   await geographyLabel.click()
   await expect(mapMain).toHaveClass(/is-focused/u)
+  await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute(
+    "data-map-task-id",
+    "image-world-map-geography-selected",
+  )
   const mapDetails = resources.getByRole("complementary", { name: "赫利俄斯同步环详细内容" })
   await expect(mapDetails).toBeVisible()
   await expect(mapDetails.getByText("地理", { exact: true })).toBeVisible()
@@ -311,12 +324,17 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(mapMain).not.toHaveClass(/is-focused/u)
   await expect(resources.locator(".novelx-world-map-details")).toHaveCount(0)
   await expect(geographyRegion.locator("..")).not.toHaveClass(/is-selected/u)
+  await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute("data-map-task-id", "image-world-map")
 
   await resources.getByRole("button", { name: "国家", exact: true }).click()
   const humanRegion = resources.locator(".novelx-world-map-region").first()
   const humanLabel = resources.locator(".novelx-world-map-label").first()
   await humanLabel.click()
   await expect(humanRegion.locator("..")).toHaveClass(/is-selected/u)
+  await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute(
+    "data-map-task-id",
+    "image-world-map-human-selected",
+  )
   await humanLabel.click()
   await expect(resources.getByRole("complementary", { name: "赫利俄斯同步环详细内容" })).toContainText("国家")
   await page.screenshot({ path: testInfo.outputPath("novelx-world-completed-map.png") })

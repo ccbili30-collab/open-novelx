@@ -4,7 +4,9 @@ import { Markdown } from "@opencode-ai/session-ui/markdown"
 import { NovelXResourceIcon } from "@/components/novelx-resource-icon"
 import {
   advanceNovelXWorldMapSelection,
+  novelXWorldMapVariantProgress,
   novelXWorldStatusLabel,
+  resolveNovelXWorldMapRasterTask,
   type NovelXWorldMapMode,
   type NovelXWorldMapSelection,
   type NovelXWorldNavigationItem,
@@ -38,9 +40,24 @@ function NovelXWorldAtlas(props: WorldProps) {
   const [selection, setSelection] = createSignal<NovelXWorldMapSelection>({ state: "idle" })
   const [zoom, setZoom] = createSignal(1)
   const [publicationKind, setPublicationKind] = createSignal<"atlas" | "travelogue">("atlas")
-  const mapTask = () => props.visual?.tasks.find((task) => task.type === "map")
+  const mapTask = () =>
+    props.visual?.tasks.find(
+      (task) => task.type === "map" && (props.visual?.schemaVersion === 2 || task.mapRole === "base"),
+    )
+  const displayedMapTask = createMemo(() => {
+    const visual = props.visual
+    return visual ? resolveNovelXWorldMapRasterTask(visual, mode(), selection()) : undefined
+  })
+  const variantProgress = createMemo(() => {
+    const visual = props.visual
+    if (!visual || visual.schemaVersion !== 3) return undefined
+    return novelXWorldMapVariantProgress(
+      visual,
+      mode() === "geography" ? "geography" : mode() === "human" ? "human" : undefined,
+    )
+  })
   const mapAsset = () => {
-    const task = mapTask()
+    const task = displayedMapTask()
     return task ? props.visualAssets?.[task.id] : undefined
   }
   const layerFeatures = createMemo(() => {
@@ -102,6 +119,14 @@ function NovelXWorldAtlas(props: WorldProps) {
         <div>
           <strong>{props.blueprint.profile.title}</strong>
           <span>世界图册 / 主大陆</span>
+          <Show when={variantProgress()}>
+            {(progress) => (
+              <span>
+                状态图 {progress().attached}/{progress().total}
+                {progress().failed ? ` · ${progress().failed} 张失败` : ""}
+              </span>
+            )}
+          </Show>
         </div>
         <nav aria-label="地图图层">
           <For
@@ -152,7 +177,15 @@ function NovelXWorldAtlas(props: WorldProps) {
               <svg viewBox="0 0 1024 1024" role="img" aria-label="可交互世界地图">
                 <g transform={transform()}>
                   <Show when={mapAsset()} fallback={<rect width="1024" height="1024" fill="#eee8dd" />}>
-                    {(src) => <image href={src()} width="1024" height="1024" preserveAspectRatio="xMidYMid slice" />}
+                    {(src) => (
+                      <image
+                        href={src()}
+                        width="1024"
+                        height="1024"
+                        preserveAspectRatio="xMidYMid slice"
+                        data-map-task-id={displayedMapTask()?.id}
+                      />
+                    )}
                   </Show>
                   <Show when={mode() === "semantic"}>
                     <For each={visual().atlas.cells}>

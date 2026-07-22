@@ -1,13 +1,16 @@
 import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 import { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
+import { Schema } from "effect"
 import {
   advanceNovelXWorldMapSelection,
+  novelXWorldMapVariantProgress,
   novelXWorldNavigationItems,
   parseNovelXWorldBlueprint,
   parseNovelXWorldMaterialization,
   parseNovelXWorldVisuals,
   resolveNovelXWorldMapFeature,
+  resolveNovelXWorldMapRasterTask,
 } from "./novelx-world-growth"
 
 const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")
@@ -264,6 +267,81 @@ test("verifies visual evidence and resolves whole features without letting river
     "cell-1",
     "cell-2",
   ])
+
+  const attached = {
+    status: "attached" as const,
+    mime: "image/png" as const,
+    assetSha256: "9".repeat(64),
+    model: "test/image",
+    completedAt: 2,
+  }
+  const baseTask: NovelXWorldVisual.ImageTask = {
+    ...task,
+    ...attached,
+    id: "map-base",
+    mapRole: "base",
+    layer: null,
+    entityId: null,
+    baseTaskId: null,
+  }
+  const geographyVariant: NovelXWorldVisual.ImageTask = {
+    ...baseTask,
+    id: "map-geography-basin",
+    subtype: "region-highlight",
+    mapRole: "variant",
+    layer: "geography",
+    entityId: "basin",
+    baseTaskId: baseTask.id,
+    ownerEntityId: "basin",
+    targetPath: "World/Media/maps/geography/basin.png",
+  }
+  const humanVariant: NovelXWorldVisual.ImageTask = {
+    ...baseTask,
+    id: "map-human-realm",
+    subtype: "region-highlight",
+    mapRole: "variant",
+    layer: "human",
+    entityId: "realm",
+    baseTaskId: baseTask.id,
+    ownerEntityId: "realm",
+    targetPath: "World/Media/maps/human/realm.png",
+  }
+  const v3Draft = { ...draft, schemaVersion: 3 as const, tasks: [baseTask, geographyVariant, humanVariant] }
+  const decodedV3 = Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)({
+    ...v3Draft,
+    integritySha256: "0".repeat(64),
+  })
+  const { integritySha256: _discardedIntegrity, ...normalizedV3Draft } = decodedV3
+  const v3 = {
+    ...normalizedV3Draft,
+    integritySha256: sha256(normalizedV3Draft),
+  } satisfies NovelXWorldVisual.Manifest
+  expect(await parseNovelXWorldVisuals(JSON.stringify(v3), materializationSha256)).toEqual(v3)
+  expect(resolveNovelXWorldMapRasterTask(v3, "geography", { state: "idle" })?.id).toBe("map-base")
+  expect(
+    resolveNovelXWorldMapRasterTask(v3, "geography", { state: "highlighted", entityId: "basin" })?.id,
+  ).toBe("map-geography-basin")
+  expect(resolveNovelXWorldMapRasterTask(v3, "human", { state: "focused", entityId: "realm" })?.id).toBe(
+    "map-human-realm",
+  )
+  expect(novelXWorldMapVariantProgress(v3, "geography")).toEqual({
+    total: 1,
+    attached: 1,
+    failed: 0,
+    pending: 0,
+  })
+  expect(
+    resolveNovelXWorldMapRasterTask(
+      { ...v3, tasks: [baseTask, geographyVariant, { ...humanVariant, status: "failed" }] },
+      "human",
+      { state: "highlighted", entityId: "realm" },
+    )?.id,
+  ).toBe("map-base")
+  const incompleteDraft = { ...normalizedV3Draft, tasks: [baseTask, geographyVariant] }
+  const incomplete = { ...incompleteDraft, integritySha256: sha256(incompleteDraft) }
+  await expect(parseNovelXWorldVisuals(JSON.stringify(incomplete), materializationSha256)).rejects.toThrow(
+    "one selected-state image task for every geography and human area feature",
+  )
 })
 
 test("cycles one map region through highlight, focused details, and restored full map", () => {
