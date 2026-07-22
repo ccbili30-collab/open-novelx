@@ -9,11 +9,6 @@ const execFileAsync = promisify(execFile)
 const packageDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(packageDir, "../..")
 const signScript = path.join(rootDir, "script", "sign-windows.ps1")
-// The Electron 42 packaging update briefly installed Linux launchers/icons under
-// "opencode-desktop". Keep that hidden desktop entry around so existing GNOME/KDE
-// pins still resolve after the canonical app id changes back to ai.opencode.desktop.
-const legacyDesktopEntry = path.join(packageDir, "resources", "linux", "opencode-desktop.desktop")
-const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/opencode-desktop.desktop`
 
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
@@ -33,23 +28,27 @@ const channel = (() => {
 })()
 
 const APP_IDS = {
-  dev: "ai.opencode.desktop.dev",
-  beta: "ai.opencode.desktop.beta",
-  prod: "ai.opencode.desktop",
+  dev: "ai.novelx.desktop.dev",
+  beta: "ai.novelx.desktop.beta",
+  prod: "ai.novelx.desktop",
 } as const
 
 const getBase = (appId: string): Configuration => ({
-  artifactName: "opencode-desktop-${os}-${arch}.${ext}",
+  artifactName: "NovelX-${version}-${os}-${arch}.${ext}",
   directories: {
     output: "dist",
     buildResources: "resources",
   },
   // Linux launchers are .desktop files, so this is the desktop file name,
-  // not just the app id. For prod, app id "ai.opencode.desktop" becomes
-  // "ai.opencode.desktop.desktop".
+  // not just the app id. For prod, app id "ai.novelx.desktop" becomes
+  // "ai.novelx.desktop.desktop".
   // https://developer.gnome.org/documentation/guidelines/maintainer/integrating.html
   // https://www.electron.build/docs/linux/
   extraMetadata: {
+    name: "novelx-desktop",
+    description: "Agent-native worldbuilding and fiction creation workbench",
+    homepage: "https://github.com/ccbili30-collab/open-novelx",
+    author: { name: "NovelX Contributors" },
     desktopName: `${appId}.desktop`,
   },
   files: ["out/**/*", "resources/**/*"],
@@ -74,7 +73,7 @@ const getBase = (appId: string): Configuration => ({
     sign: true,
   },
   protocols: {
-    name: "OpenCode",
+    name: "NovelX",
     schemes: ["opencode"],
   },
   win: {
@@ -115,29 +114,28 @@ function getConfig() {
       return {
         ...base,
         appId,
-        productName: "OpenCode Dev",
-        rpm: { packageName: "opencode-dev" },
+        productName: "NovelX Dev",
+        rpm: { packageName: "novelx-dev" },
       }
     }
     case "beta": {
       return {
         ...base,
         appId,
-        productName: "OpenCode Beta",
-        protocols: { name: "OpenCode Beta", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
-        rpm: { packageName: "opencode-beta" },
+        productName: "NovelX Beta",
+        protocols: { name: "NovelX Beta", schemes: ["opencode"] },
+        publish: { provider: "github", owner: "ccbili30-collab", repo: "open-novelx", channel: "beta" },
+        rpm: { packageName: "novelx-beta" },
       }
     }
     case "prod": {
       return {
         ...base,
         appId,
-        productName: "OpenCode",
-        protocols: { name: "OpenCode", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
-        deb: { fpm: [legacyDesktopEntryFpm] },
-        rpm: { packageName: "opencode", fpm: [legacyDesktopEntryFpm] },
+        productName: "NovelX",
+        protocols: { name: "NovelX", schemes: ["opencode"] },
+        publish: { provider: "github", owner: "ccbili30-collab", repo: "open-novelx", channel: "latest" },
+        rpm: { packageName: "novelx" },
       }
     }
   }

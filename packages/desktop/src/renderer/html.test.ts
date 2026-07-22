@@ -59,4 +59,22 @@ describe("electron vite publicDir", () => {
     expect(existsSync(resolved)).toBe(true)
     expect(existsSync(join(resolved, "oc-theme-preload.js"))).toBe(true)
   })
+
+  test("ships valid local NovelX brand images", async () => {
+    const publicDir = resolve(root, "../app/public")
+    const pngSignature = "89504e470d0a1a0a"
+
+    for (const name of [
+      "novelx-cat-mark-96.png",
+      "novelx-cat-mark-180.png",
+      "novelx-cat-mark-192.png",
+      "novelx-cat-mark-512.png",
+    ]) {
+      const bytes = new Uint8Array(await Bun.file(join(publicDir, name)).arrayBuffer())
+      expect(Buffer.from(bytes.slice(0, 8)).toString("hex")).toBe(pngSignature)
+    }
+
+    const manifest = await Bun.file(join(publicDir, "novelx.webmanifest")).json()
+    expect(manifest.name).toBe("NovelX")
+  })
 })

@@ -16,9 +16,9 @@ describe("desktop menu labels", () => {
     expect(desktopMenuLabel(help, "en")).toBe("Help")
   })
 
-  test("has a Chinese label for every visible text label except the OpenCode brand", () => {
+  test("has a Chinese label for every visible text label except the NovelX brand", () => {
     const labels = DESKTOP_MENU.flatMap((menu) => [menu, ...(menu.items ?? [])]).filter(
-      (item) => "label" in item && item.label && item.label !== "OpenCode",
+      (item) => "label" in item && item.label && item.label !== "NovelX",
     )
     expect(labels.filter((item) => !("labelZh" in item) || !item.labelZh)).toEqual([])
   })

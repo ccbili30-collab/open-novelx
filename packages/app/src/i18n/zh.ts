@@ -850,7 +850,7 @@ export const dict = {
   "sidebar.empty.title": "没有打开的项目",
   "sidebar.empty.description": "打开一个项目以开始使用",
 
-  "app.name.desktop": "OpenCode 桌面版",
+  "app.name.desktop": "NovelX 桌面版",
 
   "settings.section.desktop": "桌面",
   "settings.section.server": "服务器",

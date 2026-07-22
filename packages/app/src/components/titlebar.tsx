@@ -8,6 +8,7 @@ import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { useTheme } from "@opencode-ai/ui/theme/context"
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
+import { NovelXMark } from "@opencode-ai/ui/novelx-logo"
 import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 
@@ -282,7 +283,8 @@ export function Titlebar(props: { update?: TitlebarUpdate }) {
               aria-label={language.t("novelx.titlebar.home")}
               onClick={novelx.clearResource}
             >
-              NovelX
+              <NovelXMark class="novelx-titlebar-brand-mark" />
+              <span>NovelX</span>
             </button>
             <button
               type="button"
