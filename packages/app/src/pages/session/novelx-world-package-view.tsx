@@ -1,14 +1,35 @@
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { Markdown } from "@opencode-ai/session-ui/markdown"
+import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js"
 import type { NovelXWorldPackage } from "@/novelx/world-package"
 import { createNovelXWorldPackageStars, excerptNovelXWorldPackage } from "@/novelx/world-package"
 import { downloadNovelXWorldPackage } from "@/novelx/world-package-export"
+import { NovelXGraphView } from "./novelx-graph-view"
 import "./novelx-world-package.css"
 
 const PAGE_NAMES = ["封面", "世界地图", "历史与小说", "人物群像", "世界图谱"] as const
 type MapMode = "idle" | "preview" | "detail"
+type StoryReader = {
+  kind: "story"
+  title: string
+  summary: string
+  chapters: NovelXWorldPackage["story"]["chapters"]
+}
+type DocumentReader = {
+  kind: "document"
+  title: string
+  path: string
+  status: "loading" | "ready" | "error"
+  content?: string
+  message?: string
+  returnTo?: StoryReader
+}
+type PackageReader = StoryReader | DocumentReader
 
 export function NovelXWorldPackageView(props: {
   package: () => NovelXWorldPackage
+  graphStorageKey: string
+  readSource: (path: string) => Promise<string | undefined>
+  onRefreshGraph: () => Promise<void>
   onOpenSource?: (path: string) => void
 }) {
   const pkg = props.package
@@ -19,8 +40,11 @@ export function NovelXWorldPackageView(props: {
   const [activeRegion, setActiveRegion] = createSignal<string>()
   const [activeArchive, setActiveArchive] = createSignal<string>()
   const [activeCharacter, setActiveCharacter] = createSignal<string>()
+  const [reader, setReader] = createSignal<PackageReader>()
   let dragStart = 0
   let dragDelta = 0
+  let readerVersion = 0
+  let readerOpener: HTMLElement | SVGElement | undefined
 
   const stars = createMemo(() => createNovelXWorldPackageStars(pkg().title))
   const selectedRegion = createMemo(() => pkg().map.regions.find((region) => region.id === activeRegion()))
@@ -45,7 +69,6 @@ export function NovelXWorldPackageView(props: {
   })
   const selectedArchive = createMemo(() => archiveItems().find((item) => item.id === activeArchive()))
   const selectedCharacter = createMemo(() => pkg().characters.find((item) => item.id === activeCharacter()))
-  const graphNodes = createMemo(() => pkg().graph.nodes.slice(0, 10))
 
   const pageClass = (index: number) => ({
     "is-active": page() === index,
@@ -57,7 +80,7 @@ export function NovelXWorldPackageView(props: {
     setActiveRegion(undefined)
   }
   const go = (next: number) => {
-    if (!opened() || locked() || mapMode() === "detail") return
+    if (!opened() || locked() || mapMode() === "detail" || reader()) return
     const target = Math.max(1, Math.min(PAGE_NAMES.length - 1, next))
     if (target === page()) return
     setLocked(true)
@@ -74,27 +97,83 @@ export function NovelXWorldPackageView(props: {
       go(1)
     }, 820)
   }
-  const selectRegion = (id: string) => {
+  const selectRegion = (id: string, opener?: HTMLElement | SVGElement) => {
     if (activeRegion() === id && mapMode() === "preview") {
-      setMapMode("detail")
+      const region = pkg().map.regions.find((item) => item.id === id)
+      if (region?.sourcePath) void openDocument(region.label, region.sourcePath, opener)
+      else setMapMode("detail")
       return
     }
     setActiveRegion(id)
     setMapMode("preview")
   }
-  const selectArchive = (id: string, path?: string) => {
-    if (activeArchive() === id && path) {
-      props.onOpenSource?.(path)
-      return
+  const selectArchive = (id: string) => setActiveArchive(id)
+  const selectCharacter = (id: string) => setActiveCharacter(id)
+  async function openDocument(
+    title: string,
+    path: string,
+    opener?: HTMLElement | SVGElement,
+    returnTo?: StoryReader,
+  ) {
+    const version = ++readerVersion
+    if (opener) readerOpener = opener
+    setReader({ kind: "document", title, path, status: "loading", returnTo })
+    try {
+      const content = await props.readSource(path)
+      if (version !== readerVersion) return
+      if (content === undefined) throw new Error("正式原文不存在或尚未提交。")
+      setReader({ kind: "document", title, path, status: "ready", content, returnTo })
+    } catch (error) {
+      if (version !== readerVersion) return
+      setReader({
+        kind: "document",
+        title,
+        path,
+        status: "error",
+        message: error instanceof Error ? error.message : "无法读取正式原文。",
+        returnTo,
+      })
     }
-    setActiveArchive(id)
   }
-  const selectCharacter = (id: string, path?: string) => {
-    if (activeCharacter() === id && path) {
-      props.onOpenSource?.(path)
+  const closeReader = () => {
+    const current = reader()
+    if (current?.kind === "document" && current.returnTo) {
+      readerVersion++
+      setReader(current.returnTo)
       return
     }
-    setActiveCharacter(id)
+    readerVersion++
+    setReader(undefined)
+    queueMicrotask(() => readerOpener?.focus())
+  }
+  const openStory = (opener?: HTMLElement | SVGElement) => {
+    const title = pkg().story.title
+    if (!title) return
+    if (opener) readerOpener = opener
+    setReader({
+      kind: "story",
+      title,
+      summary: pkg().story.summary ?? "故事尚未提交。",
+      chapters: pkg().story.chapters,
+    })
+  }
+  const openArchive = (item: ReturnType<typeof archiveItems>[number], opener?: HTMLElement) => {
+    if (item.id === "novelx-package-story") {
+      openStory(opener)
+      return
+    }
+    if (item.sourcePath) void openDocument(item.title, item.sourcePath, opener)
+  }
+  const openCharacter = (character: NovelXWorldPackage["characters"][number], opener?: HTMLElement) => {
+    if (character.sourcePath) void openDocument(character.name, character.sourcePath, opener)
+  }
+  const activateArchive = (item: ReturnType<typeof archiveItems>[number], opener: HTMLElement) => {
+    if (activeArchive() === item.id) return openArchive(item, opener)
+    selectArchive(item.id)
+  }
+  const activateCharacter = (character: NovelXWorldPackage["characters"][number], opener: HTMLElement) => {
+    if (activeCharacter() === character.id) return openCharacter(character, opener)
+    selectCharacter(character.id)
   }
   const stateDetail = () => {
     if (!opened()) return "等待开启"
@@ -102,12 +181,17 @@ export function NovelXWorldPackageView(props: {
     if (mapMode() === "preview") return "地域预览已展开"
     return `${page()} / ${PAGE_NAMES.length - 1}`
   }
+  const readerBackLabel = () => {
+    const current = reader()
+    return current?.kind === "document" && current.returnTo ? "返回小说目录" : "返回世界包"
+  }
   const onWheel = (event: WheelEvent) => {
-    if (!opened() || locked() || mapMode() === "detail" || Math.abs(event.deltaY) < 18) return
+    if (reader() || !opened() || locked() || mapMode() === "detail" || Math.abs(event.deltaY) < 18) return
     event.preventDefault()
     go(page() + (event.deltaY > 0 ? 1 : -1))
   }
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && reader()) return closeReader()
     if (!opened() && (event.key === "Enter" || event.key === " ")) return openWorld()
     if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "PageDown") go(page() + 1)
     if (event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "PageUp") go(page() - 1)
@@ -117,6 +201,7 @@ export function NovelXWorldPackageView(props: {
   return (
     <article
       class="novelx-world-package-view"
+      classList={{ "is-reading": Boolean(reader()) }}
       aria-label="NovelX 世界包展览"
       tabindex="0"
       onWheel={onWheel}
@@ -145,6 +230,8 @@ export function NovelXWorldPackageView(props: {
         class="novelx-package-stage"
         classList={{ "is-dragging": dragDelta !== 0 }}
         onPointerDown={(event) => {
+          const target = event.target
+          if (target instanceof Element && target.closest("button,a,input,textarea,select,[role='button'],[data-package-interactive]")) return
           dragStart = event.clientX
           dragDelta = 0
           event.currentTarget.setPointerCapture(event.pointerId)
@@ -154,6 +241,7 @@ export function NovelXWorldPackageView(props: {
           dragDelta = event.clientX - dragStart
         }}
         onPointerUp={(event) => {
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
           if (Math.abs(dragDelta) > 64) go(page() + (dragDelta < 0 ? 1 : -1))
           dragDelta = 0
           event.currentTarget.releasePointerCapture(event.pointerId)
@@ -187,7 +275,19 @@ export function NovelXWorldPackageView(props: {
                 <Show when={pkg().map.raster}>{(source) => <image href={source()} width="1" height="1" preserveAspectRatio="xMidYMid slice" opacity=".78" />}</Show>
                 <For each={pkg().map.regions}>
                   {(region) => (
-                    <g classList={{ "is-selected": activeRegion() === region.id }} onClick={() => selectRegion(region.id)}>
+                    <g
+                      data-package-interactive
+                      classList={{ "is-selected": activeRegion() === region.id }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`查看${region.label}`}
+                      onClick={(event) => selectRegion(region.id, event.currentTarget)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" && event.key !== " ") return
+                        event.preventDefault()
+                        selectRegion(region.id, event.currentTarget)
+                      }}
+                    >
                       <polygon class="novelx-package-region" points={region.polygon.map((point) => `${point.x},${point.y}`).join(" ")} />
                       <text class="novelx-package-region-label" x={region.labelPoint.x} y={region.labelPoint.y}>{region.label}</text>
                     </g>
@@ -197,7 +297,7 @@ export function NovelXWorldPackageView(props: {
             </div>
             <Show when={selectedRegion()}>
               {(region) => (
-                <button type="button" class="novelx-package-map-caption" classList={{ "is-visible": mapMode() === "preview" }} onClick={() => selectRegion(region().id)}>
+                <button type="button" class="novelx-package-map-caption" classList={{ "is-visible": mapMode() === "preview" }} onClick={(event) => selectRegion(region().id, event.currentTarget)}>
                   <small>区域预览 · 再次点击进入</small>
                   <h2>{region().label}</h2>
                   <p>{excerptNovelXWorldPackage(region().summary, 180)}</p>
@@ -206,14 +306,15 @@ export function NovelXWorldPackageView(props: {
             </Show>
             <Show when={selectedRegion()}>
               {(region) => (
-                <button type="button" class="novelx-package-detail-sheet" onClick={() => setMapMode("preview")}>
-                  <small>完整图志 · 点击正文返回地图</small>
+                <article class="novelx-package-detail-sheet">
+                  <small>区域详情</small>
                   <h2>{region().label}</h2>
                   <p>{region().summary}</p>
                   <Show when={region().sourcePath}>
-                    {(path) => <span class="novelx-package-source-link" onClick={(event) => { event.stopPropagation(); props.onOpenSource?.(path()) }}>打开完整档案 ↗</span>}
+                    {(path) => <button type="button" class="novelx-package-source-link" onClick={(event) => void openDocument(region().label, path(), event.currentTarget)}>阅读正式原文</button>}
                   </Show>
-                </button>
+                  <button type="button" class="novelx-package-detail-return" onClick={() => setMapMode("preview")}>返回地图</button>
+                </article>
               )}
             </Show>
             <Show when={!pkg().map.regions.length}>
@@ -222,13 +323,18 @@ export function NovelXWorldPackageView(props: {
           </div>
         </article>
 
-        <article class="novelx-package-page" classList={pageClass(2)}>
+        <article class="novelx-package-page novelx-package-archive-page" classList={pageClass(2)}>
           <div class="novelx-package-page-surface">
             <span class="novelx-package-page-label">II · 历史、文献与小说</span>
             <div class="novelx-package-floating-collection is-books">
               <For each={archiveItems()}>
                 {(item) => (
-                  <button type="button" class="novelx-package-book" classList={{ "is-selected": activeArchive() === item.id }} onClick={() => selectArchive(item.id, item.sourcePath)}>
+                  <button
+                    type="button"
+                    class="novelx-package-book"
+                    classList={{ "is-selected": activeArchive() === item.id }}
+                    onClick={(event) => activateArchive(item, event.currentTarget)}
+                  >
                     <small>{item.label}</small><strong>{item.title}</strong>
                   </button>
                 )}
@@ -236,18 +342,23 @@ export function NovelXWorldPackageView(props: {
               <Show when={!archiveItems().length}><div class="novelx-package-stage-empty">历史与故事尚未生成</div></Show>
             </div>
             <Show when={selectedArchive()}>
-              {(item) => <aside class="novelx-package-entity-caption"><small>{item().label} · 再次点击打开</small><h2>{item().title}</h2><p>{excerptNovelXWorldPackage(item().summary, 220)}</p></aside>}
+              {(item) => <aside class="novelx-package-entity-caption"><small>{item().label} · 双击封面或点击下方按钮</small><h2>{item().title}</h2><p>{excerptNovelXWorldPackage(item().summary, 220)}</p><button type="button" onClick={(event) => openArchive(item(), event.currentTarget)}>打开阅读</button></aside>}
             </Show>
           </div>
         </article>
 
-        <article class="novelx-package-page" classList={pageClass(3)}>
+        <article class="novelx-package-page novelx-package-character-page" classList={pageClass(3)}>
           <div class="novelx-package-page-surface">
             <span class="novelx-package-page-label">III · 人物群像</span>
             <div class="novelx-package-floating-collection is-portraits">
               <For each={pkg().characters.slice(0, 4)}>
                 {(character) => (
-                  <button type="button" class="novelx-package-portrait" classList={{ "is-selected": activeCharacter() === character.id }} onClick={() => selectCharacter(character.id, character.sourcePath)}>
+                  <button
+                    type="button"
+                    class="novelx-package-portrait"
+                    classList={{ "is-selected": activeCharacter() === character.id }}
+                    onClick={(event) => activateCharacter(character, event.currentTarget)}
+                  >
                     <Show when={character.portrait}>{(source) => <img src={source()} alt="" />}</Show>
                     <span>{character.name}</span>
                   </button>
@@ -256,26 +367,24 @@ export function NovelXWorldPackageView(props: {
               <Show when={!pkg().characters.length}><div class="novelx-package-stage-empty">人物尚未生成</div></Show>
             </div>
             <Show when={selectedCharacter()}>
-              {(item) => <aside class="novelx-package-entity-caption"><small>人物档案 · 再次点击打开</small><h2>{item().name}</h2><p>{excerptNovelXWorldPackage(item().summary, 220)}</p></aside>}
+              {(item) => <aside class="novelx-package-entity-caption"><small>人物档案 · 双击肖像或点击下方按钮</small><h2>{item().name}</h2><p>{excerptNovelXWorldPackage(item().summary, 220)}</p><Show when={item().sourcePath}><button type="button" onClick={(event) => openCharacter(item(), event.currentTarget)}>打开档案</button></Show></aside>}
             </Show>
           </div>
         </article>
 
-        <article class="novelx-package-page" classList={pageClass(4)}>
+        <article class="novelx-package-page novelx-package-graph-page" classList={pageClass(4)}>
           <div class="novelx-package-page-surface">
-            <span class="novelx-package-page-label">IV · 世界图谱</span>
-            <div class="novelx-package-graph-space">
-              <div class="novelx-package-graph-orbit" />
-              <svg viewBox="0 0 100 100" aria-hidden="true">
-                <For each={graphNodes()}>{(_, index) => { const point = graphPoint(index(), graphNodes().length); return <line x1="50" y1="50" x2={point.x} y2={point.y} /> }}</For>
-              </svg>
-              <For each={graphNodes()}>
-                {(node, index) => {
-                  const point = () => graphPoint(index(), graphNodes().length)
-                  return <button type="button" class="novelx-package-node" style={`--node-x:${point().x}%;--node-y:${point().y}%`} onClick={() => node.sourcePath && props.onOpenSource?.(node.sourcePath)}><i /><span>{node.label}</span><small>{node.typeLabel}</small></button>
+            <div class="novelx-package-graph-embedded" data-package-interactive>
+              <NovelXGraphView
+                graph={() => pkg().graph}
+                storageKey={props.graphStorageKey}
+                readSource={props.readSource}
+                onOpenSource={(path) => {
+                  const node = pkg().graph.nodes.find((item) => item.sourcePath === path)
+                  void openDocument(node?.label ?? path, path)
                 }}
-              </For>
-              <Show when={!graphNodes().length}><div class="novelx-package-stage-empty">图谱尚未生成</div></Show>
+                onRefresh={props.onRefreshGraph}
+              />
             </div>
           </div>
         </article>
@@ -287,12 +396,58 @@ export function NovelXWorldPackageView(props: {
         </For>
       </nav>
       <div class="novelx-package-hint" classList={{ "is-visible": opened() }}><i /><span>滚轮向下或左右拖动翻页</span></div>
+      <Show when={reader()}>
+        {(current) => (
+          <article class="novelx-package-reader" aria-label="世界包正文阅读" onWheel={(event) => event.stopPropagation()}>
+            <header>
+              <button type="button" onClick={closeReader}>← {readerBackLabel()}</button>
+              <div><small>{current().kind === "story" ? "小说目录" : "正式原文"}</small><h2>{current().title}</h2></div>
+              <Show when={current().kind === "document" && props.onOpenSource}>
+                <button type="button" onClick={() => { const value = current(); if (value.kind === "document") props.onOpenSource?.(value.path) }}>在文件中打开</button>
+              </Show>
+            </header>
+            <Switch>
+              <Match when={current().kind === "story" ? current() as StoryReader : undefined}>
+                {(story) => (
+                  <div class="novelx-package-story-reader">
+                    <p>{story().summary}</p>
+                    <ol>
+                      <For each={story().chapters}>
+                        {(chapter, index) => (
+                          <li>
+                            <button
+                              type="button"
+                              disabled={!chapter.sourcePath}
+                              onClick={() => chapter.sourcePath && void openDocument(chapter.title, chapter.sourcePath, undefined, story())}
+                            >
+                              <small>第 {index() + 1} 章</small>
+                              <strong>{chapter.title}</strong>
+                              <span>{excerptNovelXWorldPackage(chapter.summary, 180)}</span>
+                            </button>
+                          </li>
+                        )}
+                      </For>
+                    </ol>
+                  </div>
+                )}
+              </Match>
+              <Match when={current().kind === "document" ? current() as DocumentReader : undefined}>
+                {(document) => (
+                  <div class="novelx-package-document-reader">
+                    <Switch>
+                      <Match when={document().status === "loading"}><div class="novelx-package-reader-status" role="status">正在读取正式原文…</div></Match>
+                      <Match when={document().status === "error"}>
+                        <div class="novelx-package-reader-status is-error" role="alert"><strong>无法读取正式原文</strong><p>{document().message}</p><button type="button" onClick={() => void openDocument(document().title, document().path, undefined, document().returnTo)}>重试</button></div>
+                      </Match>
+                      <Match when={document().status === "ready"}><Markdown text={document().content ?? ""} /></Match>
+                    </Switch>
+                  </div>
+                )}
+              </Match>
+            </Switch>
+          </article>
+        )}
+      </Show>
     </article>
   )
-}
-
-function graphPoint(index: number, total: number) {
-  const angle = -Math.PI / 2 + (Math.PI * 2 * index) / Math.max(total, 1)
-  const radius = index % 2 === 0 ? 33 : 25
-  return { x: 50 + Math.cos(angle) * radius, y: 50 + Math.sin(angle) * radius }
 }

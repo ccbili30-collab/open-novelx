@@ -1013,7 +1013,16 @@ export function NovelXResourceWorkspace(props: {
                 onRefresh={refreshGraph}
               />
             ) : resource === "package" ? (
-              <NovelXWorldPackageView package={worldPackage} onOpenSource={openGraphSource} />
+              <NovelXWorldPackageView
+                package={worldPackage}
+                graphStorageKey={`novelx:graph-sphere:v2:${sdk().directory}`}
+                readSource={async (path) => {
+                  const result = await sdk().client.file.editable({ path })
+                  return result.data?.content
+                }}
+                onRefreshGraph={refreshGraph}
+                onOpenSource={openGraphSource}
+              />
             ) : resource === "characters" && characterMaterialization() ? (
               <article class="novelx-character-overview">
                 <Show
