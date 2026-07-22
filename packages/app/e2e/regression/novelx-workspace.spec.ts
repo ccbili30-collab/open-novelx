@@ -339,6 +339,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await graphCard.click()
   await expect(resources.locator(".novelx-document-editor")).toBeVisible()
 
+  // Regression: a remembered file must never cover the graph surface after switching back.
+  await dock.locator(".novelx-resource-dock-button").nth(3).click()
+  await expect(resources.locator('[data-resource="graph"] .novelx-neural-graph')).toBeVisible()
+  await expect(resources.locator('[data-resource="graph"] .novelx-document-editor')).toHaveCount(0)
+
   await dock.getByRole("button", { name: "文件", exact: true }).click()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
   await resources.getByRole("button", { name: "World\\", exact: true }).click()
