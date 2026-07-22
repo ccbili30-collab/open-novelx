@@ -122,21 +122,21 @@ const minimalNovelProfile = {
       {
         title: "第一章 封关钟前",
         brief: "霜脊山系突降暴雪，临时商队困在北侧旧道。弥娅携带黄铜关印，必须在封关钟响前作出决定。",
-        sourceEntityIds: [],
+        sourceEntityIds: ["world-north"],
         historyReferences: [],
         documentIndices: [],
       },
       {
         title: "第二章 越过雪线",
         brief: "弥娅带队进入山路，前一章的选择立刻造成伤亡、信任与追兵压力。",
-        sourceEntityIds: [],
+        sourceEntityIds: ["world-north"],
         historyReferences: [],
         documentIndices: [],
       },
       {
         title: "第三章 关印之后",
         brief: "越境后的幸存者面对代价，弥娅必须决定黄铜关印和商队未来的归属。",
-        sourceEntityIds: [],
+        sourceEntityIds: ["world-north"],
         historyReferences: [],
         documentIndices: [],
       },
@@ -247,6 +247,18 @@ describe("NovelX story materialization", () => {
     expect(manifest.references).toEqual([])
     expect(manifest.documents).toHaveLength(3)
     expect(manifest.documents.every((document) => document.kind === "novel_chapter")).toBe(true)
+    expect(manifest.documents.every((document) => document.sourceEntityIds.length >= 1)).toBe(true)
+    expect(
+      manifest.documents.every((document) => document.sourceEntityIds.length === document.sourceSha256s.length),
+    ).toBe(true)
+
+    const unalignedDocuments = manifest.documents.map((document, index) =>
+      index === 0 ? { ...document, sourceSha256s: [] } : document,
+    )
+    const { integritySha256: _integritySha256, ...manifestWithoutIntegrity } = manifest
+    const unalignedDraft = { ...manifestWithoutIntegrity, documents: unalignedDocuments }
+    const unaligned = { ...unalignedDraft, integritySha256: worldSha256(unalignedDraft) }
+    expect(() => verifyStoryMaterialization(unaligned)).toThrow("NOVELX_STORY_DOCUMENT_SOURCE_INVALID")
 
     const committedContents: Record<string, string> = {}
     const writerSessionId = "ses-one-novel-writer"
@@ -262,9 +274,12 @@ describe("NovelX story materialization", () => {
         now: 100 + document.ordinal,
       })
       manifest = prepared.manifest
-      expect(prepared.context.worldSources).toHaveLength(world.sources.length)
-      expect(prepared.context.exactSourceTitles).toEqual([])
-      const required = document.ordinal === 1 ? prepared.context.requiredOpeningAnchors : []
+      expect(prepared.context.worldSources).toHaveLength(1)
+      expect(prepared.context.exactSourceTitles).toEqual(["霜脊山系"])
+      const required = [
+        ...prepared.context.exactSourceTitles,
+        ...(document.ordinal === 1 ? (prepared.context.requiredOpeningAnchors ?? []) : []),
+      ]
       const committed = commitStoryDocument({
         manifest,
         documentId: document.id,

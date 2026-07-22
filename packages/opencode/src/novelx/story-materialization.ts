@@ -310,7 +310,7 @@ export function registerStory(input: {
   const themeId = stableId("novel-theme", novelId, themeTitle)
   const novelChapterIds: string[] = []
   input.profile.novel.chapters.forEach((profile, index) => {
-    if (profile.sourceEntityIds.length) assertSources(profile.sourceEntityIds, `novel.chapters[${index}]`)
+    assertSources(profile.sourceEntityIds, `novel.chapters[${index}]`)
     const title = concreteLabel(profile.title, `novel.chapters[${index}].title`)
     const historyDependencies = profile.historyReferences.map((reference) => {
       const id = historyBooks[reference.historyBookIndex]?.chapterIds[reference.chapterIndex]
@@ -403,10 +403,7 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
     world: current.world,
     document: contextDocument(record),
     exactSourceTitles: exactSourceTitles(current, record),
-    worldSources: (record.kind === "novel_chapter" && record.sourceEntityIds.length === 0
-      ? current.world.sources.map((source) => source.entityId)
-      : record.sourceEntityIds
-    ).map((id) => {
+    worldSources: record.sourceEntityIds.map((id) => {
       const source = current.world.sources.find((candidate) => candidate.entityId === id)!
       const markdown = input.worldContents?.[id]
       if (input.worldContents && (!markdown || worldSha256(markdown) !== source.sha256)) {
@@ -612,6 +609,18 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
     if (document.draftPath !== `${NovelXStory.DRAFT_DIRECTORY}/${document.id}.md`) {
       fail("NOVELX_STORY_DOCUMENT_SET_INVALID", `Invalid draft path for ${document.id}.`)
     }
+    if (
+      document.sourceEntityIds.length === 0 ||
+      document.sourceEntityIds.length !== document.sourceSha256s.length
+    ) {
+      fail("NOVELX_STORY_DOCUMENT_SOURCE_INVALID", `${document.id} has missing or unaligned frozen world sources.`)
+    }
+    document.sourceEntityIds.forEach((entityId, sourceIndex) => {
+      const source = manifest.world.sources.find((candidate) => candidate.entityId === entityId)
+      if (!source || source.sha256 !== document.sourceSha256s[sourceIndex]) {
+        fail("NOVELX_STORY_DOCUMENT_SOURCE_INVALID", `${document.id} does not match its frozen world source.`)
+      }
+    })
     if (document.status === "committed" && (!document.committedSha256 || !document.taskSessionId || document.lease)) {
       fail("NOVELX_STORY_DOCUMENT_COMMIT_INVALID", `Committed story document ${document.id} is inconsistent.`)
     }

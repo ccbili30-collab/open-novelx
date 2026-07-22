@@ -7,6 +7,7 @@ import { SessionQuestionDock } from "@/pages/session/composer/session-question-d
 import { SessionFollowupDock } from "@/pages/session/composer/session-followup-dock"
 import { SessionRevertDock } from "@/pages/session/composer/session-revert-dock"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
+import { NovelXGrowthStatusBar } from "./novelx-growth-status-bar"
 import type { SessionComposerRegionController } from "./session-composer-region-controller"
 
 export function SessionComposerRegion(props: {
@@ -171,6 +172,7 @@ export function SessionComposerRegion(props: {
                   </Show>
                 </div>
               </Show>
+              <NovelXGrowthStatusBar sessionID={controller.sessionID()} />
             </div>
           </Show>
         </Show>

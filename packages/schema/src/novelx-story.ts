@@ -50,7 +50,7 @@ export interface ReferenceDocumentProfile extends Schema.Schema.Type<typeof Refe
 export const NovelChapterProfile = Schema.Struct({
   title: Label,
   brief: Summary,
-  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMaxLength(16)),
+  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
   historyReferences: Schema.Array(HistoryReferenceProfile).check(Schema.isMaxLength(8)),
   documentIndices: Schema.Array(Index).check(Schema.isMaxLength(5)),
 })
@@ -123,8 +123,8 @@ export const DocumentRecord = Schema.Struct({
   kindLabel: Label,
   brief: Summary,
   ordinal: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
-  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMaxLength(16)),
-  sourceSha256s: Schema.Array(Sha256).check(Schema.isMaxLength(16)),
+  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
+  sourceSha256s: Schema.Array(Sha256).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
   upstreamDocumentIds: Schema.Array(Schema.String).check(Schema.isMaxLength(32)),
   targetPath: Schema.String,
   draftPath: Schema.String,
