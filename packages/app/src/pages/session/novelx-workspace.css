@@ -2563,20 +2563,66 @@
   color: rgba(198, 216, 244, 0.42);
 }
 
-.novelx-neural-graph-toolbar > div {
+.novelx-neural-graph-toolbar-meta,
+.novelx-neural-graph-toolbar-meta > div {
   display: flex;
   align-items: center;
   gap: 9px;
+}
+
+.novelx-neural-graph-toolbar-meta {
+  position: relative;
   color: rgba(198, 216, 244, 0.48);
   font-size: 11px;
   letter-spacing: 0.02em;
+  pointer-events: auto;
 }
 
-.novelx-neural-graph-toolbar i {
+.novelx-neural-graph-toolbar-meta i {
   width: 2px;
   height: 2px;
   border-radius: 50%;
   background: currentColor;
+}
+
+.novelx-neural-graph-refresh {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid rgba(185, 207, 242, 0.15);
+  border-radius: 50%;
+  padding: 0;
+  color: rgba(221, 235, 255, 0.72);
+  background: rgba(11, 17, 32, 0.68);
+  font-size: 16px;
+  cursor: pointer;
+  backdrop-filter: blur(14px);
+}
+
+.novelx-neural-graph-refresh:hover:not(:disabled) {
+  border-color: rgba(188, 219, 255, 0.34);
+  color: rgba(244, 249, 255, 0.96);
+}
+
+.novelx-neural-graph-refresh:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.novelx-neural-graph-toolbar-meta > small {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  width: max-content;
+  max-width: 260px;
+  color: rgba(185, 211, 245, 0.68);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.novelx-neural-graph-toolbar-meta > small.is-error {
+  color: rgba(255, 158, 158, 0.88);
 }
 
 .novelx-neural-graph-scene {
@@ -2652,12 +2698,13 @@
 }
 
 .novelx-neural-graph-edges line {
-  stroke: rgba(139, 178, 235, 0.66);
-  stroke-width: 0.75;
+  stroke: rgba(163, 201, 250, 0.88);
+  stroke-width: 1.15;
   vector-effect: non-scaling-stroke;
   transition:
     opacity 180ms ease,
-    stroke 180ms ease;
+    stroke 180ms ease,
+    stroke-width 180ms ease;
 }
 
 .novelx-neural-graph-node {
@@ -2706,6 +2753,7 @@
 }
 
 .novelx-neural-graph-node text {
+  opacity: 0;
   fill: rgba(231, 241, 255, 0.87);
   font-family: var(--font-sans);
   font-size: 9px;
@@ -2715,6 +2763,11 @@
   stroke-width: 2.8px;
   stroke-linejoin: round;
   pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.novelx-neural-graph-node.is-label-visible text {
+  opacity: 1;
 }
 
 .novelx-neural-graph-node .novelx-neural-node-kind {
@@ -2845,6 +2898,14 @@
 }
 
 @container (max-width: 720px) {
+  .novelx-neural-graph-toolbar label {
+    width: min(210px, calc(100% - 46px));
+  }
+
+  .novelx-neural-graph-toolbar-meta {
+    flex: none;
+  }
+
   .novelx-neural-graph-card {
     top: auto;
     right: 16px;
@@ -2855,7 +2916,8 @@
     transform: none;
   }
 
-  .novelx-neural-graph-toolbar > div,
+  .novelx-neural-graph-toolbar-meta > div,
+  .novelx-neural-graph-toolbar-meta > small,
   .novelx-neural-graph-hint {
     display: none;
   }

@@ -383,6 +383,16 @@ export function NovelXResourceWorkspace(props: {
     if (projectGraph.state().status !== "idle") return
     void projectGraph.reload()
   })
+  const refreshGraph = async () => {
+    await growth.reload()
+    await Promise.all([geography.reload(), worldGrowth.reload(), storyGrowth.reload()])
+    if (graphProjection().nodes.length) return
+    if (structuredGraphAvailability() === "loading") throw new Error("世界数据仍在刷新，请稍后重试。")
+    if (structuredGraphAvailability() === "error") throw new Error("世界数据读取失败，无法安全重建图谱。")
+    await projectGraph.reload()
+    const result = projectGraph.state()
+    if (result.status === "error") throw new Error(result.message)
+  }
   const plannedItems = createMemo(() => {
     const resource = active()
     const manifest = growthManifest()
@@ -855,12 +865,13 @@ export function NovelXResourceWorkspace(props: {
             resource === "graph" ? (
               <NovelXGraphView
                 graph={() => visibleGraph().graph}
-                storageKey={`novelx:graph-sphere:v1:${sdk().directory}`}
+                storageKey={`novelx:graph-sphere:v2:${sdk().directory}`}
                 readSource={async (path) => {
                   const result = await sdk().client.file.editable({ path })
                   return result.data?.content
                 }}
                 onOpenSource={openGraphSource}
+                onRefresh={refreshGraph}
               />
             ) : resource === "story" && storyMaterialization() ? (
               <div class="novelx-story-overview">

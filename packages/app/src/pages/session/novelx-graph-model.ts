@@ -40,8 +40,19 @@ export function selectNovelXVisibleGraph(input: {
 export type NovelXSphereVector = { x: number; y: number; z: number }
 
 export type NovelXSphereLayout = {
-  version: 1
+  version: 2
   positions: Record<string, NovelXSphereVector>
+}
+
+export type NovelXGraphLabelCandidate = {
+  id: string
+  x: number
+  y: number
+  z: number
+  width: number
+  height: number
+  priority?: number
+  pinned?: boolean
 }
 
 export type NovelXGraphProjectionInput = {
@@ -101,26 +112,51 @@ const fibonacciPoint = (index: number, total: number, phase: number): NovelXSphe
   return { x: Math.cos(angle) * radius, y, z: Math.sin(angle) * radius }
 }
 
-const tangentNear = (anchor: NovelXSphereVector, id: string): NovelXSphereVector => {
-  const seed = hash(id)
+const tangentBasis = (anchor: NovelXSphereVector) => {
   const reference = Math.abs(anchor.y) < 0.85 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 }
   const tangent = normalize({
     x: reference.y * anchor.z - reference.z * anchor.y,
     y: reference.z * anchor.x - reference.x * anchor.z,
     z: reference.x * anchor.y - reference.y * anchor.x,
   })
-  const bitangent = {
-    x: anchor.y * tangent.z - anchor.z * tangent.y,
-    y: anchor.z * tangent.x - anchor.x * tangent.z,
-    z: anchor.x * tangent.y - anchor.y * tangent.x,
+  return {
+    tangent,
+    bitangent: {
+      x: anchor.y * tangent.z - anchor.z * tangent.y,
+      y: anchor.z * tangent.x - anchor.x * tangent.z,
+      z: anchor.x * tangent.y - anchor.y * tangent.x,
+    },
   }
-  const angle = ((seed % 360) / 180) * Math.PI
-  const spread = 0.24 + ((seed >>> 9) % 9) / 100
-  return normalize({
-    x: anchor.x + spread * (Math.cos(angle) * tangent.x + Math.sin(angle) * bitangent.x),
-    y: anchor.y + spread * (Math.cos(angle) * tangent.y + Math.sin(angle) * bitangent.y),
-    z: anchor.z + spread * (Math.cos(angle) * tangent.z + Math.sin(angle) * bitangent.z),
-  })
+}
+
+const tangentNear = (
+  anchor: NovelXSphereVector,
+  id: string,
+  occupied: readonly NovelXSphereVector[],
+): NovelXSphereVector => {
+  const seed = hash(id)
+  const { tangent, bitangent } = tangentBasis(anchor)
+  const phase = ((seed % 360) / 180) * Math.PI
+  let selected = anchor
+  let best = -Infinity
+  for (let index = 0; index < 32; index++) {
+    const angle = phase + index * Math.PI * (3 - Math.sqrt(5))
+    const spread = 0.28 + (index % 3) * 0.035
+    const candidate = normalize({
+      x: anchor.x + spread * (Math.cos(angle) * tangent.x + Math.sin(angle) * bitangent.x),
+      y: anchor.y + spread * (Math.cos(angle) * tangent.y + Math.sin(angle) * bitangent.y),
+      z: anchor.z + spread * (Math.cos(angle) * tangent.z + Math.sin(angle) * bitangent.z),
+    })
+    const separation = occupied.length
+      ? Math.min(
+          ...occupied.map((point) => Math.hypot(candidate.x - point.x, candidate.y - point.y, candidate.z - point.z)),
+        )
+      : 1
+    if (separation <= best) continue
+    best = separation
+    selected = candidate
+  }
+  return selected
 }
 
 const isolatedPosition = (id: string, occupied: NovelXSphereVector[]): NovelXSphereVector => {
@@ -301,7 +337,15 @@ export function evolveNovelXSphereLayout(graph: NovelXGraph, previous?: NovelXSp
     neighbors.set(edge.source, [...(neighbors.get(edge.source) ?? []), edge.target])
     neighbors.set(edge.target, [...(neighbors.get(edge.target) ?? []), edge.source])
   }
-  for (const node of [...graph.nodes].sort((a, b) => a.id.localeCompare(b.id))) {
+  const pending = [...graph.nodes].filter((node) => !positions[node.id]).sort((a, b) => a.id.localeCompare(b.id))
+  if (!Object.keys(positions).length) {
+    const phase = ((hash(pending.map((node) => node.id).join("|")) % 360) / 180) * Math.PI
+    pending.forEach((node, index) => {
+      positions[node.id] = fibonacciPoint(index, pending.length, phase)
+    })
+    return { version: 2, positions }
+  }
+  for (const node of pending) {
     if (positions[node.id]) continue
     const anchors = (neighbors.get(node.id) ?? []).flatMap((id) => {
       const position = positions[id]
@@ -314,19 +358,49 @@ export function evolveNovelXSphereLayout(graph: NovelXGraph, previous?: NovelXSp
       )
       const anchor = Math.hypot(sum.x, sum.y, sum.z) > 0.1 ? normalize(sum) : anchors[0]
       if (!anchor) continue
-      positions[node.id] = tangentNear(anchor, node.id)
+      positions[node.id] = tangentNear(anchor, node.id, Object.values(positions))
       continue
     }
     positions[node.id] = isolatedPosition(node.id, Object.values(positions))
   }
-  return { version: 1, positions }
+  return { version: 2, positions }
+}
+
+export function selectNovelXGraphLabels(candidates: readonly NovelXGraphLabelCandidate[], maxLabels = 18, padding = 6) {
+  const selected = new Set<string>()
+  const boxes: { left: number; right: number; top: number; bottom: number }[] = []
+  const ordered = [...candidates].sort(
+    (a, b) =>
+      Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
+      (b.priority ?? 0) - (a.priority ?? 0) ||
+      b.z - a.z ||
+      a.id.localeCompare(b.id),
+  )
+  for (const candidate of ordered) {
+    if (!candidate.pinned && candidate.z < -0.08) continue
+    if (!candidate.pinned && selected.size >= maxLabels) continue
+    const box = {
+      left: candidate.x - candidate.width / 2 - padding,
+      right: candidate.x + candidate.width / 2 + padding,
+      top: candidate.y - padding,
+      bottom: candidate.y + candidate.height + padding,
+    }
+    const collides = boxes.some(
+      (current) =>
+        box.left < current.right && box.right > current.left && box.top < current.bottom && box.bottom > current.top,
+    )
+    if (collides && !candidate.pinned) continue
+    selected.add(candidate.id)
+    boxes.push(box)
+  }
+  return selected
 }
 
 export function parseNovelXSphereLayout(value: string | null): NovelXSphereLayout | undefined {
   if (!value) return undefined
   try {
     const parsed: unknown = JSON.parse(value)
-    if (!parsed || typeof parsed !== "object" || !("version" in parsed) || parsed.version !== 1) return undefined
+    if (!parsed || typeof parsed !== "object" || !("version" in parsed) || parsed.version !== 2) return undefined
     if (!("positions" in parsed) || !parsed.positions || typeof parsed.positions !== "object") return undefined
     const positions: Record<string, NovelXSphereVector> = {}
     for (const [id, point] of Object.entries(parsed.positions)) {
@@ -336,7 +410,7 @@ export function parseNovelXSphereLayout(value: string | null): NovelXSphereLayou
       if (![point.x, point.y, point.z].every(Number.isFinite)) return undefined
       positions[id] = { x: point.x, y: point.y, z: point.z }
     }
-    return { version: 1, positions }
+    return { version: 2, positions }
   } catch {
     return undefined
   }

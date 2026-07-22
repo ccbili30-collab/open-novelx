@@ -5,6 +5,7 @@ import {
   novelXGraphExcerpt,
   parseNovelXSphereLayout,
   projectNovelXGraph,
+  selectNovelXGraphLabels,
   type NovelXGraph,
   type NovelXGraphProjectionInput,
 } from "./novelx-graph-model"
@@ -143,9 +144,67 @@ describe("stable spherical layout", () => {
     expect(a.x * c.x + a.y * c.y + a.z * c.z).toBeGreaterThan(0.9)
   })
 
+  test("spreads a connected first layout across the sphere instead of collapsing into one cap", () => {
+    const nodes = Array.from({ length: 30 }, (_, index) => ({
+      id: `node-${String(index).padStart(2, "0")}`,
+      label: `节点 ${index}`,
+      typeLabel: "世界实体",
+      summary: `节点 ${index} 的摘要。`,
+      status: "committed" as const,
+    }))
+    const edges = nodes
+      .slice(1)
+      .flatMap((node, index) => [
+        { id: `chain-${index}`, source: nodes[index]!.id, target: node.id, label: "相邻", summary: "链式关系。" },
+        ...(index > 1
+          ? [{ id: `hub-${index}`, source: nodes[0]!.id, target: node.id, label: "相关", summary: "中心关系。" }]
+          : []),
+      ])
+    const result = evolveNovelXSphereLayout({ nodes, edges })
+    const points = Object.values(result.positions)
+    const centroid = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y, z: sum.z + point.z }), {
+      x: 0,
+      y: 0,
+      z: 0,
+    })
+    const centroidMagnitude = Math.hypot(centroid.x, centroid.y, centroid.z) / points.length
+    const nearest = points.map((point, index) =>
+      Math.min(
+        ...points
+          .filter((_, other) => other !== index)
+          .map((other) => Math.hypot(point.x - other.x, point.y - other.y, point.z - other.z)),
+      ),
+    )
+
+    expect(centroidMagnitude).toBeLessThan(0.15)
+    expect(Math.min(...nearest)).toBeGreaterThan(0.25)
+  })
+
   test("rejects corrupt cached layout", () => {
     expect(parseNovelXSphereLayout('{"version":1,"positions":{"a":{"x":"bad"}}}')).toBeUndefined()
+    expect(parseNovelXSphereLayout('{"version":1,"positions":{"a":{"x":0,"y":0,"z":1}}}')).toBeUndefined()
+    expect(parseNovelXSphereLayout('{"version":2,"positions":{"a":{"x":0,"y":0,"z":1}}}')).toEqual({
+      version: 2,
+      positions: { a: { x: 0, y: 0, z: 1 } },
+    })
     expect(parseNovelXSphereLayout("not json")).toBeUndefined()
+  })
+
+  test("keeps important labels while hiding colliding and rear labels", () => {
+    const labels = selectNovelXGraphLabels(
+      [
+        { id: "front", x: 100, y: 100, z: 0.8, width: 80, height: 28, priority: 10 },
+        { id: "collision", x: 110, y: 102, z: 0.9, width: 80, height: 28 },
+        { id: "rear", x: 260, y: 100, z: -0.5, width: 80, height: 28, priority: 100 },
+        { id: "selected", x: 400, y: 105, z: -0.7, width: 80, height: 28, pinned: true },
+      ],
+      8,
+    )
+
+    expect(labels).toContain("selected")
+    expect(labels).toContain("front")
+    expect(labels).not.toContain("collision")
+    expect(labels).not.toContain("rear")
   })
 })
 

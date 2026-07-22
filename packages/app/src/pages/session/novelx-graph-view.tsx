@@ -4,6 +4,7 @@ import {
   evolveNovelXSphereLayout,
   novelXGraphExcerpt,
   parseNovelXSphereLayout,
+  selectNovelXGraphLabels,
   type NovelXGraph,
   type NovelXGraphNode,
   type NovelXSphereVector,
@@ -14,6 +15,8 @@ type GraphViewState = {
   selectedId?: string
   excerpt: string
   loading: boolean
+  refresh: "idle" | "loading" | "success" | "error"
+  refreshMessage?: string
 }
 
 type ProjectedPoint = NovelXSphereVector & { screenX: number; screenY: number; scale: number }
@@ -23,8 +26,14 @@ export function NovelXGraphView(props: {
   storageKey: string
   readSource: (path: string) => Promise<string | undefined>
   onOpenSource: (path: string) => void
+  onRefresh: () => Promise<void>
 }) {
-  const [state, setState] = createStore<GraphViewState>({ query: "", excerpt: "", loading: false })
+  const [state, setState] = createStore<GraphViewState>({
+    query: "",
+    excerpt: "",
+    loading: false,
+    refresh: "idle",
+  })
   const nodeElements = new Map<string, SVGGElement>()
   const edgeElements = new Map<string, SVGLineElement>()
   let scene: HTMLDivElement | undefined
@@ -68,6 +77,36 @@ export function NovelXGraphView(props: {
       localStorage.setItem(props.storageKey, JSON.stringify(layout))
     } catch {
       // Sphere coordinates are a disposable display cache.
+    }
+  }
+
+  const rebuildLayout = () => {
+    try {
+      localStorage.removeItem(props.storageKey)
+    } catch {
+      // A blocked display cache must not prevent a graph refresh.
+    }
+    layout = evolveNovelXSphereLayout(props.graph())
+    persistLayout()
+    setState("selectedId", undefined)
+    returnView = undefined
+    targetYaw = undefined
+    targetPitch = undefined
+    yaw = 0.24
+    pitch = -0.12
+    zoom = 1
+  }
+
+  const refresh = async () => {
+    if (state.refresh === "loading") return
+    setState({ refresh: "loading", refreshMessage: "正在重新读取项目…" })
+    try {
+      await props.onRefresh()
+      rebuildLayout()
+      setState({ refresh: "success", refreshMessage: "图谱已刷新" })
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "无法刷新图谱。"
+      setState({ refresh: "error", refreshMessage: message })
     }
   }
 
@@ -158,6 +197,27 @@ export function NovelXGraphView(props: {
         element.style.opacity = visible ? String((0.3 + (next.z + 1) * 0.35) * (related ? 1 : 0.18)) : "0.07"
         element.style.zIndex = String(Math.round((next.z + 1) * 100))
       }
+      const query = state.query.trim()
+      const visibleLabels = selectNovelXGraphLabels(
+        props.graph().nodes.flatMap((node) => {
+          const point = projected.get(node.id)
+          if (!point || (query && !matches(node))) return []
+          return [
+            {
+              id: node.id,
+              x: point.screenX,
+              y: point.screenY + 22 * point.scale,
+              z: point.z,
+              width: Math.max(node.label.length * 9, node.typeLabel.length * 7) * point.scale,
+              height: 30 * point.scale,
+              priority: (query ? 500 : 0) + (node.status === "committed" ? 10 : 0),
+              pinned: node.id === state.selectedId,
+            },
+          ]
+        }),
+        Math.max(8, Math.min(18, Math.floor(bounds.width / 82))),
+      )
+      for (const [id, element] of nodeElements) element.classList.toggle("is-label-visible", visibleLabels.has(id))
       for (const edge of props.graph().edges) {
         const element = edgeElements.get(edge.id)
         const source = projected.get(edge.source)
@@ -167,8 +227,14 @@ export function NovelXGraphView(props: {
         element.setAttribute("y1", String(source.screenY))
         element.setAttribute("x2", String(target.screenX))
         element.setAttribute("y2", String(target.screenY))
-        const related = !state.selectedId || edge.source === state.selectedId || edge.target === state.selectedId
-        element.style.opacity = String((0.08 + ((source.z + target.z) / 2 + 1) * 0.12) * (related ? 1 : 0.12))
+        const related = edge.source === state.selectedId || edge.target === state.selectedId
+        const depth = Math.max(0, ((source.z + target.z) / 2 + 1) / 2)
+        element.style.strokeWidth = state.selectedId ? (related ? "1.6" : "0.85") : "1.15"
+        element.style.opacity = state.selectedId
+          ? related
+            ? String(0.54 + depth * 0.36)
+            : "0.02"
+          : String(0.1 + depth * 0.18)
       }
     }
     frame = requestAnimationFrame(animate)
@@ -256,10 +322,27 @@ export function NovelXGraphView(props: {
             aria-label="搜索世界节点"
           />
         </label>
-        <div>
-          <span>{props.graph().nodes.length} 个节点</span>
-          <i />
-          <span>{props.graph().edges.length} 条关系</span>
+        <div class="novelx-neural-graph-toolbar-meta">
+          <div>
+            <span>{props.graph().nodes.length} 个节点</span>
+            <i />
+            <span>{props.graph().edges.length} 条关系</span>
+          </div>
+          <button
+            type="button"
+            class="novelx-neural-graph-refresh"
+            aria-label="刷新图谱"
+            title="重新读取当前项目并生成图谱"
+            disabled={state.refresh === "loading"}
+            onClick={() => void refresh()}
+          >
+            <span aria-hidden="true">{state.refresh === "loading" ? "…" : "↻"}</span>
+          </button>
+          <Show when={state.refreshMessage}>
+            <small classList={{ "is-error": state.refresh === "error" }} role="status">
+              {state.refreshMessage}
+            </small>
+          </Show>
         </div>
       </header>
       <div
