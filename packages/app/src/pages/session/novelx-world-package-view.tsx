@@ -2,7 +2,6 @@ import { Markdown } from "@opencode-ai/session-ui/markdown"
 import { For, Match, Show, Switch, createMemo, createSignal } from "solid-js"
 import type { NovelXWorldPackage } from "@/novelx/world-package"
 import { createNovelXWorldPackageStars, excerptNovelXWorldPackage } from "@/novelx/world-package"
-import { downloadNovelXWorldPackage } from "@/novelx/world-package-export"
 import { NovelXGraphView } from "./novelx-graph-view"
 import "./novelx-world-package.css"
 
@@ -223,7 +222,6 @@ export function NovelXWorldPackageView(props: {
       <div class="novelx-package-state" aria-live="polite">
         <strong>{PAGE_NAMES[page()]}</strong>
         <span>{stateDetail()}</span>
-        <button type="button" onClick={() => downloadNovelXWorldPackage(pkg())}>导出 .zib</button>
       </div>
 
       <section

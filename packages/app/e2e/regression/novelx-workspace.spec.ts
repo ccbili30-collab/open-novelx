@@ -343,6 +343,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await dock.getByRole("button", { name: "世界包", exact: true }).click()
   const worldPackage = resources.locator(".novelx-world-package-view")
   await expect(worldPackage).toBeVisible()
+  await expect(worldPackage.getByRole("button", { name: "导出 .zib" })).toHaveCount(0)
   await worldPackage.getByRole("button", { name: "打开世界包" }).click()
   await expect(worldPackage.locator(".novelx-package-map-page")).toHaveClass(/is-active/u)
   const packageRegion = worldPackage.getByRole("button", { name: "查看赫利俄斯同步环" }).first()

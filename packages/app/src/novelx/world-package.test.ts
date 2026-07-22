@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import { createNovelXWorldPackage, createNovelXWorldPackageStars } from "./world-package"
-import { createNovelXWorldPackageHtml, createNovelXWorldPackageZip } from "./world-package-export"
 
 const source = {
   title: "群山与河谷",
@@ -43,18 +42,6 @@ describe("NovelX world package", () => {
     expect(pkg.map.regions[0]?.sourcePath).toBe("World/North.md")
     expect(JSON.stringify(pkg)).not.toContain("prompt")
     expect(JSON.stringify(pkg)).not.toContain("agent")
-  })
-
-  test("creates a self-contained html document and a zip blob", async () => {
-    const pkg = createNovelXWorldPackage(source)
-    const html = createNovelXWorldPackageHtml(pkg)
-    expect(html).toContain("群山与河谷")
-    expect(html).toContain("const PKG=")
-    expect(html).toContain('class="stage"')
-    expect(html).toContain("const STARS=")
-    expect(html).not.toContain('class="shell"')
-    const bytes = new Uint8Array(await createNovelXWorldPackageZip(pkg).arrayBuffer())
-    expect(String.fromCharCode(...bytes.slice(0, 4))).toBe("PK\u0003\u0004")
   })
 
   test("creates a stable irregular drifting starfield for each world", () => {

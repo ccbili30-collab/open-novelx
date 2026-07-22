@@ -11,13 +11,13 @@
 - 人物肖像进入正式人物档案；没有已提交 `sourcePath` 时保持不可伪造的空入口。
 - 世界图谱页面删除独立简化环形节点实现，直接嵌入现有 `NovelXGraphView`，复用真实节点、关系、球面布局、搜索、刷新、旋转、缩放和原文入口。
 - 正文加载具有 loading、error、retry 三态；读取失败不会伪造内容，也不会破坏展览状态。
-- 浏览器 HTML 原型及临时展示脚本按用户决定停止，本批没有把相关临时文件或修改纳入工作树。
+- 浏览器 HTML 原型、HTML 形式 `.zib` 导出器和软件内导出入口已经移除；本批只保留 NovelX 软件内展示。
 
 ## 验收
 
 - `packages/app`: `bun run typecheck` 通过。
-- `packages/app`: `bun test src/novelx/world-package.test.ts src/pages/session/novelx-graph-source.test.ts src/pages/session/novelx-graph-model.test.ts`：14 passed，0 failed，41 assertions。
-- `packages/app`: `playwright test e2e/regression/novelx-workspace.spec.ts --project=chromium --workers=1`：1 passed；验证地图正式原文读取与返回、图志正式正文读取与返回、世界包复用真实图谱且旧简化节点不存在。
+- `packages/app`: `bun test src/novelx/world-package.test.ts src/pages/session/novelx-graph-source.test.ts src/pages/session/novelx-graph-model.test.ts`：13 passed，0 failed，35 assertions。
+- `packages/app`: `playwright test e2e/regression/novelx-workspace.spec.ts --project=chromium --workers=1`：最终复跑 1 passed；验证软件内无 `.zib` 导出入口、地图正式原文读取与返回、图志正式正文读取与返回、世界包复用真实图谱且旧简化节点不存在。第一次运行在测试末尾的既有页面重载恢复步骤超时，未改生产代码，立即复跑通过。
 - `packages/app`: `bun run build` 通过；保留现有动态导入与大 chunk 警告。
 - 本批未调用真实 Provider（模型服务）；功能只读取已提交的项目产物，不生成新内容。
 - 本批没有运行仓库全量测试，也没有重新打包 Electron 安装程序。
@@ -25,7 +25,7 @@
 ## 未完成 / 冻结
 
 - 当前 E2E（端到端测试）成熟夹具包含地图、图志、纪行和图谱，不包含人物与三章小说；人物档案和小说章节已接入相同读取路径，但尚未在联合成熟项目上完成自动化与 Electron（桌面运行壳）视觉验收。
-- `.zib` 离线浏览器仍沿用旧的摘要展示能力；用户已明确要求优先软件内阅读，因此本批没有继续改造离线 HTML，也不能宣称离线包已经具备同等阅读能力。
+- 离线世界包导出属于冻结需求；当前代码没有 HTML 浏览器或 `.zib` 导出能力，不能从软件界面触发。
 - 世界包只展示已经被正式物化和提交的文件；缺失正文、人物或图片时保持空状态，不用 Fixture（测试夹具）或本地模板冒充正式产物。
 
 ## 风险与恢复入口
