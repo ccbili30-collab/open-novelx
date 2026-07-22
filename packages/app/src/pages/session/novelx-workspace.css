@@ -930,6 +930,162 @@
   background: linear-gradient(180deg, rgba(74, 65, 57, 0.025), transparent 58%);
 }
 
+.novelx-character-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 8px;
+}
+
+.novelx-character-tree-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 9px;
+  color: var(--novelx-ink);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.novelx-character-tree-item:hover,
+.novelx-character-tree-item.is-selected {
+  background: rgba(83, 72, 61, 0.065);
+}
+
+.novelx-character-tree-item > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.novelx-character-tree-item small {
+  color: var(--novelx-muted);
+  font-size: 11px;
+}
+
+.novelx-character-tree-mark {
+  width: 7px;
+  height: 7px;
+  margin: auto;
+  border: 1px solid rgba(72, 63, 55, 0.42);
+  border-radius: 50%;
+  background: rgba(255, 253, 250, 0.86);
+}
+
+.novelx-character-overview {
+  display: grid;
+  grid-template-columns: minmax(230px, 38%) minmax(280px, 1fr);
+  align-items: start;
+  gap: clamp(28px, 5vw, 72px);
+  width: min(980px, calc(100% - 64px));
+  margin: 42px auto;
+}
+
+.novelx-character-portrait,
+.novelx-character-portrait-placeholder {
+  overflow: hidden;
+  aspect-ratio: 2 / 3;
+  margin: 0;
+  border: 1px solid rgba(73, 63, 54, 0.12);
+  border-radius: 8px;
+  background: #f4f0e9;
+}
+
+.novelx-character-portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.novelx-character-portrait-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  color: var(--novelx-muted);
+  text-align: center;
+  background: linear-gradient(180deg, rgba(96, 82, 68, 0.025), rgba(96, 82, 68, 0.055)), #f8f5ef;
+}
+
+.novelx-character-portrait-placeholder[data-status="failed"] {
+  color: #8b4137;
+  border-color: rgba(139, 65, 55, 0.24);
+}
+
+.novelx-character-portrait-placeholder small {
+  max-width: 100%;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.novelx-character-overview-copy {
+  padding-top: 16px;
+}
+
+.novelx-character-overview-copy > span {
+  color: var(--novelx-muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.novelx-character-overview-copy h2 {
+  margin: 10px 0 14px;
+  color: var(--novelx-ink);
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 600;
+}
+
+.novelx-character-overview-copy p {
+  max-width: 620px;
+  color: var(--novelx-ink);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.novelx-character-overview-copy dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px 18px;
+  margin: 24px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.novelx-character-overview-copy dt {
+  color: var(--novelx-muted);
+}
+
+.novelx-character-overview-copy dd {
+  margin: 0;
+  color: var(--novelx-ink);
+  overflow-wrap: anywhere;
+}
+
+.novelx-character-overview-copy button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(73, 63, 54, 0.14);
+  border-radius: 6px;
+  color: var(--novelx-ink);
+  background: rgba(255, 253, 250, 0.86);
+}
+
+@media (max-width: 920px) {
+  .novelx-character-overview {
+    grid-template-columns: minmax(180px, 34%) minmax(240px, 1fr);
+    gap: 24px;
+    width: calc(100% - 32px);
+    margin-block: 24px;
+  }
+}
+
 .novelx-resource-scaffold.is-story {
   display: flex;
   justify-content: center;

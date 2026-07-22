@@ -28,6 +28,7 @@ import {
   novelXStoryNavigationItems,
   type NovelXStoryNavigationItem,
 } from "@/context/novelx-story-growth"
+import { createNovelXCharacterGrowthController } from "@/context/novelx-character-growth"
 import { isNovelXHiddenProjectPath } from "@/context/novelx-project-files"
 import { createNovelXProjectGraphController } from "@/context/novelx-project-graph"
 import { showToast } from "@/utils/toast"
@@ -179,6 +180,7 @@ export function NovelXResourceWorkspace(props: {
   })
   const worldGrowth = createNovelXWorldGrowthController()
   const storyGrowth = createNovelXStoryGrowthController()
+  const characterGrowth = createNovelXCharacterGrowthController()
   const projectGraph = createNovelXProjectGraphController()
   const [plannedSelection, setPlannedSelection] = createSignal<Partial<Record<NovelXResource, string>>>({})
   const [terrainQuery, setTerrainQuery] = createSignal("")
@@ -271,6 +273,22 @@ export function NovelXResourceWorkspace(props: {
     committed: storyMaterialization()?.documents.filter((record) => record.status === "committed").length ?? 0,
     total: storyMaterialization()?.documents.length ?? 0,
   }))
+  const characterMaterialization = createMemo(() => {
+    const state = characterGrowth.state()
+    return state.status === "ready" ? state.materialization : undefined
+  })
+  const characterPortrait = createMemo(() => {
+    const state = characterGrowth.state()
+    return state.status === "ready" ? state.portrait : undefined
+  })
+  const characterPortraitAsset = createMemo(() => {
+    const state = characterGrowth.state()
+    return state.status === "ready" ? state.portraitAsset : undefined
+  })
+  const characterGrowthErrorMessage = createMemo(() => {
+    const state = characterGrowth.state()
+    return state.status === "error" ? state.message : "未知错误"
+  })
   createEffect(() => {
     if (active() !== "files") return
     const queue = [""]
@@ -588,6 +606,20 @@ export function NovelXResourceWorkspace(props: {
     setPlannedSelection((current) => ({ ...current, story: item.id }))
   }
 
+  const selectCharacter = () => {
+    if (!document.canLeave()) {
+      showToast({
+        variant: "default",
+        title: language.t("novelx.document.unsaved.title"),
+        description: language.t("novelx.document.unsaved.description"),
+      })
+      return
+    }
+    const record = characterMaterialization()?.document
+    view.setActiveFile(record?.status === "committed" ? record.targetPath : "")
+    setPlannedSelection((current) => ({ ...current, characters: characterMaterialization()?.protagonist?.id }))
+  }
+
   const resourcePath = (resource: NovelXResource) => {
     if (resource === "world") return "World"
     if (resource === "characters") {
@@ -611,6 +643,7 @@ export function NovelXResourceWorkspace(props: {
       return <div class="novelx-resource-empty">{language.t("novelx.resource.noStructuredData")}</div>
     }
     if (resource === "story" && storyMaterialization()) return
+    if (resource === "characters" && characterMaterialization()) return
     if (growthManifest() || worldBlueprint()) {
       if (resource === "world" && props.worldStatus() !== "tree") return
       if (resource !== "files" && !hasDirectory(path)) return
@@ -632,6 +665,34 @@ export function NovelXResourceWorkspace(props: {
 
   const renderGrowthTree = (resource: NovelXResource) => (
     <Switch>
+      <Match when={resource === "characters" && characterGrowth.state().status === "ready"}>
+        <section class="novelx-character-tree" aria-label="角色档案">
+          <Show when={characterMaterialization()?.protagonist}>
+            {(character) => (
+              <button
+                type="button"
+                class="novelx-character-tree-item"
+                classList={{ "is-selected": plannedSelection().characters === character().id }}
+                aria-pressed={plannedSelection().characters === character().id}
+                onClick={selectCharacter}
+              >
+                <span class="novelx-character-tree-mark" aria-hidden="true" />
+                <span>{character().name}</span>
+                <small>{characterMaterialization()?.document?.status === "committed" ? "已提交" : "生长中"}</small>
+              </button>
+            )}
+          </Show>
+        </section>
+      </Match>
+      <Match when={resource === "characters" && characterGrowth.state().status === "error"}>
+        <div class="novelx-growth-error" role="alert">
+          <strong>角色生长状态无法读取</strong>
+          <span>{characterGrowthErrorMessage()}</span>
+          <button type="button" onClick={characterGrowth.reload}>
+            重新读取
+          </button>
+        </div>
+      </Match>
       <Match when={resource === "story" && storyGrowth.state().status === "ready"}>
         <section class="novelx-story-tree" aria-label="故事、历史与文献">
           <For each={storyItems()}>
@@ -763,6 +824,10 @@ export function NovelXResourceWorkspace(props: {
   )
 
   const resourceEmpty = (resource: NovelXResource) => {
+    if (resource === "characters" && characterGrowth.state().status === "loading") {
+      return <div class="novelx-resource-empty">正在读取角色…</div>
+    }
+    if (resource === "characters" && characterMaterialization()) return
     if (resource === "story" && storyGrowth.state().status === "loading") {
       return <div class="novelx-resource-empty">正在读取故事…</div>
     }
@@ -792,6 +857,15 @@ export function NovelXResourceWorkspace(props: {
       return <div class="novelx-resource-empty">{language.t("session.files.empty")}</div>
     }
   }
+
+  const characterPortraitStateLabel = createMemo(() => {
+    const portrait = characterPortrait()
+    if (!portrait) return "立绘尚未注册"
+    if (portrait.task.status === "failed") return `立绘生成失败 · 已尝试 ${portrait.task.attempts}/3 次`
+    if (portrait.task.status === "attached" && !characterPortraitAsset()) return "立绘文件无法读取"
+    if (portrait.task.status === "attached") return "标准立绘已生成"
+    return `立绘正在生成 · ${portrait.task.attempts}/3 次`
+  })
 
   const terrainAtlas = () => {
     const manifest = growthManifest()
@@ -873,6 +947,42 @@ export function NovelXResourceWorkspace(props: {
                 onOpenSource={openGraphSource}
                 onRefresh={refreshGraph}
               />
+            ) : resource === "characters" && characterMaterialization() ? (
+              <article class="novelx-character-overview">
+                <Show
+                  when={characterPortraitAsset()}
+                  fallback={
+                    <div
+                      class="novelx-character-portrait-placeholder"
+                      data-status={characterPortrait()?.task.status ?? "absent"}
+                    >
+                      <NovelXResourceIcon resource="characters" size={30} />
+                      <strong>{characterPortraitStateLabel()}</strong>
+                      <Show when={characterPortrait()?.task.errorCode}>{(code) => <small>{code()}</small>}</Show>
+                    </div>
+                  }
+                >
+                  {(source) => (
+                    <figure class="novelx-character-portrait">
+                      <img src={source()} alt={`${characterMaterialization()!.protagonist?.name ?? "主角"}标准立绘`} />
+                    </figure>
+                  )}
+                </Show>
+                <div class="novelx-character-overview-copy">
+                  <span>唯一主角</span>
+                  <h2>{characterMaterialization()!.protagonist?.name ?? "角色档案"}</h2>
+                  <p>{characterMaterialization()!.protagonist?.identity}</p>
+                  <dl>
+                    <dt>外观识别</dt>
+                    <dd>{characterMaterialization()!.protagonist?.visualBrief}</dd>
+                    <dt>当前状态</dt>
+                    <dd>{characterPortraitStateLabel()}</dd>
+                  </dl>
+                  <button type="button" onClick={selectCharacter}>
+                    打开角色档案
+                  </button>
+                </div>
+              </article>
             ) : resource === "story" && storyMaterialization() ? (
               <div class="novelx-story-overview">
                 <Show
