@@ -45,6 +45,41 @@ export function selectProjectSessions<T extends ProjectSessionSummary>(sessions:
     .slice(0, Math.max(0, limit))
 }
 
+type StudyProjectSessionSummary = {
+  parentID?: string
+  agent?: string
+  directory?: string
+  time?: {
+    created?: number
+    updated?: number
+    archived?: number
+  }
+}
+
+const projectDirectoryKey = (directory: string) =>
+  directory.replaceAll("\\", "/").replace(/\/+$/u, "").toLocaleLowerCase("en-US")
+
+export function selectNovelXStudyProjectDirectories(
+  sessions: readonly StudyProjectSessionSummary[],
+  existingDirectories: readonly string[],
+) {
+  const known = new Set(existingDirectories.map(projectDirectoryKey))
+  const result: string[] = []
+  const candidates = sessions
+    .filter((session) => session.agent === "study" && !session.parentID && !session.time?.archived)
+    .toSorted((a, b) => (b.time?.updated ?? b.time?.created ?? 0) - (a.time?.updated ?? a.time?.created ?? 0))
+
+  for (const session of candidates) {
+    const directory = session.directory?.trim()
+    if (!directory) continue
+    const key = projectDirectoryKey(directory)
+    if (!key || known.has(key)) continue
+    known.add(key)
+    result.push(directory)
+  }
+  return result
+}
+
 type DraftMessage = { id: string; role: string }
 type DraftPart = { type: string; text?: string; synthetic?: boolean; ignored?: boolean }
 

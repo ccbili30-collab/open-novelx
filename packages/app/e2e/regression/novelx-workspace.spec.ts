@@ -11,6 +11,8 @@ const currentID = "ses_novelx_current"
 const stageEditorID = "ses_novelx_stage_editor"
 const olderID = "ses_novelx_older"
 const regularChildID = "ses_regular_explore_child"
+const studyDirectory = "C:/NovelX/诡秘之主-Study演示-20260723"
+const studyID = "ses_novelx_study_restored"
 const assistantID = "msg_novelx_geography_agent"
 const userMessageID = "msg_novelx_user"
 const toolPartID = "prt_novelx_write_readme"
@@ -40,6 +42,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   let conflictNext = false
   const events: unknown[] = []
   const messageRequests: { sessionID: string; phase: "start" | "end" }[] = []
+  const projectUpdates: Record<string, unknown>[] = []
   const pageErrors: string[] = []
   page.on("pageerror", (error) => pageErrors.push(error.message))
   await mockOpenCodeServer(page, {
@@ -69,6 +72,12 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
       { ...session(stageEditorID, "阶段：恒星与轨道环境", 4.5), parentID: currentID, agent: "novelx-stage-editor" },
       { ...session("ses_child", "世界：赫利俄斯同步环", 5), parentID: stageEditorID, agent: "novelx-world-writer" },
       { ...session(regularChildID, "普通探索会话", 4.8), parentID: currentID, agent: "explore" },
+      {
+        ...session(studyID, "整理 NovelX 世界、人物、作品与文献档案", 10),
+        directory: studyDirectory,
+        projectID: "global",
+        agent: "study",
+      },
       { ...session("ses_archived", "已归档草稿", 6), time: { created: 6, updated: 6, archived: 7 } },
     ],
     vcsDiff: [],
@@ -149,6 +158,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     onMessages: ({ sessionID, phase }) => {
       messageRequests.push({ sessionID, phase })
     },
+    onProjectUpdate: (input) => projectUpdates.push(input),
     message: (sessionID, messageID) =>
       sessionID === currentID ? agentMessages().find((message) => message.info.id === messageID) : undefined,
     events: () => events.splice(0, 1),
@@ -202,6 +212,21 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await page.goto(`/server/${base64Encode(server)}/session/${currentID}`)
 
   const workspace = page.getByRole("complementary", { name: "NovelX 工作区" })
+  const projectRail = page.getByRole("complementary", { name: "项目", exact: true })
+  const restoredStudyProject = projectRail.locator('.novelx-project-tile[aria-label="诡秘之主-Study演示-20260723"]')
+  await expect(restoredStudyProject).toBeVisible()
+  await restoredStudyProject.click()
+  await expect(page).toHaveURL(new RegExp(`/session/${studyID}$`))
+  await page.goto(`/server/${base64Encode(server)}/session/${currentID}`)
+
+  const currentProjectTile = projectRail.locator('.novelx-project-tile[aria-label="中土世界"]')
+  await currentProjectTile.click({ button: "right" })
+  await page.getByText("重命名", { exact: true }).click()
+  await expect(page.getByRole("dialog").getByText("重命名项目", { exact: true })).toBeVisible()
+  await page.getByRole("dialog").getByRole("textbox", { name: "名称" }).fill("群山世界")
+  await page.getByRole("dialog").getByRole("button", { name: "保存" }).click()
+  await expect.poll(() => projectUpdates.at(-1)?.name).toBe("群山世界")
+
   await expect(workspace.getByText("构建地理", { exact: true })).toBeVisible()
   await expect(workspace.getByText("建立第一批王国", { exact: true })).toBeVisible()
   await expect(workspace.getByText("内部地理工作者", { exact: true })).toHaveCount(0)

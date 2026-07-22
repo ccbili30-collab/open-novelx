@@ -16,6 +16,7 @@ export interface MockServerConfig {
   onMessages?: (input: { sessionID: string; before?: string; phase: "start" | "end" }) => void
   message?: (sessionID: string, messageID: string) => unknown
   onMessage?: (input: { sessionID: string; messageID: string }) => void
+  onProjectUpdate?: (input: Record<string, unknown>) => void
   events?: () => unknown[]
   eventRetry?: number
   todos?: (sessionID: string) => unknown[]
@@ -30,6 +31,11 @@ export interface MockServerConfig {
   }) => { body: unknown; status?: number } | Promise<{ body: unknown; status?: number }>
   findFiles?: (input: { query: string; dirs?: string; limit?: number }) => unknown
   sessionStatus?: unknown
+}
+
+function asRecord(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {}
+  return Object.fromEntries(Object.entries(input))
 }
 
 export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
@@ -48,7 +54,6 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     "/project/current": config.project,
     "/agent": config.agents ?? [{ name: "build", mode: "primary" }],
     "/vcs": { branch: "main", default_branch: "main" },
-    "/session": config.sessions,
   }
 
   await page.route("**/*", async (route) => {
@@ -73,6 +78,22 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     if (path === "/question")
       return json(route, typeof config.questions === "function" ? config.questions() : (config.questions ?? []))
     if (path === "/session/status") return json(route, config.sessionStatus ?? {})
+    if (path === "/session") {
+      const encodedDirectory = route.request().headers()["x-opencode-directory"]
+      const requestedDirectory = encodedDirectory
+        ? decodeURIComponent(encodedDirectory)
+        : url.searchParams.get("directory")
+      if (!requestedDirectory) return json(route, config.sessions)
+      const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/u, "").toLowerCase()
+      return json(
+        route,
+        config.sessions.filter(
+          (session) =>
+            normalize(typeof session.directory === "string" ? session.directory : config.directory) ===
+            normalize(requestedDirectory),
+        ),
+      )
+    }
     if (path === "/vcs/diff" && config.vcsDiff) return json(route, config.vcsDiff)
     if (path === "/file" && config.fileList)
       return json(route, await config.fileList(url.searchParams.get("path") ?? ""))
@@ -121,7 +142,14 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
     }
 
     const projectMatch = path.match(/^\/project\/([^/]+)$/)
-    if (projectMatch) return json(route, config.project)
+    if (projectMatch) {
+      if (route.request().method() === "PATCH") {
+        const input = asRecord(route.request().postDataJSON())
+        config.onProjectUpdate?.(input)
+        return json(route, { ...asRecord(config.project), ...input })
+      }
+      return json(route, config.project)
+    }
 
     const messageMatch = path.match(/^\/session\/([^/]+)\/message\/([^/]+)$/)
     if (messageMatch) {
@@ -174,6 +202,8 @@ function v2Session(session: { id: string } & Record<string, unknown>, fallbackDi
         : {}),
     },
     title: session.title ?? session.id,
+    ...(typeof session.agent === "string" ? { agent: session.agent } : {}),
+    ...(session.model && typeof session.model === "object" ? { model: session.model } : {}),
     location: {
       directory: typeof session.directory === "string" ? session.directory : fallbackDirectory,
       ...(typeof session.workspaceID === "string" ? { workspaceID: session.workspaceID } : {}),

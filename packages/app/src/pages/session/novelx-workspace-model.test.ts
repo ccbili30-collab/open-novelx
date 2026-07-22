@@ -9,6 +9,7 @@ import {
   novelXResourceOwnsDocument,
   resolveNovelXResourcePath,
   sanitizeNovelXAssistantText,
+  selectNovelXStudyProjectDirectories,
   selectProjectSessions,
   worldTreeStatus,
 } from "./novelx-workspace-model"
@@ -75,6 +76,52 @@ describe("selectProjectSessions", () => {
 
     expect(selectProjectSessions(sessions, 1).map((session) => session.id)).toEqual(["two"])
     expect(sessions.map((session) => session.id)).toEqual(["one", "two"])
+  })
+})
+
+describe("selectNovelXStudyProjectDirectories", () => {
+  test("restores distinct Study root directories that are missing from the project rail", () => {
+    const sessions = [
+      {
+        id: "study-new",
+        agent: "study",
+        directory: "C:/NovelX/Study-New",
+        time: { created: 5, updated: 8 },
+      },
+      {
+        id: "study-existing",
+        agent: "study",
+        directory: "C:/NovelX/Existing",
+        time: { created: 4, updated: 7 },
+      },
+      {
+        id: "study-duplicate",
+        agent: "study",
+        directory: "c:\\novelx\\study-new",
+        time: { created: 3, updated: 6 },
+      },
+      {
+        id: "study-child",
+        parentID: "study-new",
+        agent: "novelx-study-worker",
+        directory: "C:/NovelX/Study-New",
+        time: { created: 2, updated: 5 },
+      },
+      {
+        id: "ordinary",
+        agent: "build",
+        directory: "C:/NovelX/Ordinary",
+        time: { created: 1, updated: 4 },
+      },
+      {
+        id: "archived-study",
+        agent: "study",
+        directory: "C:/NovelX/Archived",
+        time: { created: 1, updated: 3, archived: 9 },
+      },
+    ]
+
+    expect(selectNovelXStudyProjectDirectories(sessions, ["C:/NovelX/Existing"])).toEqual(["C:/NovelX/Study-New"])
   })
 })
 

@@ -16,12 +16,13 @@ import { useSDK } from "@/context/sdk"
 import { ServerConnection } from "@/context/server"
 import { useServerSDK } from "@/context/server-sdk"
 import { useServerSync } from "@/context/server-sync"
+import { loadHomeSessionIndex } from "@/context/global-sync/home-session-index"
 import { usePlatform } from "@/context/platform"
 import { tabKey, useTabs } from "@/context/tabs"
 import { showToast } from "@/utils/toast"
 import { sessionTitle } from "@/utils/session-title"
 import { pathKey } from "@/utils/path-key"
-import { projectMonogram, selectProjectSessions } from "./novelx-workspace-model"
+import { projectMonogram, selectNovelXStudyProjectDirectories, selectProjectSessions } from "./novelx-workspace-model"
 import { useSessionKey } from "./session-layout"
 import { assertCompleteSessionList, requestSessionDeletion, sessionExistsFromGetResult } from "./session-delete"
 
@@ -58,6 +59,38 @@ export function NovelXWorkspaceSidebar() {
 
   const [drag, setDrag] = createSignal<DragItem>()
   const [pending, setPending] = createSignal<ReadonlySet<string>>(new Set())
+  const studyRecoveryAbort = new AbortController()
+  let recoveredStudyProjectsFor = ""
+
+  createEffect(() => {
+    if (!serverSync().ready) return
+    const serverKey = server()
+    if (!serverKey || recoveredStudyProjectsFor === serverKey) return
+    recoveredStudyProjectsFor = serverKey
+
+    void loadHomeSessionIndex(
+      (input, options) => serverSDK().client.v2.session.list(input, options),
+      0,
+      studyRecoveryAbort.signal,
+    )
+      .then((index) => {
+        const directories = selectNovelXStudyProjectDirectories(
+          index.sessions,
+          layout.projects.list().map((project) => project.worktree),
+        )
+        for (const directory of directories) {
+          layout.projects.open(directory)
+          void serverSync().project.loadSessions(directory)
+        }
+      })
+      .catch((error) => {
+        if (studyRecoveryAbort.signal.aborted) return
+        recoveredStudyProjectsFor = ""
+        showToast({ title: language.t("novelx.study.restore.failed"), description: errorText(error) })
+      })
+  })
+
+  onCleanup(() => studyRecoveryAbort.abort())
 
   const canCreateProject = createMemo(
     () =>
@@ -145,7 +178,13 @@ export function NovelXWorkspaceSidebar() {
       showToast({ title: language.t("novelx.project.create.unavailable") })
       return
     }
-    dialog.show(() => <DialogCreateProject openProject={activateCreatedProject} />)
+    void dialog.show(() => <DialogCreateProject openProject={activateCreatedProject} />)
+  }
+
+  const showRenameProject = (project: LocalProject) => {
+    void import("@/components/dialog-rename-project").then((module) => {
+      void dialog.show(() => <module.DialogRenameProject server={serverSDK().server} project={project} />)
+    })
   }
 
   const shortcutLabel = (shortcut: NovelXShortcut) => {
@@ -422,6 +461,9 @@ export function NovelXWorkspaceSidebar() {
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
                 <ContextMenu.Content>
+                  <ContextMenu.Item onSelect={() => showRenameProject(project)}>
+                    <ContextMenu.ItemLabel>{language.t("novelx.project.rename.action")}</ContextMenu.ItemLabel>
+                  </ContextMenu.Item>
                   <ContextMenu.Item onSelect={() => void trashProject(project)}>
                     <ContextMenu.ItemLabel>将项目文件夹移入回收站</ContextMenu.ItemLabel>
                   </ContextMenu.Item>

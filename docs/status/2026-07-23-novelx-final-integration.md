@@ -92,3 +92,21 @@ Study 检查点：
 - App 定向回归：36 pass / 0 fail / 100 assertions。
 - App 与 E2E 类型检查通过。
 - Playwright 工作台 E2E：1 pass；覆盖旧图志不阻断地图、打开文件后切世界/世界包不串台、返回文件面恢复原文件。
+
+## Study 项目恢复与重命名
+
+真实 NovelX 数据库中，Study 根会话保留了正确的项目目录，但非 Git 资料目录归属于 OpenCode 的 `global` 项目，未进入 NovelX 本地项目栏，因此正式 Study 文件与会话存在却无法从项目方块恢复。
+
+本批仅修复 App 投影，不迁移数据库、不修改 Session 的 `project_id`、不初始化 Git：
+
+- NovelX 工作区启动后读取全局根会话索引，只恢复未归档且 `agent=study` 的独立目录。
+- 恢复时按规范化 Windows 路径去重，排除 Study 子 Agent、普通会话、归档会话和已存在项目。
+- 每个恢复目录继续使用原会话与原文件路径，并加载为可切换的 NovelX 本地项目。
+- 项目方块右键菜单新增“重命名”，使用只包含名称的紧凑对话框，复用既有项目元数据持久化，不混入图标、颜色或启动脚本设置。
+
+验收：
+
+- `novelx-workspace-model.test.ts`：19 pass / 0 fail / 44 assertions。
+- App 与 E2E 类型检查通过。
+- Playwright 工作台 E2E：1 pass，37.8 秒；覆盖 Study 项目自动出现、进入原 Study 会话、项目右键重命名提交，并继续执行既有世界、文件与世界包回归路径。
+- 本批没有调用 Provider，没有启动或修改图片队列。
