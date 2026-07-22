@@ -15,6 +15,7 @@ import { Provider } from "@/provider/provider"
 import { BackgroundJob } from "@/background/job"
 import { loadWorldRuntime, publishWorldFile, withWorldMutation } from "@/tool/novelx-world-runtime"
 import { updateImageTask, verifyWorldVisuals, WorldVisualError } from "./world-visual"
+import { resolveWorldMapEditPlan } from "./world-map-variant"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
 export const WORLD_IMAGE_MODEL = ModelV2.ID.make("gpt-image-2")
@@ -160,14 +161,12 @@ function generateImage(input: {
   ].join("\n\n")
   if (input.task.type === "map") {
     return Effect.gen(function* () {
-      const mask = yield* input.fs.readFile(absoluteVisualPath(input.directory, input.manifest.atlas.semanticMaskPath))
+      const plan = resolveWorldMapEditPlan({ manifest: input.manifest, task: input.task })
+      const source = yield* input.fs.readFile(absoluteVisualPath(input.directory, plan.sourcePath))
       const form = new FormData()
       form.append("model", WORLD_IMAGE_MODEL)
-      form.append(
-        "prompt",
-        `${prompt}\n\nUse the supplied semantic color mask as a strict topology reference. Preserve coast, mountain, plain, desert, marsh, forest and ice placement while replacing flat colors with finished cartographic art.`,
-      )
-      form.append("image", new Blob([Uint8Array.from(mask).buffer], { type: "image/png" }), "semantic-mask.png")
+      form.append("prompt", `${prompt}\n\n${plan.instruction}`)
+      form.append("image", new Blob([Uint8Array.from(source).buffer], { type: "image/png" }), plan.sourceFilename)
       form.append("size", NOVELX_IMAGE_SIZE)
       form.append("quality", "low")
       form.append("response_format", "b64_json")
