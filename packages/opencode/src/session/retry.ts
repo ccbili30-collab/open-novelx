@@ -23,6 +23,19 @@ export type Retryable = {
   }
 }
 
+export type RetryScope = "default" | "novelx-growth"
+
+const NOVELX_GROWTH_STREAM_INTERRUPTION_MESSAGES = new Set([
+  "upstream response stream was interrupted",
+  "the response stream was interrupted",
+  "response stream was interrupted",
+])
+
+function retryableNovelXGrowthTransportMessage(message: string) {
+  const normalized = message.trim().replace(/[.!]+$/u, "").toLowerCase()
+  return NOVELX_GROWTH_STREAM_INTERRUPTION_MESSAGES.has(normalized)
+}
+
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
@@ -65,7 +78,7 @@ export function delay(attempt: number, error?: SessionV1.APIError) {
   return cap(Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), RETRY_MAX_DELAY_NO_HEADERS))
 }
 
-export function retryable(error: Err, provider: string) {
+export function retryable(error: Err, provider: string, options?: { scope?: RetryScope }) {
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
@@ -125,6 +138,9 @@ export function retryable(error: Err, provider: string) {
   // Check for rate limit patterns in plain text error messages
   const msg = isRecord(error.data) ? error.data.message : undefined
   if (typeof msg === "string") {
+    if (options?.scope === "novelx-growth" && retryableNovelXGrowthTransportMessage(msg)) {
+      return { message: msg }
+    }
     const lower = msg.toLowerCase()
     if (
       lower.includes("rate increased too quickly") ||
@@ -175,13 +191,14 @@ function parseJSON(value: unknown) {
 
 export function policy(opts: {
   provider: string
+  scope?: RetryScope
   parse: (error: unknown) => Err
   set: (input: { attempt: number; message: string; action?: Retryable["action"]; next: number }) => Effect.Effect<void>
 }) {
   return Schedule.fromStepWithMetadata(
     Effect.succeed((meta: Schedule.InputMetadata<unknown>) => {
       const error = opts.parse(meta.input)
-      const retry = retryable(error, opts.provider)
+      const retry = retryable(error, opts.provider, { scope: opts.scope })
       if (!retry) return Cause.done(meta.attempt)
       return Effect.gen(function* () {
         const wait = delay(meta.attempt, SessionV1.APIError.isInstance(error) ? error : undefined)

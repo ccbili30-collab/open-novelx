@@ -51,6 +51,7 @@ type Input = {
   assistantMessage: SessionV1.Assistant
   sessionID: SessionID
   model: Provider.Model
+  retryScope?: SessionRetry.RetryScope
 }
 
 export interface Interface {
@@ -660,6 +661,7 @@ const layer = Layer.effect(
             Effect.retry(
               SessionRetry.policy({
                 provider: input.model.providerID,
+                scope: input.retryScope,
                 parse,
                 set: (info) => {
                   return status.set(ctx.sessionID, {

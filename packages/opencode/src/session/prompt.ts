@@ -58,6 +58,7 @@ import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@opencode-ai/llm"
 import { novelXGrowthMessageParts } from "./novelx-growth-message"
+import { isNovelXGrowthAgent } from "@/novelx/growth-agent"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1217,6 +1218,7 @@ const layer = Layer.effect(
               assistantMessage: msg,
               sessionID,
               model,
+              retryScope: isNovelXGrowthAgent(agent.name) ? "novelx-growth" : "default",
             })
             .pipe(Effect.onInterrupt(() => finalizeInterruptedAssistant))
 

@@ -88,14 +88,14 @@ function createModel(opts: {
 
 const wide = () => ProviderTest.fake({ model: createModel({ context: 100_000, output: 32_000 }) })
 
-function createUserMessage(sessionID: SessionID, text: string) {
+function createUserMessage(sessionID: SessionID, text: string, agent = "build") {
   return Effect.gen(function* () {
     const ssn = yield* SessionNs.Service
     const msg = yield* ssn.updateMessage({
       id: MessageID.ascending(),
       role: "user",
       sessionID,
-      agent: "build",
+      agent,
       model: ref,
       time: { created: Date.now() },
     })
@@ -860,6 +860,42 @@ describe("session.compaction.process", () => {
       expect(seen).toContain(SessionCompaction.Event.Compacted.type)
       expect(seen.filter((type) => type.startsWith("session.next."))).toEqual([])
     }),
+  )
+
+  itCompaction.instance(
+    "retries a plain upstream stream interruption for Growth compaction",
+    () => {
+      const stub = llm()
+      stub.push(Stream.fail(new Error("Upstream response stream was interrupted")))
+      stub.push(reply("growth summary after retry"))
+
+      return Effect.gen(function* () {
+        const ssn = yield* SessionNs.Service
+        const session = yield* ssn.create({})
+        const msg = yield* createUserMessage(session.id, "growth context", "growth")
+        const messages = yield* ssn.messages({ sessionID: session.id })
+
+        const result = yield* SessionCompaction.use.process({
+          parentID: msg.id,
+          messages,
+          sessionID: session.id,
+          auto: false,
+        })
+
+        const summary = (yield* ssn.messages({ sessionID: session.id })).find(
+          (item) => item.info.role === "assistant" && item.info.summary,
+        )
+
+        expect(result).toBe("continue")
+        expect(summary?.info.role).toBe("assistant")
+        if (summary?.info.role !== "assistant") throw new Error("Expected a compaction assistant message")
+        expect(summary.info.error).toBeUndefined()
+        expect(summary.parts.some((part) => part.type === "text" && part.text === "growth summary after retry")).toBe(
+          true,
+        )
+      }).pipe(withCompaction({ llm: stub.llmLayer }))
+    },
+    { git: true, timeout: 10_000 },
   )
 
   itCompaction.instance(

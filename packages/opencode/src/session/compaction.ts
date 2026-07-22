@@ -22,6 +22,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { buildPrompt } from "@opencode-ai/core/session/compaction"
 import { SessionCompactionEvent } from "@opencode-ai/schema/session-compaction-event"
+import { isNovelXGrowthAgent } from "@/novelx/growth-agent"
 
 export const Event = SessionCompactionEvent
 
@@ -384,6 +385,7 @@ const layer = Layer.effect(
         assistantMessage: msg,
         sessionID: input.sessionID,
         model,
+        retryScope: isNovelXGrowthAgent(userMessage.agent) ? "novelx-growth" : "default",
       })
       const result = yield* processor.process({
         user: userMessage,

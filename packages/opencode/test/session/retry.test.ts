@@ -118,6 +118,20 @@ describe("session.retry.delay", () => {
 })
 
 describe("session.retry.retryable", () => {
+  test("retries an interrupted upstream stream only for NovelX Growth", () => {
+    const message = "Upstream response stream was interrupted"
+    const error = wrap(message)
+
+    expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+    expect(SessionRetry.retryable(error, retryProvider, { scope: "novelx-growth" })).toEqual({ message })
+  })
+
+  test("does not broadly retry unrelated NovelX Growth errors", () => {
+    const error = wrap("World materialization was interrupted by an invalid entity")
+
+    expect(SessionRetry.retryable(error, retryProvider, { scope: "novelx-growth" })).toBeUndefined()
+  })
+
   test("maps too_many_requests json messages", () => {
     const error = wrap(JSON.stringify({ type: "error", error: { type: "too_many_requests" } }))
     expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Too Many Requests" })
