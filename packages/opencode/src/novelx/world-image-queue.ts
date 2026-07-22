@@ -16,6 +16,7 @@ import { BackgroundJob } from "@/background/job"
 import { loadWorldRuntime, publishWorldFile, withWorldMutation } from "@/tool/novelx-world-runtime"
 import { updateImageTask, verifyWorldVisuals, WorldVisualError } from "./world-visual"
 import { resolveWorldMapEditPlan } from "./world-map-variant"
+import { buildDyWorldMapRequest, DY_WORLD_MAP_MODEL } from "./world-map-image-provider"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
 export const WORLD_IMAGE_MODEL = ModelV2.ID.make("gpt-image-2")
@@ -75,20 +76,29 @@ export function runWorldImageQueue(options: { directory: string }) {
         if (recovered !== current) yield* persistManifest(fs, events, runtime.directory, recovered)
         const before = recovered.tasks.find((item) => item.id === task.id)!
         if (before.status !== "queued" && before.status !== "failed") return
+        const mapEndpoint = before.type === "map" ? process.env.NOVELX_MAP_IMAGE_ENDPOINT?.trim() : undefined
+        const imageModel = mapEndpoint ? DY_WORLD_MAP_MODEL : `${IMAGE_PROVIDER}/${WORLD_IMAGE_MODEL}`
         const generating = updateImageTask({
           manifest: recovered,
           taskId: before.id,
           status: "generating",
           now: Date.now(),
-          model: `${IMAGE_PROVIDER}/${WORLD_IMAGE_MODEL}`,
+          model: imageModel,
         })
         yield* persistManifest(fs, events, runtime.directory, generating)
-        const info = yield* provider.getProvider(IMAGE_PROVIDER)
-        yield* provider.getModel(IMAGE_PROVIDER, WORLD_IMAGE_MODEL)
-        const baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
-        const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
-        if (!baseURL || !apiKey) {
-          throw new WorldVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image provider baseURL or API key is missing.")
+        let baseURL: string | undefined
+        let apiKey: string | undefined
+        if (!mapEndpoint) {
+          const info = yield* provider.getProvider(IMAGE_PROVIDER)
+          yield* provider.getModel(IMAGE_PROVIDER, WORLD_IMAGE_MODEL)
+          baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
+          apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
+          if (!baseURL || !apiKey) {
+            throw new WorldVisualError(
+              "NOVELX_IMAGE_PROVIDER_UNCONFIGURED",
+              "Image provider baseURL or API key is missing.",
+            )
+          }
         }
         const data = yield* generateImage({
           task: before,
@@ -96,6 +106,7 @@ export function runWorldImageQueue(options: { directory: string }) {
           directory: runtime.directory,
           baseURL,
           apiKey,
+          mapEndpoint,
           fs,
         })
         const validating = updateImageTask({
@@ -118,7 +129,7 @@ export function runWorldImageQueue(options: { directory: string }) {
           taskId: before.id,
           status: "attached",
           now: Date.now(),
-          model: `${IMAGE_PROVIDER}/${WORLD_IMAGE_MODEL}`,
+          model: imageModel,
           mime: validated.mime,
           assetSha256: validated.sha256,
         })
@@ -150,8 +161,9 @@ function generateImage(input: {
   task: NovelXWorldVisual.ImageTask
   manifest: NovelXWorldVisual.Manifest
   directory: string
-  baseURL: string
-  apiKey: string
+  baseURL?: string
+  apiKey?: string
+  mapEndpoint?: string
   fs: FSUtil.Interface
 }) {
   const prompt = [
@@ -163,6 +175,31 @@ function generateImage(input: {
     return Effect.gen(function* () {
       const plan = resolveWorldMapEditPlan({ manifest: input.manifest, task: input.task })
       const source = yield* input.fs.readFile(absoluteVisualPath(input.directory, plan.sourcePath))
+      if (input.mapEndpoint) {
+        const request = yield* Effect.tryPromise({
+          try: () =>
+            buildDyWorldMapRequest({
+              endpoint: input.mapEndpoint!,
+              manifest: input.manifest,
+              task: input.task,
+              source: Buffer.from(source),
+            }),
+          catch: (cause) =>
+            cause instanceof WorldVisualError
+              ? cause
+              : new WorldVisualError(
+                  "NOVELX_IMAGE_MAP_REQUEST_INVALID",
+                  cause instanceof Error ? cause.message : String(cause),
+                ),
+        })
+        return yield* requestImage(request.url, request.init, 600_000)
+      }
+      if (!input.baseURL || !input.apiKey) {
+        throw new WorldVisualError(
+          "NOVELX_IMAGE_PROVIDER_UNCONFIGURED",
+          "Image provider baseURL or API key is missing.",
+        )
+      }
       const form = new FormData()
       form.append("model", WORLD_IMAGE_MODEL)
       form.append("prompt", `${prompt}\n\n${plan.instruction}`)
@@ -176,6 +213,11 @@ function generateImage(input: {
         600_000,
       )
     })
+  }
+  if (!input.baseURL || !input.apiKey) {
+    return Effect.fail(
+      new WorldVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image provider baseURL or API key is missing."),
+    )
   }
   return requestImage(`${input.baseURL}/images/generations`, {
     method: "POST",

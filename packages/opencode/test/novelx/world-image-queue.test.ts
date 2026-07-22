@@ -3,7 +3,8 @@ import { createServer } from "node:http"
 import { NovelXWorldVisual } from "@opencode-ai/schema"
 import { Effect } from "effect"
 import { requestImage, requestImageWithNodeHttp, WORLD_IMAGE_MODEL } from "@/novelx/world-image-queue"
-import { resolveWorldMapEditPlan } from "@/novelx/world-map-variant"
+import { renderWorldMapVariantAreaMask, resolveWorldMapEditPlan } from "@/novelx/world-map-variant"
+import { buildDyWorldMapRequest } from "@/novelx/world-map-image-provider"
 
 const imageTask = (input: Partial<NovelXWorldVisual.ImageTask> & Pick<NovelXWorldVisual.ImageTask, "id">) =>
   ({
@@ -35,6 +36,75 @@ const manifestWith = (tasks: NovelXWorldVisual.ImageTask[]) =>
     schemaVersion: 3,
     atlas: { semanticMaskPath: ".novelx/visuals/world-map-semantic.png" },
     tasks,
+  }) as unknown as NovelXWorldVisual.Manifest
+
+const manifestWithAtlas = (tasks: NovelXWorldVisual.ImageTask[]) =>
+  ({
+    ...manifestWith(tasks),
+    atlas: {
+      ...manifestWith(tasks).atlas,
+      cells: [
+        {
+          id: "west",
+          center: { x: 0.25, y: 0.5 },
+          polygon: [
+            { x: 0, y: 0 },
+            { x: 0.5, y: 0 },
+            { x: 0.5, y: 1 },
+            { x: 0, y: 1 },
+          ],
+          neighborIds: ["east"],
+          surface: "plain",
+          geographyAreaEntityId: "central-plain",
+          humanAreaEntityId: null,
+          geographyLineEntityIds: [],
+          humanLineEntityIds: [],
+          pointEntityIds: [],
+        },
+        {
+          id: "east",
+          center: { x: 0.75, y: 0.5 },
+          polygon: [
+            { x: 0.5, y: 0 },
+            { x: 1, y: 0 },
+            { x: 1, y: 1 },
+            { x: 0.5, y: 1 },
+          ],
+          neighborIds: ["west"],
+          surface: "forest",
+          geographyAreaEntityId: "eastern-forest",
+          humanAreaEntityId: null,
+          geographyLineEntityIds: [],
+          humanLineEntityIds: [],
+          pointEntityIds: [],
+        },
+      ],
+      features: [
+        {
+          entityId: "central-plain",
+          layer: "geography",
+          kind: "region",
+          geometry: "area",
+          parentEntityId: null,
+          surface: "plain",
+          cellIds: ["west"],
+          rings: [
+            [
+              { x: 0, y: 0 },
+              { x: 0.5, y: 0 },
+              { x: 0.5, y: 1 },
+              { x: 0, y: 1 },
+            ],
+          ],
+          path: [],
+          label: "中央平原",
+          labelPoint: { x: 0.25, y: 0.5 },
+          summary: "位于大陆中央、与东部森林相邻的广阔平原。",
+          sourceSha256: "c".repeat(64),
+          importance: "required",
+        },
+      ],
+    },
   }) as unknown as NovelXWorldVisual.Manifest
 
 describe("NovelX world image queue", () => {
@@ -74,6 +144,104 @@ describe("NovelX world image queue", () => {
       sourcePath: "World/Media/world-map.png",
       sourceTaskId: "base",
     })
+  })
+
+  test("renders the complete selected area without internal cell seams", async () => {
+    const base = imageTask({
+      id: "base",
+      status: "attached",
+      mime: "image/png",
+      assetSha256: "b".repeat(64),
+      completedAt: 10,
+    })
+    const variant = imageTask({
+      id: "variant",
+      subtype: "region-highlight",
+      mapRole: "variant",
+      layer: "geography",
+      entityId: "central-plain",
+      baseTaskId: base.id,
+      ownerEntityId: "central-plain",
+    })
+    const bytes = await renderWorldMapVariantAreaMask({
+      manifest: manifestWithAtlas([base, variant]),
+      task: variant,
+      size: 64,
+    })
+    const photon = await import("@silvia-odwyer/photon-node")
+    const image = photon.PhotonImage.new_from_byteslice(bytes)
+    try {
+      const pixels = image.get_raw_pixels()
+      const red = (x: number, y: number) => pixels[(y * 64 + x) * 4]
+      expect(red(8, 32)).toBe(255)
+      expect(red(30, 32)).toBe(255)
+      expect(red(34, 32)).toBe(0)
+      expect(red(56, 32)).toBe(0)
+    } finally {
+      image.free()
+    }
+  })
+
+  test("fails closed when a variant does not bind an authoritative area feature", async () => {
+    const base = imageTask({
+      id: "base",
+      status: "attached",
+      mime: "image/png",
+      assetSha256: "b".repeat(64),
+      completedAt: 10,
+    })
+    const variant = imageTask({
+      id: "variant",
+      subtype: "region-highlight",
+      mapRole: "variant",
+      layer: "geography",
+      entityId: "missing-region",
+      baseTaskId: base.id,
+      ownerEntityId: "missing-region",
+    })
+    expect(
+      renderWorldMapVariantAreaMask({ manifest: manifestWithAtlas([base, variant]), task: variant, size: 64 }),
+    ).rejects.toThrow("authoritative Atlas area feature")
+  })
+
+  test("submits the complete selected area to dy-parse inpaint", async () => {
+    const photon = await import("@silvia-odwyer/photon-node")
+    const sourceImage = new photon.PhotonImage(new Uint8Array(64 * 64 * 4).fill(180), 64, 64)
+    const source = Buffer.from(sourceImage.get_bytes())
+    sourceImage.free()
+    const base = imageTask({
+      id: "base",
+      status: "attached",
+      mime: "image/png",
+      assetSha256: "b".repeat(64),
+      completedAt: 10,
+    })
+    const variant = imageTask({
+      id: "variant",
+      subtype: "region-highlight",
+      mapRole: "variant",
+      layer: "geography",
+      entityId: "central-plain",
+      baseTaskId: base.id,
+      ownerEntityId: "central-plain",
+      targetPath: "World/Media/maps/geography/central-plain.png",
+    })
+    const request = await buildDyWorldMapRequest({
+      endpoint: "https://dy-parse.example/api/v1/image/",
+      manifest: manifestWithAtlas([base, variant]),
+      task: variant,
+      source,
+    })
+    expect(request.url).toBe("https://dy-parse.example/api/v1/image/inpaint")
+    expect(request.model).toBe("dy-parse/z-image-turbo")
+    expect(request.editMask).toBeInstanceOf(Buffer)
+    const form = request.init.body as FormData
+    expect(form.get("image")).toBeInstanceOf(Blob)
+    expect(form.get("mask_image")).toBeInstanceOf(Blob)
+    expect(String(form.get("prompt"))).toContain("immutable world composition")
+    expect(String(form.get("prompt"))).toContain("complete selected region")
+    expect(form.get("width")).toBe("64")
+    expect(form.get("height")).toBe("64")
   })
 
   test("streams JSON image responses and follows a returned asset URL", async () => {

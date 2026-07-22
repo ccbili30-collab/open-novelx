@@ -202,7 +202,7 @@ export async function compileWorldVisuals(input: {
         ownerEntityId: feature.entityId,
         status: "queued" as const,
         title: `${feature.label}选中状态`,
-        prompt: mapVariantPrompt(feature),
+        prompt: worldMapVariantPrompt(feature),
         rationale: `从同一张世界底图派生${feature.label}的${feature.layer === "geography" ? "自然地理" : "人文疆域"}选中状态；名称、点击范围和档案绑定仍由权威 Atlas 投影。`,
         sourceEntityIds: sources.map((source) => source.entityId),
         sourceSha256s: sources.map((source) => source.sourceSha256),
@@ -338,7 +338,7 @@ export function worldVisualRegistrationSha256(manifest: NovelXWorldVisual.Manife
   })
 }
 
-function mapVariantPrompt(feature: NovelXWorldVisual.AtlasFeature) {
+export function worldMapVariantPrompt(feature: NovelXWorldVisual.AtlasFeature) {
   const points = feature.rings.flat()
   const extent = points.length
     ? `Target normalized extent: x ${Math.min(...points.map((point) => point.x)).toFixed(2)}-${Math.max(...points.map((point) => point.x)).toFixed(2)}, y ${Math.min(...points.map((point) => point.y)).toFixed(2)}-${Math.max(...points.map((point) => point.y)).toFixed(2)}.`
@@ -349,8 +349,9 @@ function mapVariantPrompt(feature: NovelXWorldVisual.AtlasFeature) {
     `Target context: ${feature.summary}`,
     `Approximate target label position: (${feature.labelPoint.x.toFixed(2)}, ${feature.labelPoint.y.toFixed(2)}).`,
     extent,
-    "Keep the camera, canvas, coastline, terrain placement, proportions, palette, and every non-target region substantially unchanged.",
-    "Only emphasize the target region with a restrained warm-gold perimeter, soft internal lift, and subtle outward glow suitable for a selected map state.",
+    "Keep the camera, canvas, coastline, global terrain placement, proportions, and every non-target region unchanged.",
+    "Re-render the complete target region as one coherent raised selected plate while preserving its terrain identity and connections.",
+    "Give the complete target a continuous bright warm-gold perimeter, clear inner lift, subtle outer shadow, and soft glow so the selected region is unmistakable at a glance.",
     "Do not add text, legends, grids, UI, signatures, watermarks, or new borders outside the selected region.",
   ]
     .join("\n")
