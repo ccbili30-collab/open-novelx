@@ -95,6 +95,14 @@ import { NovelXPrepareStoryCoversTool } from "./novelx-prepare-story-covers"
 import { NovelXRegisterStoryCoversTool } from "./novelx-register-story-covers"
 import { NovelXPrepareCharacterPortraitTool } from "./novelx-prepare-character-portrait"
 import { NovelXRegisterCharacterPortraitTool } from "./novelx-register-character-portrait"
+import { NovelXStartStudyTool } from "./novelx-start-study"
+import { NovelXPrepareStudySegmentTool } from "./novelx-prepare-study-segment"
+import { NovelXReadStudySegmentTool } from "./novelx-read-study-segment"
+import { NovelXCommitStudySegmentTool } from "./novelx-commit-study-segment"
+import { NovelXPrepareStudyIntegrationTool } from "./novelx-prepare-study-integration"
+import { NovelXRegisterStudyDocumentsTool } from "./novelx-register-study-documents"
+import { NovelXCommitStudyDocumentTool } from "./novelx-commit-study-document"
+import { NovelXFinishStudyTool } from "./novelx-finish-study"
 import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
@@ -192,6 +200,14 @@ const layer = Layer.effect(
     const registerStoryCovers = yield* NovelXRegisterStoryCoversTool
     const prepareCharacterPortrait = yield* NovelXPrepareCharacterPortraitTool
     const registerCharacterPortrait = yield* NovelXRegisterCharacterPortraitTool
+    const startStudy = yield* NovelXStartStudyTool
+    const prepareStudySegment = yield* NovelXPrepareStudySegmentTool
+    const readStudySegment = yield* NovelXReadStudySegmentTool
+    const commitStudySegment = yield* NovelXCommitStudySegmentTool
+    const prepareStudyIntegration = yield* NovelXPrepareStudyIntegrationTool
+    const registerStudyDocuments = yield* NovelXRegisterStudyDocumentsTool
+    const commitStudyDocument = yield* NovelXCommitStudyDocumentTool
+    const finishStudy = yield* NovelXFinishStudyTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -340,6 +356,14 @@ const layer = Layer.effect(
           registerStoryCovers: Tool.init(registerStoryCovers),
           prepareCharacterPortrait: Tool.init(prepareCharacterPortrait),
           registerCharacterPortrait: Tool.init(registerCharacterPortrait),
+          startStudy: Tool.init(startStudy),
+          prepareStudySegment: Tool.init(prepareStudySegment),
+          readStudySegment: Tool.init(readStudySegment),
+          commitStudySegment: Tool.init(commitStudySegment),
+          prepareStudyIntegration: Tool.init(prepareStudyIntegration),
+          registerStudyDocuments: Tool.init(registerStudyDocuments),
+          commitStudyDocument: Tool.init(commitStudyDocument),
+          finishStudy: Tool.init(finishStudy),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -403,6 +427,14 @@ const layer = Layer.effect(
             tool.registerStoryCovers,
             tool.prepareCharacterPortrait,
             tool.registerCharacterPortrait,
+            tool.startStudy,
+            tool.prepareStudySegment,
+            tool.readStudySegment,
+            tool.commitStudySegment,
+            tool.prepareStudyIntegration,
+            tool.registerStudyDocuments,
+            tool.commitStudyDocument,
+            tool.finishStudy,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),

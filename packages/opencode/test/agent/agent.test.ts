@@ -51,6 +51,9 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("build")
     expect(names).toContain("plan")
     expect(names).toContain("growth")
+    expect(names).toContain("study")
+    expect(names).toContain("novelx-study-worker")
+    expect(names).toContain("novelx-study-integrator")
     expect(names).toContain("novelx-stage-editor")
     expect(names).toContain("novelx-visual-editor")
     expect(names).toContain("novelx-publication-editor")
@@ -67,6 +70,39 @@ it.instance("returns default native agents when no config", () =>
     expect(names).toContain("compaction")
     expect(names).toContain("title")
     expect(names).toContain("summary")
+  }),
+)
+
+it.instance("study agents keep source reading, integration and public writing in separate permission boundaries", () =>
+  Effect.gen(function* () {
+    const study = yield* load((svc) => svc.get("study"))
+    expect(study?.mode).toBe("primary")
+    expect(study?.hidden).toBe(true)
+    expect(evalPerm(study, "novelx_start_study")).toBe("allow")
+    expect(evalPerm(study, "novelx_finish_study")).toBe("allow")
+    expect(evalPerm(study, "task", "novelx-study-worker")).toBe("allow")
+    expect(evalPerm(study, "task", "novelx-study-integrator")).toBe("allow")
+    expect(evalPerm(study, "read")).toBe("deny")
+    expect(evalPerm(study, "websearch")).toBe("deny")
+
+    const worker = yield* load((svc) => svc.get("novelx-study-worker"))
+    expect(evalPerm(worker, "novelx_prepare_study_segment")).toBe("allow")
+    expect(evalPerm(worker, "novelx_read_study_segment")).toBe("allow")
+    expect(evalPerm(worker, "novelx_commit_study_segment")).toBe("allow")
+    expect(evalPerm(worker, "novelx_commit_study_document")).toBe("deny")
+    expect(evalPerm(worker, "task", "general")).toBe("deny")
+    expect(worker?.prompt).toContain("same submission")
+    expect(worker?.prompt).toContain("at most 16 unique aliases")
+
+    const integrator = yield* load((svc) => svc.get("novelx-study-integrator"))
+    expect(evalPerm(integrator, "novelx_prepare_study_integration")).toBe("allow")
+    expect(evalPerm(integrator, "novelx_register_study_documents")).toBe("allow")
+    expect(evalPerm(integrator, "novelx_commit_study_document")).toBe("allow")
+    expect(evalPerm(integrator, "websearch")).toBe("allow")
+    expect(evalPerm(integrator, "webfetch")).toBe("allow")
+    expect(evalPerm(integrator, "write")).toBe("deny")
+    expect(integrator?.prompt).toContain("Source priority is local, web, inferred, generated")
+    expect(integrator?.prompt).toContain("Never call novelx_finish_study")
   }),
 )
 

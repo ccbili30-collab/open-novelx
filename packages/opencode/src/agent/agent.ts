@@ -25,6 +25,9 @@ import PROMPT_NOVELX_STORY_EDITOR from "./prompt/novelx-story-editor.txt"
 import PROMPT_NOVELX_STORY_WRITER from "./prompt/novelx-story-writer.txt"
 import PROMPT_NOVELX_CHARACTER_EDITOR from "./prompt/novelx-character-editor.txt"
 import PROMPT_NOVELX_CHARACTER_WRITER from "./prompt/novelx-character-writer.txt"
+import PROMPT_NOVELX_STUDY from "./prompt/novelx-study.txt"
+import PROMPT_NOVELX_STUDY_WORKER from "./prompt/novelx-study-worker.txt"
+import PROMPT_NOVELX_STUDY_INTEGRATOR from "./prompt/novelx-study-integrator.txt"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -175,6 +178,53 @@ const layer = Layer.effect(
             { permission: "doom_loop", pattern: "novelx_checkpoint_growth_memory", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_recover_growth_context", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_finish_world", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const studyRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_start_study: "allow",
+            novelx_finish_study: "allow",
+            task: {
+              "*": "deny",
+              "novelx-study-worker": "allow",
+              "novelx-study-integrator": "allow",
+            },
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_start_study", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_finish_study", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const studyWorkerRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_prepare_study_segment: "allow",
+            novelx_read_study_segment: "allow",
+            novelx_commit_study_segment: "allow",
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_prepare_study_segment", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_read_study_segment", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_commit_study_segment", action: "allow" },
+          ] satisfies PermissionV1.Ruleset,
+        )
+        const studyIntegratorRestriction = Permission.merge(
+          Permission.fromConfig({
+            "*": "deny",
+            novelx_prepare_study_integration: "allow",
+            novelx_register_study_documents: "allow",
+            novelx_commit_study_document: "allow",
+            websearch: "allow",
+            webfetch: "allow",
+          }),
+          [
+            { permission: "doom_loop", pattern: "*", action: "deny" },
+            { permission: "doom_loop", pattern: "novelx_prepare_study_integration", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_study_documents", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_commit_study_document", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
         const stageEditorRestriction = Permission.merge(
@@ -378,6 +428,39 @@ const layer = Layer.effect(
             steps: 120,
             prompt: PROMPT_NOVELX_WORLD_GROWTH,
           },
+          study: {
+            name: "study",
+            description: "NovelX Study coordinator. Converts existing project material into source-bound canonical dossiers.",
+            options: {},
+            permission: Permission.merge(defaults, user, studyRestriction),
+            mode: "primary",
+            native: true,
+            hidden: true,
+            steps: 120,
+            prompt: PROMPT_NOVELX_STUDY,
+          },
+          "novelx-study-worker": {
+            name: "novelx-study-worker",
+            description: "NovelX Study 原文分片执行器。完整读取一个不超过 80k token 的分片并返回带来源的结构化抽取。",
+            options: {},
+            permission: Permission.merge(defaults, user, studyWorkerRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 16,
+            prompt: PROMPT_NOVELX_STUDY_WORKER,
+          },
+          "novelx-study-integrator": {
+            name: "novelx-study-integrator",
+            description: "NovelX Study 整合器。合并别名与关系、补全缺口并写入正式档案。",
+            options: {},
+            permission: Permission.merge(defaults, user, studyIntegratorRestriction),
+            mode: "subagent",
+            native: true,
+            hidden: true,
+            steps: 160,
+            prompt: PROMPT_NOVELX_STUDY_INTEGRATOR,
+          },
           "novelx-stage-editor": {
             name: "novelx-stage-editor",
             description: "NovelX 阶段主编。绑定一个世界阶段，读取权威上游原文、注册实体、派发叶子并审查封存。",
@@ -576,6 +659,9 @@ const layer = Layer.effect(
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
           if (
             key === "growth" ||
+            key === "study" ||
+            key === "novelx-study-worker" ||
+            key === "novelx-study-integrator" ||
             key === "novelx-stage-editor" ||
             key === "novelx-visual-editor" ||
             key === "novelx-publication-editor" ||

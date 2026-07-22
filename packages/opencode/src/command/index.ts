@@ -10,6 +10,7 @@ import { Skill } from "../skill"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import PROMPT_NOVELX_GROWTH from "./template/novelx-growth.txt"
+import PROMPT_NOVELX_STUDY from "./template/novelx-study.txt"
 import { LegacyEvent } from "@opencode-ai/schema/legacy-event"
 
 type State = {
@@ -48,6 +49,7 @@ export const Default = {
   INIT: "init",
   REVIEW: "review",
   GROWTH: "growth",
+  STUDY: "study",
 } as const
 
 export interface Interface {
@@ -96,9 +98,17 @@ const layer = Layer.effect(
         template: PROMPT_NOVELX_GROWTH,
         hints: hints(PROMPT_NOVELX_GROWTH),
       }
+      commands[Default.STUDY] = {
+        name: Default.STUDY,
+        description: "整理并补全 NovelX 项目中的已有资料",
+        agent: "study",
+        source: "command",
+        template: PROMPT_NOVELX_STUDY,
+        hints: hints(PROMPT_NOVELX_STUDY),
+      }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
-        if (name === Default.GROWTH) continue
+        if (name === Default.GROWTH || name === Default.STUDY) continue
         commands[name] = {
           name,
           agent: command.agent,
