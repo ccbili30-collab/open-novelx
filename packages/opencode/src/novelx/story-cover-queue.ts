@@ -43,11 +43,6 @@ export function runStoryCoverQueue(options: { directory: string }) {
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     const provider = yield* Provider.Service
-    const info = yield* provider.getProvider(IMAGE_PROVIDER)
-    yield* provider.getModel(IMAGE_PROVIDER, STORY_COVER_MODEL)
-    const baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
-    const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
-    if (!baseURL || !apiKey) throw new StoryVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image Provider is missing.")
     const initial = yield* loadStoryCoverRuntime(fs)
     if (initial.story.world.directory !== options.directory) throw new StoryVisualError("NOVELX_IMAGE_DIRECTORY_MISMATCH", "Cover worker project mismatch.")
     for (const initialTask of initial.manifest.tasks) {
@@ -75,6 +70,14 @@ export function runStoryCoverQueue(options: { directory: string }) {
         })
         yield* persistStoryCovers(fs, events, runtime, generating)
         const attempt = Effect.gen(function* () {
+          const info = yield* provider.getProvider(IMAGE_PROVIDER)
+          yield* provider.getModel(IMAGE_PROVIDER, STORY_COVER_MODEL)
+          const baseURL =
+            typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
+          const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
+          if (!baseURL || !apiKey) {
+            throw new StoryVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image Provider is missing.")
+          }
           const bytes = yield* requestImage(`${baseURL}/images/generations`, {
             method: "POST",
             headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json; charset=utf-8" },

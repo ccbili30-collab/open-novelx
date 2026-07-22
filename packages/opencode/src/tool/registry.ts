@@ -93,6 +93,8 @@ import { NovelXCommitStoryDocumentTool } from "./novelx-commit-story-document"
 import { NovelXFinishStoryTool } from "./novelx-finish-story"
 import { NovelXPrepareStoryCoversTool } from "./novelx-prepare-story-covers"
 import { NovelXRegisterStoryCoversTool } from "./novelx-register-story-covers"
+import { NovelXPrepareCharacterPortraitTool } from "./novelx-prepare-character-portrait"
+import { NovelXRegisterCharacterPortraitTool } from "./novelx-register-character-portrait"
 import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
@@ -188,6 +190,8 @@ const layer = Layer.effect(
     const finishStory = yield* NovelXFinishStoryTool
     const prepareStoryCovers = yield* NovelXPrepareStoryCoversTool
     const registerStoryCovers = yield* NovelXRegisterStoryCoversTool
+    const prepareCharacterPortrait = yield* NovelXPrepareCharacterPortraitTool
+    const registerCharacterPortrait = yield* NovelXRegisterCharacterPortraitTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -334,6 +338,8 @@ const layer = Layer.effect(
           finishStory: Tool.init(finishStory),
           prepareStoryCovers: Tool.init(prepareStoryCovers),
           registerStoryCovers: Tool.init(registerStoryCovers),
+          prepareCharacterPortrait: Tool.init(prepareCharacterPortrait),
+          registerCharacterPortrait: Tool.init(registerCharacterPortrait),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -395,6 +401,8 @@ const layer = Layer.effect(
             tool.finishStory,
             tool.prepareStoryCovers,
             tool.registerStoryCovers,
+            tool.prepareCharacterPortrait,
+            tool.registerCharacterPortrait,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),

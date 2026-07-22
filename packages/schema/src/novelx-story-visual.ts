@@ -48,7 +48,7 @@ export const Manifest = Schema.Struct({
   editorSessionId: Schema.String,
   visualLanguage: Summary,
   visualLanguageSha256: Sha256,
-  tasks: Schema.Array(CoverTask).check(Schema.isMinLength(3), Schema.isMaxLength(6)),
+  tasks: Schema.Array(CoverTask).check(Schema.isMinLength(2), Schema.isMaxLength(6)),
   createdAt: Timestamp,
   updatedAt: Timestamp,
   integritySha256: Sha256,

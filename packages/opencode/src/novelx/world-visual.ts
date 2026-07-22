@@ -269,6 +269,33 @@ export function verifyWorldVisuals(input: {
   return input.manifest
 }
 
+/**
+ * Stable identity of the registered visual plan. Worker progress and attached
+ * media deliberately do not participate, so later image updates cannot make
+ * source-anchored atlas and travelogue prose stale.
+ */
+export function worldVisualRegistrationSha256(manifest: NovelXWorldVisual.Manifest) {
+  return worldSha256({
+    schemaVersion: manifest.schemaVersion,
+    stage: manifest.stage,
+    worldMaterializationIntegritySha256: manifest.worldMaterializationIntegritySha256,
+    visualLanguageSha256: manifest.visualLanguageSha256,
+    atlas: manifest.atlas,
+    tasks: manifest.tasks.map((task) => ({
+      id: task.id,
+      type: task.type,
+      subtype: task.subtype,
+      ownerEntityId: task.ownerEntityId,
+      title: task.title,
+      prompt: task.prompt,
+      rationale: task.rationale,
+      sourceEntityIds: task.sourceEntityIds,
+      sourceSha256s: task.sourceSha256s,
+      targetPath: task.targetPath,
+    })),
+  })
+}
+
 export function updateImageTask(input: {
   manifest: NovelXWorldVisual.Manifest
   taskId: string

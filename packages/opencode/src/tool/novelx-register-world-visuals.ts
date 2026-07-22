@@ -6,8 +6,9 @@ import { FileSystem } from "@opencode-ai/core/filesystem"
 import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Provider } from "@/provider/provider"
+import { BackgroundJob } from "@/background/job"
 import { compileWorldVisuals, verifyWorldVisuals } from "@/novelx/world-visual"
-import { runWorldImageQueue } from "@/novelx/world-image-queue"
+import { launchWorldImageQueue } from "@/novelx/world-image-queue"
 import { Tool } from "@/tool/tool"
 import { assertWorldVisualEditor, loadWorldRuntime, withWorldMutation } from "./novelx-world-runtime"
 
@@ -26,13 +27,14 @@ type Metadata = {
 export const NovelXRegisterWorldVisualsTool = Tool.define<
   typeof Parameters,
   Metadata,
-  FSUtil.Service | EventV2Bridge.Service | Provider.Service
+  FSUtil.Service | EventV2Bridge.Service | Provider.Service | BackgroundJob.Service
 >(
   TOOL_ID,
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     const provider = yield* Provider.Service
+    const background = yield* BackgroundJob.Service
     return {
       description:
         "Register one authoritative world Atlas mesh, semantic mask, geography/human projections, and a sparse asynchronous map/scenery image queue. This does not generate portraits or covers.",
@@ -50,6 +52,9 @@ export const NovelXRegisterWorldVisualsTool = Tool.define<
                 manifest: Schema.decodeUnknownSync(NovelXWorldVisual.Manifest)(JSON.parse(existing)),
                 materialization: runtime.materialization,
               })
+              if (current.status === "queued" || current.status === "generating") {
+                yield* launchWorldImageQueue({ directory: runtime.directory, fs, events, provider, background })
+              }
               return worldVisualRegistrationResult(current, true)
             }
             yield* ctx.ask({
@@ -71,14 +76,7 @@ export const NovelXRegisterWorldVisualsTool = Tool.define<
             yield* events.publish(FileSystem.Event.Edited, { file: manifestPath })
             yield* events.publish(Watcher.Event.Updated, { file: manifestPath, event: "add" })
             yield* events.publish(Watcher.Event.Updated, { file: maskPath, event: "add" })
-            yield* Effect.forkDetach(
-              runWorldImageQueue({ directory: runtime.directory }).pipe(
-                Effect.catchCause((cause) => Effect.logError("NovelX image queue failed to start", { cause })),
-                Effect.provideService(FSUtil.Service, fs),
-                Effect.provideService(EventV2Bridge.Service, events),
-                Effect.provideService(Provider.Service, provider),
-              ),
-            )
+            yield* launchWorldImageQueue({ directory: runtime.directory, fs, events, provider, background })
             return worldVisualRegistrationResult(compiled.manifest, false)
           }),
         ).pipe(Effect.orDie),

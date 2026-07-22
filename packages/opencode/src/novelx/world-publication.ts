@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { NovelXWorld, NovelXWorldPublication, NovelXWorldVisual } from "@opencode-ai/schema"
 import { worldSha256 } from "./world-blueprint"
+import { worldVisualRegistrationSha256 } from "./world-visual"
 
 export class WorldPublicationError extends Error {
   constructor(
@@ -50,7 +51,7 @@ export function createWorldPublication(input: {
     stage: "world_publication" as const,
     status: "writing" as const,
     worldMaterializationIntegritySha256: input.materialization.integritySha256,
-    worldVisualIntegritySha256: input.visual.integritySha256,
+    worldVisualIntegritySha256: worldVisualRegistrationSha256(input.visual),
     records: [...atlas, ...travelogues],
     createdAt: input.now,
     updatedAt: input.now,

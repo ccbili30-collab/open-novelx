@@ -12,24 +12,44 @@ import { ModelV2 } from "@opencode-ai/core/model"
 import { Watcher } from "@opencode-ai/core/filesystem/watcher"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Provider } from "@/provider/provider"
+import { BackgroundJob } from "@/background/job"
 import { loadWorldRuntime, publishWorldFile, withWorldMutation } from "@/tool/novelx-world-runtime"
 import { updateImageTask, verifyWorldVisuals, WorldVisualError } from "./world-visual"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
 export const WORLD_IMAGE_MODEL = ModelV2.ID.make("gpt-image-2")
+export const NOVELX_IMAGE_SIZE = "1024x1024"
+
+export function worldImageJobId(directory: string) {
+  return `novelx-world-images-${createHash("sha256").update(directory.toLocaleLowerCase("en-US")).digest("hex").slice(0, 24)}`
+}
+
+export function launchWorldImageQueue(input: {
+  directory: string
+  fs: FSUtil.Interface
+  events: EventV2.Interface
+  provider: Provider.Interface
+  background: BackgroundJob.Interface
+}) {
+  return input.background.start({
+    id: worldImageJobId(input.directory),
+    type: "novelx-world-image-queue",
+    title: "世界地图与风貌图片队列",
+    metadata: { directory: input.directory },
+    run: runWorldImageQueue({ directory: input.directory }).pipe(
+      Effect.provideService(FSUtil.Service, input.fs),
+      Effect.provideService(EventV2Bridge.Service, input.events),
+      Effect.provideService(Provider.Service, input.provider),
+      Effect.as("World image queue reached an authoritative terminal projection."),
+    ),
+  })
+}
 
 export function runWorldImageQueue(options: { directory: string }) {
   return Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     const provider = yield* Provider.Service
-    const info = yield* provider.getProvider(IMAGE_PROVIDER)
-    yield* provider.getModel(IMAGE_PROVIDER, WORLD_IMAGE_MODEL)
-    const baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
-    const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
-    if (!baseURL || !apiKey) {
-      throw new WorldVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image provider baseURL or API key is missing.")
-    }
     const runtime = yield* loadWorldRuntime(fs)
     if (runtime.directory !== options.directory) {
       throw new WorldVisualError("NOVELX_IMAGE_DIRECTORY_MISMATCH", "Image worker started for another project.")
@@ -62,6 +82,13 @@ export function runWorldImageQueue(options: { directory: string }) {
           model: `${IMAGE_PROVIDER}/${WORLD_IMAGE_MODEL}`,
         })
         yield* persistManifest(fs, events, runtime.directory, generating)
+        const info = yield* provider.getProvider(IMAGE_PROVIDER)
+        yield* provider.getModel(IMAGE_PROVIDER, WORLD_IMAGE_MODEL)
+        const baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
+        const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
+        if (!baseURL || !apiKey) {
+          throw new WorldVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image provider baseURL or API key is missing.")
+        }
         const data = yield* generateImage({
           task: before,
           manifest: generating,
@@ -141,7 +168,7 @@ function generateImage(input: {
         `${prompt}\n\nUse the supplied semantic color mask as a strict topology reference. Preserve coast, mountain, plain, desert, marsh, forest and ice placement while replacing flat colors with finished cartographic art.`,
       )
       form.append("image", new Blob([Uint8Array.from(mask).buffer], { type: "image/png" }), "semantic-mask.png")
-      form.append("size", "1024x1024")
+      form.append("size", NOVELX_IMAGE_SIZE)
       form.append("quality", "low")
       form.append("response_format", "b64_json")
       return yield* requestImage(
@@ -157,7 +184,7 @@ function generateImage(input: {
     body: JSON.stringify({
       model: WORLD_IMAGE_MODEL,
       prompt,
-      size: "1024x1024",
+      size: NOVELX_IMAGE_SIZE,
       quality: "low",
       response_format: "b64_json",
     }),

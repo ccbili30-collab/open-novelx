@@ -19,7 +19,7 @@ export function compileStoryVisual(input: {
   now: number
 }): NovelXStoryVisual.Manifest {
   if (input.story.status !== "text_completed" || !input.story.novel) {
-    fail("NOVELX_STORY_TEXT_INCOMPLETE", "Story covers require a completed history, reference and novel text chain.")
+    fail("NOVELX_STORY_TEXT_INCOMPLETE", "Story covers require a completed Story text chain.")
   }
   const visualLanguage = detail(input.visualLanguage, "visual language")
   const requirements = [

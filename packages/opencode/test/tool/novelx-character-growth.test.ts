@@ -2,6 +2,7 @@ import { afterEach, describe, expect } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Effect, Exit } from "effect"
+import type { NovelXWorldPublication } from "@opencode-ai/schema"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Database } from "@opencode-ai/core/database/database"
@@ -46,6 +47,9 @@ import {
   registerStory,
 } from "@/novelx/story-materialization"
 import { compileWorldBlueprint, worldSha256 } from "@/novelx/world-blueprint"
+import { compileWorldVisuals } from "@/novelx/world-visual"
+import { commitWorldPublication, createWorldPublication } from "@/novelx/world-publication"
+import { compileCharacterVisual } from "@/novelx/character-visual"
 import {
   checkpointGrowthMemory,
   commitWorldDocument,
@@ -127,16 +131,16 @@ describe("NovelX Character Growth tools", () => {
 
         const prepare = yield* (yield* NovelXPrepareCharacterTool).init()
         const prepared = yield* prepare.execute({}, editorContext)
-        expect(prepared.metadata.sourceCount).toBe(1)
+        expect(prepared.metadata.sourceCount).toBe(2)
         const resumeRoute = yield* route.execute({}, { ...rootContext, callID: "call-route-resume" })
         expect(resumeRoute.metadata).toMatchObject({ route: "character_resume", nextAgent: "novelx-character-editor" })
 
         const read = yield* (yield* NovelXReadCharacterWorldTool).init()
         const readResult = yield* read.execute(
-          { entityIds: [world.entityId] },
+          { entityIds: world.sourceEntityIds },
           { ...editorContext, callID: "call-character-read" },
         )
-        expect(readResult.metadata.totalRead).toBe(1)
+        expect(readResult.metadata.totalRead).toBe(2)
 
         const register = yield* (yield* NovelXRegisterCharacterTool).init()
         const registered = yield* register.execute(
@@ -198,8 +202,11 @@ describe("NovelX Character Growth tools", () => {
         const finished = yield* finish.execute({}, { ...editorContext, callID: "call-character-finish" })
         expect(finished.output).toContain("CHARACTER ")
         expect(finished.metadata.protagonistId).toBe(registered.metadata.protagonistId)
-        const storyRoute = yield* route.execute({}, { ...rootContext, callID: "call-route-story" })
-        expect(storyRoute.metadata).toMatchObject({ route: "story_required", nextAgent: "novelx-story-editor" })
+        const portraitRoute = yield* route.execute({}, { ...rootContext, callID: "call-route-portrait" })
+        expect(portraitRoute.metadata).toMatchObject({
+          route: "character_portrait_required",
+          nextAgent: "novelx-visual-editor",
+        })
 
         const manifest = JSON.parse(
           yield* Effect.promise(() =>
@@ -212,6 +219,21 @@ describe("NovelX Character Growth tools", () => {
         expect(manifest).toMatchObject({ status: "text_completed", schemaVersion: 1 })
         expect(manifest.document).toMatchObject({ status: "committed", taskSessionId: writer.id })
         expect(dossier.startsWith("# 弥娅·雪痕\n")).toBe(true)
+        const portrait = compileCharacterVisual({
+          character: manifest,
+          editorSessionId: "ses-visual-fixture",
+          visualLanguage: "低饱和寒地中世纪写实插画，统一自然光，不出现文字、边框或水印。",
+          prompt: "年轻寒地向导穿旧驼绒斗篷，黑发带灰白发梢，左手旧手套缺两节指套，佩戴黄铜关印。",
+          now: Date.now(),
+        })
+        yield* Effect.promise(() =>
+          fs.writeFile(
+            path.join(test.directory, ".novelx", "visuals", "character-portrait.json"),
+            JSON.stringify(portrait, null, 2) + "\n",
+          ),
+        )
+        const storyRoute = yield* route.execute({}, { ...rootContext, callID: "call-route-story" })
+        expect(storyRoute.metadata).toMatchObject({ route: "story_required", nextAgent: "novelx-story-editor" })
 
         const mismatched = createCharacterMaterialization({
           world: {
@@ -247,7 +269,10 @@ describe("NovelX Character Growth tools", () => {
         expect(storyPrepared.output).toContain("弥娅·雪痕")
 
         const readStoryWorld = yield* (yield* NovelXReadStoryWorldTool).init()
-        yield* readStoryWorld.execute({ entityIds: [world.entityId] }, { ...storyContext, callID: "call-story-world" })
+        yield* readStoryWorld.execute(
+          { entityIds: world.sourceEntityIds },
+          { ...storyContext, callID: "call-story-world" },
+        )
         const readStoryCharacter = yield* (yield* NovelXReadStoryCharacterTool).init()
         const storyCharacter = yield* readStoryCharacter.execute(
           {},
@@ -346,7 +371,7 @@ async function seedFrozenWorld(directory: string) {
         {
           label: "北境自然与关隘",
           purpose: "建立角色必须遵守的气候、道路、资源和权力边界。",
-          itemCount: 1,
+          itemCount: 2,
           dependsOnStageIndices: [],
           reasoningFocus: ["长冬如何限制迁徙与贸易", "山口如何形成关印制度"],
           documentSections: ["地貌与气候", "道路与资源", "关隘秩序"],
@@ -385,6 +410,17 @@ async function seedFrozenWorld(directory: string) {
           constraints: ["任何穿越山口的行动都受天气窗口、补给和关印三重限制。"],
           upstreamBindings: [],
         },
+        {
+          name: "三岔河谷",
+          typeLabel: "寒地河谷与补给聚落",
+          summary: "承接山口融雪并连接三条旧路的河谷，洪汛、浅滩与粮仓共同限制通行。",
+          facts: [
+            { label: "洪汛", detail: "春季融雪会淹没低地旧路，商队必须改走高岸栈道。" },
+            { label: "粮仓", detail: "河谷粮仓决定越岭队伍能够携带多少补给。" },
+          ],
+          constraints: ["任何经过河谷的行动都受水位、渡口和粮仓配给限制。"],
+          upstreamBindings: [],
+        },
       ],
       relations: [],
     },
@@ -392,6 +428,7 @@ async function seedFrozenWorld(directory: string) {
   })
   manifest = registered.manifest
   const entityId = registered.stage.entities[0]!.id
+  const valleyEntityId = registered.stage.entities[1]!.id
   const leased = prepareWorldDocument({
     manifest,
     blueprint,
@@ -415,13 +452,36 @@ async function seedFrozenWorld(directory: string) {
     now: 6,
   })
   manifest = committed.manifest
+  const valleyLeased = prepareWorldDocument({
+    manifest,
+    blueprint,
+    entityId: valleyEntityId,
+    ownerSessionId: editorSessionId,
+    ownerMessageId: "msg-stage",
+    committedDocuments: { [entityId]: committed.draft },
+    now: 7,
+  })
+  manifest = valleyLeased.manifest
+  const valleyParagraph =
+    "三岔河谷承接山口融雪，春汛会淹没低地旧路并迫使商队改走高岸栈道。渡口、水位和粮仓配给共同决定人员与货物能否继续北上。"
+  const valleyDraft = `# 三岔河谷\n\n## 事实依据\n\n${valleyParagraph.repeat(2)}\n\n## 因果推演\n\n${valleyParagraph.repeat(2)}\n\n## 地貌与气候\n\n${valleyParagraph.repeat(2)}\n\n## 道路与资源\n\n${valleyParagraph.repeat(2)}\n\n## 关隘秩序\n\n${valleyParagraph.repeat(2)}\n`
+  const valleyCommitted = commitWorldDocument({
+    manifest,
+    blueprint,
+    entityId: valleyEntityId,
+    ownerSessionId: editorSessionId,
+    taskSessionId: "ses-world-writer-valley-fixture",
+    draft: valleyDraft,
+    now: 8,
+  })
+  manifest = valleyCommitted.manifest
   const sealed = finishWorldStage({
     manifest,
     blueprint,
     stageId,
     ownerSessionId: editorSessionId,
-    navigationSummary: `霜脊山口（${entityId}）封存了长冬、旧路、补给与双印关隘的共同约束。`,
-    now: 7,
+    navigationSummary: `霜脊山口（${entityId}）封存了长冬与双印关隘约束；三岔河谷（${valleyEntityId}）封存了洪汛、渡口与粮仓配给约束。`,
+    now: 9,
   })
   manifest = sealed.manifest
   manifest = checkpointGrowthMemory({
@@ -430,9 +490,9 @@ async function seedFrozenWorld(directory: string) {
     stageId,
     ownerSessionId: growthSessionId,
     compactionMessageId: "msg-compaction-fixture",
-    now: 8,
+    now: 10,
   }).manifest
-  manifest = finishWorld({ manifest, blueprint, ownerSessionId: growthSessionId, now: 9 })
+  manifest = finishWorld({ manifest, blueprint, ownerSessionId: growthSessionId, now: 11 })
 
   await fs.mkdir(path.join(directory, ".novelx", "growth"), { recursive: true })
   await fs.mkdir(path.dirname(path.join(directory, ...committed.record.targetPath.split("/"))), { recursive: true })
@@ -445,9 +505,106 @@ async function seedFrozenWorld(directory: string) {
     JSON.stringify(manifest, null, 2) + "\n",
   )
   await fs.writeFile(path.join(directory, ...committed.record.targetPath.split("/")), committed.draft)
+  await fs.mkdir(path.dirname(path.join(directory, ...valleyCommitted.record.targetPath.split("/"))), { recursive: true })
+  await fs.writeFile(path.join(directory, ...valleyCommitted.record.targetPath.split("/")), valleyCommitted.draft)
+  const compiledVisual = await compileWorldVisuals({
+    blueprint,
+    materialization: manifest,
+    profile: {
+      visualLanguage: "低饱和寒地中世纪写实插画，统一自然光，不出现文字、边框或水印。",
+      mapPrompt: "无字寒地大陆地图，雪原、山口与河谷遵循语义蒙版，不出现网格、标签或水印。",
+      claims: [
+        {
+          entityId,
+          layer: "geography",
+          kind: "mountain",
+          geometry: "area",
+          parentEntityId: null,
+          surface: "mountain",
+          anchors: [
+            { x: 0.35, y: 0.28 },
+            { x: 0.58, y: 0.32 },
+          ],
+          radius: 0.22,
+          label: "霜脊山口",
+          summary: "连接雪原与河谷并受封雪和关印约束的季节通道。",
+          importance: "notable",
+        },
+        {
+          entityId: valleyEntityId,
+          layer: "geography",
+          kind: "region",
+          geometry: "area",
+          parentEntityId: null,
+          surface: "marsh",
+          anchors: [
+            { x: 0.42, y: 0.62 },
+            { x: 0.61, y: 0.68 },
+          ],
+          radius: 0.18,
+          label: "三岔河谷",
+          summary: "承接山口融雪并连接三条旧路的河谷补给带。",
+          importance: "required",
+        },
+      ],
+      scenery: [
+        {
+          ownerEntityId: entityId,
+          subtype: "wonder",
+          title: "霜脊雪隘",
+          rationale: "山口同时决定气候通行、补给路线和边境秩序。",
+          prompt: "广角寒地山口风景，雪崩槽、旧路和关隘聚落处于同一真实地形中，不出现文字或水印。",
+        },
+      ],
+    },
+    now: 12,
+  })
+  let publication: NovelXWorldPublication.Manifest = createWorldPublication({
+    materialization: manifest,
+    visual: compiledVisual.manifest,
+    now: 13,
+  })
+  const atlasText = `# 霜脊山口\n\n${"霜脊山口连接北侧雪原与三岔河谷，长冬、风向和雪崩共同决定旧路何时可以通行。关隘聚落以双印制度管理商队、粮食和役夫，任何赶路者都必须在补给、时间与身份暴露之间作出选择。".repeat(12)}\n`
+  const valleyAtlasText = `# 三岔河谷\n\n${"三岔河谷承接山口融雪，春汛会淹没低地旧路，迫使商队改走高岸栈道。渡口、水位和粮仓配给共同决定人员与货物能否继续北上。".repeat(12)}\n`
+  const travelogueText = `# 霜脊山口纪行\n\n署名：随商队越岭的无名账房\n\n${"我们在封关钟响以前踏上北侧旧道，向导每走一段就停下来判断风向。雪面看似平整，下面却可能藏着旧沟和松动岩层；关印、粮袋与牲口的脚力一样决定谁能越过山口。".repeat(12)}\n`
+  publication = commitWorldPublication({
+    manifest: publication,
+    entityId: valleyEntityId,
+    kind: "atlas",
+    sourceSha256: valleyCommitted.record.committedSha256!,
+    markdown: valleyAtlasText,
+    now: 15,
+  }).manifest
+  publication = commitWorldPublication({
+    manifest: publication,
+    entityId,
+    kind: "atlas",
+    sourceSha256: committed.record.committedSha256!,
+    markdown: atlasText,
+    now: 14,
+  }).manifest
+  publication = commitWorldPublication({
+    manifest: publication,
+    entityId,
+    kind: "travelogue",
+    sourceSha256: committed.record.committedSha256!,
+    markdown: travelogueText,
+    now: 16,
+  }).manifest
+  await fs.mkdir(path.join(directory, ".novelx", "visuals"), { recursive: true })
+  await fs.mkdir(path.join(directory, ".novelx", "publication"), { recursive: true })
+  await fs.writeFile(
+    path.join(directory, ".novelx", "visuals", "world-visuals.json"),
+    JSON.stringify(compiledVisual.manifest, null, 2) + "\n",
+  )
+  await fs.writeFile(
+    path.join(directory, ".novelx", "publication", "world-publication.json"),
+    JSON.stringify(publication, null, 2) + "\n",
+  )
   return {
     title: blueprint.profile.title,
     entityId,
+    sourceEntityIds: [entityId, valleyEntityId],
     materializationIntegritySha256: manifest.integritySha256,
     source: {
       entityId,

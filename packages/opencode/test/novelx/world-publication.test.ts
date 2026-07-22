@@ -5,6 +5,7 @@ import {
   createWorldPublication,
   verifyWorldPublication,
 } from "../../src/novelx/world-publication"
+import { worldVisualRegistrationSha256 } from "../../src/novelx/world-visual"
 
 const sha = (value: string) => value.repeat(64)
 const entity: NovelXWorld.RegisteredEntity = {
@@ -129,6 +130,28 @@ describe("NovelX player publication", () => {
     })
     expect(second.manifest.status).toBe("ready")
     expect(verifyWorldPublication(second.manifest)).toEqual(second.manifest)
+  })
+
+  test("keeps publication current while registered image tasks advance independently", () => {
+    const publication = createWorldPublication({ materialization, visual, now: 3 })
+    const progressed = {
+      ...visual,
+      status: "generating",
+      integritySha256: sha("9"),
+      tasks: visual.tasks.map((task) => ({
+        ...task,
+        status: "generating",
+        model: "openai-compatible/gpt-image-2",
+        startedAt: 4,
+      })),
+    } as unknown as NovelXWorldVisual.Manifest
+    expect(worldVisualRegistrationSha256(progressed)).toBe(worldVisualRegistrationSha256(visual))
+    expect(
+      verifyWorldPublication(publication, {
+        materializationSha256: materialization.integritySha256,
+        visualSha256: worldVisualRegistrationSha256(progressed),
+      }),
+    ).toEqual(publication)
   })
 
   test("fails closed on internal production vocabulary and missing travelogue byline", () => {

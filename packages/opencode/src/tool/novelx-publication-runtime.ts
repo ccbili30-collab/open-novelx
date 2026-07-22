@@ -5,7 +5,7 @@ import { NovelXWorldPublication, NovelXWorldVisual } from "@opencode-ai/schema"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { EventV2 } from "@opencode-ai/core/event"
 import { createWorldPublication, verifyWorldPublication } from "@/novelx/world-publication"
-import { verifyWorldVisuals } from "@/novelx/world-visual"
+import { verifyWorldVisuals, worldVisualRegistrationSha256 } from "@/novelx/world-visual"
 import { absoluteWorldPath, loadWorldRuntime, publishWorldFile } from "./novelx-world-runtime"
 
 export function loadWorldPublicationRuntime(fs: FSUtil.Interface, options: { create?: boolean } = {}) {
@@ -23,7 +23,7 @@ export function loadWorldPublicationRuntime(fs: FSUtil.Interface, options: { cre
     const manifest = manifestText
       ? verifyWorldPublication(Schema.decodeUnknownSync(NovelXWorldPublication.Manifest)(JSON.parse(manifestText)), {
           materializationSha256: world.materialization.integritySha256,
-          visualSha256: visual.integritySha256,
+          visualSha256: worldVisualRegistrationSha256(visual),
         })
       : options.create
         ? createWorldPublication({ materialization: world.materialization, visual, now: Date.now() })

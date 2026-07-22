@@ -112,8 +112,8 @@ it.instance(
       expect(growth?.prompt).toContain("resume that exact stage-editor task/session")
       expect(growth?.prompt).toContain("Never call recovery merely because novelx_route_growth reports")
       expect(growth?.prompt).toContain("story_required")
-      expect(growth?.prompt).toContain("A child handoff is never the terminal proof")
-      expect(growth?.prompt).toContain("Never expose Agent or tool names, Session IDs, internal paths, or SHA-256")
+      expect(growth?.prompt).toContain("a child handoff is never terminal proof")
+      expect(growth?.prompt).toContain("Never expose Agent or tool names, Session IDs, internal paths, SHA-256 values")
     }),
   { timeout: 15_000 },
 )

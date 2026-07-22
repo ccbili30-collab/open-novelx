@@ -211,6 +211,8 @@ const layer = Layer.effect(
             read: "allow",
             novelx_prepare_story_covers: "allow",
             novelx_register_story_covers: "allow",
+            novelx_prepare_character_portrait: "allow",
+            novelx_register_character_portrait: "allow",
           }),
           [
             { permission: "doom_loop", pattern: "*", action: "deny" },
@@ -219,6 +221,8 @@ const layer = Layer.effect(
             { permission: "doom_loop", pattern: "novelx_register_world_visuals", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_prepare_story_covers", action: "allow" },
             { permission: "doom_loop", pattern: "novelx_register_story_covers", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_prepare_character_portrait", action: "allow" },
+            { permission: "doom_loop", pattern: "novelx_register_character_portrait", action: "allow" },
           ] satisfies PermissionV1.Ruleset,
         )
         const publicationEditorRestriction = Permission.merge(

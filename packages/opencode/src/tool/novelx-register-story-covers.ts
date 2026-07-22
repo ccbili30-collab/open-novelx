@@ -13,7 +13,7 @@ import { assertVisualTool, loadStoryVisualLanguage, persistStoryCovers } from ".
 
 const TOOL_ID = "novelx_register_story_covers"
 export const Parameters = Schema.Struct({
-  covers: Schema.Array(NovelXStoryVisual.CoverProfile).check(Schema.isMinLength(3), Schema.isMaxLength(6)),
+  covers: Schema.Array(NovelXStoryVisual.CoverProfile).check(Schema.isMinLength(2), Schema.isMaxLength(6)),
 })
 type Metadata = { manifestPath: string; integritySha256: string; tasks: number; replayed: boolean }
 
