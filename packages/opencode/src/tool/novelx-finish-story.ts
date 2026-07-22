@@ -15,7 +15,7 @@ export const NovelXFinishStoryTool = Tool.define<typeof Parameters, Metadata, FS
     const fs = yield* FSUtil.Service
     const events = yield* EventV2Bridge.Service
     return {
-      description: "Seal the complete one-way history → documents → one protagonist-bound novel text chain.",
+      description: "Seal the complete three-chapter protagonist-bound novel text chain.",
       parameters: Parameters,
       execute: (_params, ctx) =>
         withStoryMutation(
@@ -32,7 +32,7 @@ export const NovelXFinishStoryTool = Tool.define<typeof Parameters, Metadata, FS
             return {
               title: "故事正文已封存",
               metadata: { integritySha256: manifest.integritySha256, documents: manifest.documents.length, novel: manifest.novel.title },
-              output: `历史书、关键文献与小说共 ${manifest.documents.length} 份文稿已按单向因果链封存。返回 Growth；本轮不启动封面图片，不得回写世界或角色。`,
+              output: `三章小说共 ${manifest.documents.length} 份文稿已封存。返回 Growth；本轮不启动封面图片，不得回写世界或角色。`,
             }
           }),
         ).pipe(Effect.orDie),

@@ -46,7 +46,7 @@ export const NovelXPrepareStoryTool = Tool.define<typeof Parameters, Metadata, F
                 protagonist: runtime.manifest.schemaVersion === 2 ? runtime.manifest.protagonist : null,
                 next:
                   runtime.manifest.status === "planning"
-                    ? "分批读取全部世界原文，并读取唯一主角原文，再注册历史书、文献和一部小说。"
+                    ? "读取全部世界原文和唯一主角原文，再注册一部三章小说；历史书与文献保持为空。"
                     : runtime.manifest.status === "text_completed"
                       ? "正文已经封存；返回 Growth，不要重写正文或启动图片。"
                       : "继续现有未提交文档。",

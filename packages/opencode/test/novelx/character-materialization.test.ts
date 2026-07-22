@@ -89,7 +89,7 @@ const registered = () => {
 }
 
 const exactSourceTitles = world.sources.map((source) => source.title).join("、")
-const dossier = `# ${profile.name}\n\n她的来路同时受${exactSourceTitles}约束。\n\n${"她在风雪封关前检查每一枚关印，也记得每条旧路曾经吞没过谁。".repeat(45)}\n`
+const dossier = `# ${profile.name}\n\n她的来路同时受${exactSourceTitles}约束。有些旧伤的因果仍无法确定，但这不是尚待填写的生产说明。\n\n${"她在风雪封关前检查每一枚关印，也记得每条旧路曾经吞没过谁。".repeat(45)}\n`
 
 describe("NovelX character materialization", () => {
   test("creates a frozen world snapshot and registers exactly one stable protagonist after every source was read", () => {

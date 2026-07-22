@@ -50,22 +50,22 @@ export interface ReferenceDocumentProfile extends Schema.Schema.Type<typeof Refe
 export const NovelChapterProfile = Schema.Struct({
   title: Label,
   brief: Summary,
-  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
-  historyReferences: Schema.Array(HistoryReferenceProfile).check(Schema.isMinLength(1), Schema.isMaxLength(8)),
-  documentIndices: Schema.Array(Index).check(Schema.isMinLength(1), Schema.isMaxLength(5)),
+  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMaxLength(16)),
+  historyReferences: Schema.Array(HistoryReferenceProfile).check(Schema.isMaxLength(8)),
+  documentIndices: Schema.Array(Index).check(Schema.isMaxLength(5)),
 })
 export interface NovelChapterProfile extends Schema.Schema.Type<typeof NovelChapterProfile> {}
 
 export const RegistrationProfile = Schema.Struct({
   contextSha256: Sha256,
-  historyBooks: Schema.Array(HistoryBookProfile).check(Schema.isMinLength(1), Schema.isMaxLength(4)),
-  references: Schema.Array(ReferenceDocumentProfile).check(Schema.isMinLength(2), Schema.isMaxLength(5)),
+  historyBooks: Schema.Array(HistoryBookProfile).check(Schema.isMaxLength(4)),
+  references: Schema.Array(ReferenceDocumentProfile).check(Schema.isMaxLength(5)),
   novel: Schema.Struct({
     title: Label,
     author: Label,
     summary: Summary,
     theme: Schema.Struct({ title: Label, summary: Summary }),
-    chapters: Schema.Array(NovelChapterProfile).check(Schema.isMinLength(6), Schema.isMaxLength(8)),
+    chapters: Schema.Array(NovelChapterProfile).check(Schema.isMinLength(3), Schema.isMaxLength(8)),
   }),
 })
 export interface RegistrationProfile extends Schema.Schema.Type<typeof RegistrationProfile> {}
@@ -97,7 +97,7 @@ export const NovelWork = Schema.Struct({
   author: Label,
   summary: Summary,
   theme: Schema.Struct({ id: Schema.String, title: Label, summary: Summary }),
-  chapters: Schema.Array(Schema.String).check(Schema.isMinLength(6), Schema.isMaxLength(8)),
+  chapters: Schema.Array(Schema.String).check(Schema.isMinLength(3), Schema.isMaxLength(8)),
 })
 export interface NovelWork extends Schema.Schema.Type<typeof NovelWork> {}
 
@@ -123,8 +123,8 @@ export const DocumentRecord = Schema.Struct({
   kindLabel: Label,
   brief: Summary,
   ordinal: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
-  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
-  sourceSha256s: Schema.Array(Sha256).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
+  sourceEntityIds: Schema.Array(Schema.String).check(Schema.isMaxLength(16)),
+  sourceSha256s: Schema.Array(Sha256).check(Schema.isMaxLength(16)),
   upstreamDocumentIds: Schema.Array(Schema.String).check(Schema.isMaxLength(32)),
   targetPath: Schema.String,
   draftPath: Schema.String,

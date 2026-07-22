@@ -165,14 +165,14 @@ export function registerStory(input: {
       )
     }
   }
-  if (input.profile.historyBooks.length < 1 || input.profile.historyBooks.length > 4) {
-    fail("NOVELX_STORY_HISTORY_COUNT_INVALID", "Story Growth requires one to four named history books.")
+  if (input.profile.historyBooks.length > 4) {
+    fail("NOVELX_STORY_HISTORY_COUNT_INVALID", "Story Growth accepts at most four named history books.")
   }
-  if (input.profile.references.length < 2 || input.profile.references.length > 5) {
-    fail("NOVELX_STORY_REFERENCE_COUNT_INVALID", "Story Growth requires two to five reference documents.")
+  if (input.profile.references.length > 5) {
+    fail("NOVELX_STORY_REFERENCE_COUNT_INVALID", "Story Growth accepts at most five reference documents.")
   }
-  if (input.profile.novel.chapters.length < 6 || input.profile.novel.chapters.length > 8) {
-    fail("NOVELX_STORY_NOVEL_CHAPTER_COUNT_INVALID", "The single novel must contain six to eight chapters.")
+  if (input.profile.novel.chapters.length < 3 || input.profile.novel.chapters.length > 8) {
+    fail("NOVELX_STORY_NOVEL_CHAPTER_COUNT_INVALID", "The single novel must contain three to eight chapters.")
   }
   const continuity = requireStoryContinuityAuthority(current, input.protagonistContinuity)
   if (
@@ -182,6 +182,19 @@ export function registerStory(input: {
     fail(
       "NOVELX_STORY_OPENING_ANCHORS_INSUFFICIENT",
       "The first novel brief and sealed opening state must share at least three exact Chinese continuity anchors.",
+    )
+  }
+  const registrationGrounding = inspectSourceTitleGrounding({
+    markdown: JSON.stringify(input.profile),
+    requiredSourceEntityIds: [],
+    worldSources: current.world.sources,
+  })
+  if (registrationGrounding.confusableDrifts.length) {
+    fail(
+      "NOVELX_STORY_PROPER_NAME_DRIFT",
+      `Story registration contains confusable frozen proper-name drift: ${registrationGrounding.confusableDrifts
+        .map((drift) => `${JSON.stringify(drift.candidate)} != ${JSON.stringify(drift.authoritativePrefix)}`)
+        .join(", ")}.`,
     )
   }
   const sources = new Map(current.world.sources.map((source) => [source.entityId, source]))
@@ -297,7 +310,7 @@ export function registerStory(input: {
   const themeId = stableId("novel-theme", novelId, themeTitle)
   const novelChapterIds: string[] = []
   input.profile.novel.chapters.forEach((profile, index) => {
-    assertSources(profile.sourceEntityIds, `novel.chapters[${index}]`)
+    if (profile.sourceEntityIds.length) assertSources(profile.sourceEntityIds, `novel.chapters[${index}]`)
     const title = concreteLabel(profile.title, `novel.chapters[${index}].title`)
     const historyDependencies = profile.historyReferences.map((reference) => {
       const id = historyBooks[reference.historyBookIndex]?.chapterIds[reference.chapterIndex]
@@ -390,7 +403,10 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
     world: current.world,
     document: contextDocument(record),
     exactSourceTitles: exactSourceTitles(current, record),
-    worldSources: record.sourceEntityIds.map((id) => {
+    worldSources: (record.kind === "novel_chapter" && record.sourceEntityIds.length === 0
+      ? current.world.sources.map((source) => source.entityId)
+      : record.sourceEntityIds
+    ).map((id) => {
       const source = current.world.sources.find((candidate) => candidate.entityId === id)!
       const markdown = input.worldContents?.[id]
       if (input.worldContents && (!markdown || worldSha256(markdown) !== source.sha256)) {
@@ -403,6 +419,7 @@ export function prepareStoryDocument<T extends NovelXStory.Materialization>(inpu
       markdown: requireCommittedContent(current, id, input.committedContents),
     })),
     protagonist,
+    authorizedProperNames: authorizedProperNames(current, continuity),
     ...(record.kind === "novel_chapter" && continuity
       ? novelContinuityContext(current, record, input.committedContents, continuity)
       : {}),
@@ -563,7 +580,7 @@ export function verifyStoryMaterialization<T extends NovelXStory.Materialization
     }
     return manifest
   }
-  if (!manifest.registrationSha256 || !manifest.novel || !manifest.historyBooks.length) {
+  if (!manifest.registrationSha256 || !manifest.novel) {
     fail("NOVELX_STORY_REGISTRATION_INCOMPLETE", "Registered Story Growth is missing its named works.")
   }
   if (
@@ -685,7 +702,7 @@ function normalizeStoryDocument(
     )
   }
   if (
-    /(?:阶段主编|执行\s*Agent|\bAgent\b|\bPrompt\b|\bHarness\b|\btask\s+session\s*(?:id|identifier)?\b|\bsession\s+(?:id|identifier)\b|\btool\s*call\b|sourceSha256|contextSha256|integritySha256|\.novelx\/|注册(?:骨架|实体)|工具调用|待填充|待补充|TODO|TBD|作为AI|无法确定)/iu.test(
+    /(?:阶段主编|执行\s*Agent|\bAgent\b|\bPrompt\b|\bHarness\b|\btask\s+session\s*(?:id|identifier)?\b|\bsession\s+(?:id|identifier)\b|\btool\s*call\b|sourceSha256|contextSha256|integritySha256|\.novelx\/|注册(?:骨架|实体)|工具调用|待填充|待补充|TODO|TBD|作为AI)/iu.test(
       normalized,
     )
   ) {
@@ -787,6 +804,27 @@ function novelContinuityContext(
         ? { title: previous.title, endingExcerpt: [...previousMarkdown.trimEnd()].slice(-1_200).join("") }
         : null,
   }
+}
+
+function authorizedProperNames(current: NovelXStory.Materialization, continuity: StoryContinuityAuthority | null) {
+  return [
+    ...new Set(
+      [
+        ...current.world.sources.map((source) => source.title),
+        continuity?.name,
+        ...current.historyBooks.flatMap((book) => [book.title, book.author]),
+        ...current.references.flatMap((reference) => [reference.title, reference.author]),
+        ...(current.novel
+          ? [
+              current.novel.title,
+              current.novel.author,
+              current.novel.theme.title,
+              ...current.documents.map((document) => document.title),
+            ]
+          : []),
+      ].filter((value): value is string => value !== undefined),
+    ),
+  ]
 }
 
 function requiredOpeningAnchors(current: NovelXStory.Materialization, authority: StoryContinuityAuthority) {

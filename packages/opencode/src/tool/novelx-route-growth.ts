@@ -78,7 +78,7 @@ export const NovelXRouteGrowthTool = Tool.define<typeof Parameters, Metadata, FS
           return result(
             "story_required",
             "novelx-story-editor",
-            "冻结世界与唯一主角均已封存；下一步单向生成历史、文献与一部小说。",
+            "冻结世界与唯一主角均已封存；下一步直接生成一部三章小说。",
           )
         }).pipe(Effect.orDie),
     }

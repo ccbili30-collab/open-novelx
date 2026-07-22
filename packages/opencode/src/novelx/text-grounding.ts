@@ -113,7 +113,80 @@ function findConfusableProperNameDrifts(markdown: string, worldSources: readonly
       }
     }
   }
+  for (const drift of findProtectedSuffixDrifts(markdown, worldSources)) {
+    drifts.set(`${drift.sourceTitle}\u0000${drift.candidate}`, drift)
+  }
   return [...drifts.values()]
+}
+
+function findProtectedSuffixDrifts(markdown: string, worldSources: readonly TextGroundingSource[]) {
+  const fullNames = worldSources
+    .map((source) => ({ sourceTitle: source.title, authoritativePrefix: hanPrefixes(source.title)[0] }))
+    .filter(
+      (entry): entry is { sourceTitle: string; authoritativePrefix: string } =>
+        entry.authoritativePrefix !== undefined &&
+        [...entry.authoritativePrefix].length >= 4 &&
+        isProperNameEnding([...entry.authoritativePrefix].at(-1)),
+    )
+  const authoritative = new Set(fullNames.map((entry) => entry.authoritativePrefix))
+  const authoritativePrefixes = new Map(
+    fullNames.map((entry) => [entry.authoritativePrefix, [...entry.authoritativePrefix]] as const),
+  )
+  const suffixOwners = new Map<string, Set<string>>()
+  for (const entry of fullNames) {
+    const characters = [...entry.authoritativePrefix]
+    for (let length = 3; length < characters.length && length <= 6; length++) {
+      const suffix = characters.slice(-length).join("")
+      const owners = suffixOwners.get(suffix) ?? new Set<string>()
+      owners.add(entry.authoritativePrefix)
+      suffixOwners.set(suffix, owners)
+    }
+  }
+  const protectedNames = fullNames
+    .map((entry) => {
+      const characters = [...entry.authoritativePrefix]
+      const suffix = Array.from({ length: Math.min(4, characters.length - 3) }, (_, index) => index + 3)
+        .map((length) => characters.slice(-length).join(""))
+        .find((candidate) => suffixOwners.get(candidate)?.size === 1)
+      return suffix ? { ...entry, suffix } : undefined
+    })
+    .filter(
+      (entry): entry is { sourceTitle: string; authoritativePrefix: string; suffix: string } => entry !== undefined,
+    )
+  const runs = markdown.match(/\p{Script=Han}+/gu) ?? []
+  const drifts: ConfusableProperNameDrift[] = []
+
+  for (const entry of protectedNames) {
+    const expectedLength = [...entry.authoritativePrefix].length
+    const suffixLength = [...entry.suffix].length
+    for (const run of runs) {
+      const characters = [...run]
+      const suffix = [...entry.suffix]
+      for (let index = 0; index <= characters.length - suffixLength; index++) {
+        if (characters.slice(index, index + suffixLength).join("") !== entry.suffix) continue
+        const candidateStart = index - (expectedLength - suffixLength)
+        if (candidateStart < 0) continue
+        const candidate = characters.slice(candidateStart, index + suffixLength).join("")
+        if (candidate === entry.authoritativePrefix || authoritative.has(candidate)) continue
+        const candidateHead = characters.slice(candidateStart, index).join("")
+        if ([...candidateHead].length < 2) continue
+        const expectedHead = [...entry.authoritativePrefix].slice(0, [...candidateHead].length)
+        const hasSingleCharacterHeadDrift = hammingDifferenceIndex(expectedHead, [...candidateHead], 0) !== undefined
+        const splicesAnotherAuthoritativeName = [...authoritativePrefixes].some(
+          ([name, nameCharacters]) =>
+            name !== entry.authoritativePrefix &&
+            nameCharacters.slice(0, [...candidateHead].length).join("") === candidateHead,
+        )
+        if (!hasSingleCharacterHeadDrift && !splicesAnotherAuthoritativeName) continue
+        drifts.push({
+          sourceTitle: entry.sourceTitle,
+          authoritativePrefix: entry.authoritativePrefix,
+          candidate,
+        })
+      }
+    }
+  }
+  return drifts
 }
 
 function isProperNameRightBoundary(character: string | undefined) {

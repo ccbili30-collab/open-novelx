@@ -106,6 +106,44 @@ const profile = {
   },
 }
 
+const minimalNovelProfile = {
+  contextSha256: "",
+  historyBooks: [],
+  references: [],
+  novel: {
+    title: "《雪线以北》",
+    author: "NovelX",
+    summary: "弥娅带着被困商队穿过暴雪、旧债和关隘追索，在三次选择中决定谁能活着越过雪线。",
+    theme: {
+      title: "风雪封关",
+      summary: "三章完成封关抉择、山路代价与越境余波。",
+    },
+    chapters: [
+      {
+        title: "第一章 封关钟前",
+        brief: "霜脊山系突降暴雪，临时商队困在北侧旧道。弥娅携带黄铜关印，必须在封关钟响前作出决定。",
+        sourceEntityIds: [],
+        historyReferences: [],
+        documentIndices: [],
+      },
+      {
+        title: "第二章 越过雪线",
+        brief: "弥娅带队进入山路，前一章的选择立刻造成伤亡、信任与追兵压力。",
+        sourceEntityIds: [],
+        historyReferences: [],
+        documentIndices: [],
+      },
+      {
+        title: "第三章 关印之后",
+        brief: "越境后的幸存者面对代价，弥娅必须决定黄铜关印和商队未来的归属。",
+        sourceEntityIds: [],
+        historyReferences: [],
+        documentIndices: [],
+      },
+    ],
+  },
+}
+
 const planning = () =>
   createStoryMaterialization({
     world,
@@ -138,7 +176,7 @@ const registered = () => {
 }
 
 const prose = (title: string, length: number, required: readonly string[] = []) =>
-  `# ${title}\n\n${[...new Set(required)].join("。")}。\n\n${"正文叙述。".repeat(Math.ceil(length / 5))}\n`
+  `# ${title}\n\n${[...new Set(required)].join("。")}。当时的水位仍无法确定。\n\n${"正文叙述。".repeat(Math.ceil(length / 5))}\n`
 
 describe("NovelX story materialization", () => {
   test("requires one committed protagonist source and includes it in the new v2 context integrity", () => {
@@ -184,6 +222,67 @@ describe("NovelX story materialization", () => {
     expect(verifyStoryMaterialization(manifest)).toEqual(manifest)
   })
 
+  test("supports the minimal frozen world plus protagonist to one three-chapter novel route", () => {
+    const read = recordStorySourceReads({
+      manifest: planning(),
+      editorSessionId: "ses-story-editor",
+      sourceEntityIds: world.sources.map((source) => source.entityId),
+      now: 20,
+    })
+    const characterRead = recordStoryCharacterRead({
+      manifest: read,
+      editorSessionId: "ses-story-editor",
+      protagonistId: protagonist.id,
+      sourceSha256: protagonist.sha256,
+      now: 25,
+    })
+    let manifest = registerStory({
+      manifest: characterRead,
+      editorSessionId: "ses-story-editor",
+      profile: { ...minimalNovelProfile, contextSha256: characterRead.preparedContextSha256 },
+      protagonistContinuity,
+      now: 30,
+    }).manifest
+    expect(manifest.historyBooks).toEqual([])
+    expect(manifest.references).toEqual([])
+    expect(manifest.documents).toHaveLength(3)
+    expect(manifest.documents.every((document) => document.kind === "novel_chapter")).toBe(true)
+
+    const committedContents: Record<string, string> = {}
+    const writerSessionId = "ses-one-novel-writer"
+    for (const document of manifest.documents) {
+      const prepared = prepareStoryDocument({
+        manifest,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        editorMessageId: `msg-${document.ordinal}`,
+        committedContents,
+        protagonistMarkdown: characterMarkdown,
+        protagonistContinuity,
+        now: 100 + document.ordinal,
+      })
+      manifest = prepared.manifest
+      expect(prepared.context.worldSources).toHaveLength(world.sources.length)
+      expect(prepared.context.exactSourceTitles).toEqual([])
+      const required = document.ordinal === 1 ? prepared.context.requiredOpeningAnchors : []
+      const committed = commitStoryDocument({
+        manifest,
+        documentId: document.id,
+        editorSessionId: "ses-story-editor",
+        taskSessionId: writerSessionId,
+        leaseId: prepared.record.lease!.id,
+        markdown: prose(document.title, 1_700, required),
+        protagonistContinuity,
+        now: 200 + document.ordinal,
+      })
+      manifest = committed.manifest
+      committedContents[document.id] = committed.markdown
+    }
+    const completed = finishStoryText({ manifest, editorSessionId: "ses-story-editor", now: 300 })
+    expect(completed.status).toBe("text_completed")
+    expect(new Set(completed.documents.map((document) => document.taskSessionId))).toEqual(new Set([writerSessionId]))
+  })
+
   test("rejects a first-chapter plan that cannot preserve the sealed opening before any prose is written", () => {
     const read = recordStorySourceReads({
       manifest: planning(),
@@ -216,6 +315,38 @@ describe("NovelX story materialization", () => {
         now: 30,
       }),
     ).toThrow("NOVELX_STORY_OPENING_ANCHORS_INSUFFICIENT")
+  })
+
+  test("rejects a spliced frozen proper name during registration before prose is written", () => {
+    const read = recordStorySourceReads({
+      manifest: planning(),
+      editorSessionId: "ses-story-editor",
+      sourceEntityIds: world.sources.map((source) => source.entityId),
+      now: 20,
+    })
+    const characterRead = recordStoryCharacterRead({
+      manifest: read,
+      editorSessionId: "ses-story-editor",
+      protagonistId: protagonist.id,
+      sourceSha256: protagonist.sha256,
+      now: 25,
+    })
+
+    expect(() =>
+      registerStory({
+        manifest: characterRead,
+        editorSessionId: "ses-story-editor",
+        profile: {
+          ...profile,
+          contextSha256: characterRead.preparedContextSha256,
+          historyBooks: profile.historyBooks.map((book, index) =>
+            index === 0 ? { ...book, author: "三汊母河流域档案署" } : book,
+          ),
+        },
+        protagonistContinuity,
+        now: 30,
+      }),
+    ).toThrow("NOVELX_STORY_PROPER_NAME_DRIFT")
   })
 
   test("refuses unread world sources and downstream work whose dependencies are not committed", () => {

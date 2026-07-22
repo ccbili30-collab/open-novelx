@@ -383,7 +383,7 @@ function normalizeCharacterDocument(record: NovelXCharacter.DocumentRecord, valu
     )
   }
   if (
-    /(?:阶段主编|执行\s*Agent|sourceSha256|\.novelx\/|注册(?:骨架|实体)|工具调用|上下文包|待填充|待补充|TODO|TBD|作为AI|无法确定)/iu.test(
+    /(?:阶段主编|执行\s*Agent|sourceSha256|\.novelx\/|注册(?:骨架|实体)|工具调用|上下文包|待填充|待补充|TODO|TBD|作为AI)/iu.test(
       normalized,
     )
   ) {

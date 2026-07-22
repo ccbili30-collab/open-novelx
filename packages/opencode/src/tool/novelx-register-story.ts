@@ -22,7 +22,7 @@ export const NovelXRegisterStoryTool = Tool.define<typeof Parameters, Metadata, 
     const events = yield* EventV2Bridge.Service
     return {
       description:
-        "Register named history books, 2-5 key documents and exactly one 6-8 chapter novel from read frozen-world facts.",
+        "Register exactly one 3-chapter novel from the frozen World and protagonist; histories and references may be empty.",
       parameters: Parameters,
       execute: (profile, ctx) =>
         withStoryMutation(
@@ -60,7 +60,7 @@ export const NovelXRegisterStoryTool = Tool.define<typeof Parameters, Metadata, 
                 references: result.manifest.references,
                 novel: result.manifest.novel,
                 documents: result.manifest.documents.map(({ lease: _, ...document }) => document),
-                next: "严格按 documents 顺序逐份 prepare → novelx-story-writer → commit；禁止并发和回写世界。",
+                next: "严格按三个小说章节顺序，用同一个 novelx-story-writer 逐份 prepare → commit；禁止审稿、并发和回写世界。",
               }),
             }
           }),

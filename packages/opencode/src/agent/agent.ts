@@ -409,7 +409,7 @@ const layer = Layer.effect(
           },
           "novelx-story-editor": {
             name: "novelx-story-editor",
-            description: "NovelX 故事主编。只从冻结世界单向生成具名历史书、关键文献与一部完整小说。",
+            description: "NovelX 故事主编。把冻结世界与唯一主角直接交给同一个小说叶节点生成三章小说。",
             options: {},
             permission: Permission.merge(defaults, user, storyEditorRestriction),
             mode: "subagent",
@@ -464,7 +464,7 @@ const layer = Layer.effect(
           },
           "novelx-story-writer": {
             name: "novelx-story-writer",
-            description: "NovelX 故事写作叶节点。依据冻结事实和已提交上游原文撰写一份历史、文献或小说章节。",
+            description: "NovelX 小说写作叶节点。依据冻结世界、主角档案和前章连续撰写一章小说。",
             options: {},
             permission: Permission.merge(defaults, user, storyWriterRestriction),
             mode: "subagent",
