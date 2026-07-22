@@ -31,6 +31,8 @@ import {
 import { isNovelXHiddenProjectPath } from "@/context/novelx-project-files"
 import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
+import { projectNovelXGraph } from "./novelx-graph-model"
+import { NovelXGraphView } from "./novelx-graph-view"
 import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowthTree } from "./novelx-world-growth-view"
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
@@ -267,7 +269,6 @@ export function NovelXResourceWorkspace(props: {
     committed: storyMaterialization()?.documents.filter((record) => record.status === "committed").length ?? 0,
     total: storyMaterialization()?.documents.length ?? 0,
   }))
-
   createEffect(() => {
     if (active() !== "files") return
     const queue = [""]
@@ -348,6 +349,14 @@ export function NovelXResourceWorkspace(props: {
     if (!records) return { committed: 0, total: growthManifest()?.terrain.nodes.length ?? 0 }
     return { committed: records.filter((record) => record.status === "committed").length, total: records.length }
   })
+  const graphProjection = createMemo(() =>
+    projectNovelXGraph({
+      skeleton: growthManifest(),
+      geography: geographyManifest(),
+      world: worldMaterialization(),
+      story: storyMaterialization(),
+    }),
+  )
   const plannedItems = createMemo(() => {
     const resource = active()
     const manifest = growthManifest()
@@ -811,7 +820,17 @@ export function NovelXResourceWorkspace(props: {
         <Show
           when={document.state()}
           fallback={
-            resource === "story" && storyMaterialization() ? (
+            resource === "graph" ? (
+              <NovelXGraphView
+                graph={graphProjection}
+                storageKey={`novelx:graph-sphere:v1:${sdk().directory}`}
+                readSource={async (path) => {
+                  const result = await sdk().client.file.editable({ path })
+                  return result.data?.content
+                }}
+                onOpenSource={select}
+              />
+            ) : resource === "story" && storyMaterialization() ? (
               <div class="novelx-story-overview">
                 <Show
                   when={selectedStoryCover()}
@@ -970,9 +989,11 @@ export function NovelXResourceWorkspace(props: {
                       ? `${worldBlueprint()!.profile.title} · ${worldProgress().committed}/${worldProgress().total} 份世界档案已提交`
                       : resource() === "world" && growthManifest()
                         ? `${growthManifest()!.profile.title} · ${geographyProgress().committed}/${geographyProgress().total} 份地理档案已提交`
-                        : resource() === "story" && storyMaterialization()
-                          ? `${storyMaterialization()!.novel?.title ?? "故事"} · ${storyProgress().committed}/${storyProgress().total} 份文稿已提交`
-                          : language.t(resourceCopy[resource()].summary)}
+                        : resource() === "graph"
+                          ? `${graphProjection().nodes.length} 个节点 · ${graphProjection().edges.length} 条关系`
+                          : resource() === "story" && storyMaterialization()
+                            ? `${storyMaterialization()!.novel?.title ?? "故事"} · ${storyProgress().committed}/${storyProgress().total} 份文稿已提交`
+                            : language.t(resourceCopy[resource()].summary)}
                   </span>
                 </div>
                 <div class="novelx-resource-page-actions">
