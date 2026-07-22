@@ -314,15 +314,41 @@ describe("NovelX world visual materialization", () => {
     expect(verifyWorldVisuals({ manifest: first.manifest, materialization })).toEqual(first.manifest)
   })
 
-  test("fails closed when an important polity has no capital, fleet, or emblem", async () => {
-    await expect(
-      compileWorldVisuals({
-        blueprint,
-        materialization,
-        profile: { ...profile, scenery: profile.scenery.filter((item) => item.ownerEntityId !== "human-kingdom") },
-        now: 10,
+  test("fills a display task when an important polity has no explicit scenery", async () => {
+    const compiled = await compileWorldVisuals({
+      blueprint,
+      materialization,
+      profile: { ...profile, scenery: profile.scenery.filter((item) => item.ownerEntityId !== "human-kingdom") },
+      now: 10,
+    })
+
+    expect(compiled.manifest.tasks).toContainEqual(
+      expect.objectContaining({
+        type: "scenery",
+        subtype: "emblem",
+        ownerEntityId: "human-kingdom",
+        title: "河冠王国徽记",
+        status: "queued",
       }),
-    ).rejects.toMatchObject({ code: "NOVELX_VISUAL_REQUIRED_HUMAN_SCENERY_MISSING" })
+    )
+  })
+
+  test("detaches an invalid cross-layer spatial parent instead of blocking the display", async () => {
+    const compiled = await compileWorldVisuals({
+      blueprint,
+      materialization,
+      profile: {
+        ...profile,
+        claims: profile.claims.map((claim) =>
+          claim.entityId === "human-kingdom" ? { ...claim, parentEntityId: "natural-basin" } : claim,
+        ),
+      },
+      now: 10,
+    })
+
+    expect(
+      compiled.manifest.atlas.features.find((feature) => feature.entityId === "human-kingdom")?.parentEntityId,
+    ).toBeNull()
   })
 
   test("enforces resumable queue transitions and rejects stale world facts", async () => {

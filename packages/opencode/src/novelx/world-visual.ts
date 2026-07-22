@@ -33,35 +33,36 @@ export async function compileWorldVisuals(input: {
   const entities = new Map(
     materialization.stages.flatMap((stage) => stage.entities.map((entity) => [entity.id, entity])),
   )
-  for (const claim of input.profile.claims) requireCommittedSource(claim.entityId, entities, documents)
-  for (const scenery of input.profile.scenery) requireCommittedSource(scenery.ownerEntityId, entities, documents)
-  validateScenery(input.profile)
+  const profile = normalizeVisualProfile(input.profile)
+  for (const claim of profile.claims) requireCommittedSource(claim.entityId, entities, documents)
+  for (const scenery of profile.scenery) requireCommittedSource(scenery.ownerEntityId, entities, documents)
+  validateScenery(profile)
 
-  validateSpatialClaims(input.profile.claims)
+  validateSpatialClaims(profile.claims)
   const seed = `${blueprint.integritySha256}:world-atlas-v2`
   const baseCells = voronoiCells(seed, input.cellCount ?? 72)
-  const claims = new Map(input.profile.claims.map((claim) => [claim.entityId, claim]))
+  const claims = new Map(profile.claims.map((claim) => [claim.entityId, claim]))
   const children = new Map<string, string[]>()
-  for (const claim of input.profile.claims) {
+  for (const claim of profile.claims) {
     if (!claim.parentEntityId) continue
     children.set(claim.parentEntityId, [...(children.get(claim.parentEntityId) ?? []), claim.entityId])
   }
   const geographyAreas = assignAreaCells(
     baseCells,
-    input.profile.claims.filter(
+    profile.claims.filter(
       (claim) => claim.layer === "geography" && claim.geometry === "area" && !children.has(claim.entityId),
     ),
     "geography",
   )
   const humanAreas = assignAreaCells(
     baseCells,
-    input.profile.claims.filter(
+    profile.claims.filter(
       (claim) => claim.layer === "human" && claim.geometry === "area" && !children.has(claim.entityId),
     ),
     "human",
   )
   const directCells = new Map(
-    input.profile.claims.map((claim) => [
+    profile.claims.map((claim) => [
       claim.entityId,
       claim.geometry === "area"
         ? baseCells
@@ -82,7 +83,7 @@ export async function compileWorldVisuals(input: {
     if (!descendants?.length) return directCells.get(entityId) ?? []
     return [...new Set(descendants.flatMap((child) => featureCells(child, [...stack, entityId])))]
   }
-  const features = input.profile.claims.map((claim) => {
+  const features = profile.claims.map((claim) => {
     const source = requireCommittedSource(claim.entityId, entities, documents)
     const cellIds = featureCells(claim.entityId)
     if (!cellIds.length) {
@@ -149,9 +150,9 @@ export async function compileWorldVisuals(input: {
   const maskBytes = await renderSemanticMask(cells)
   const semanticMaskSha256 = createHash("sha256").update(maskBytes).digest("hex")
   const meshSha256 = worldSha256(cells)
-  const visualLanguageSha256 = worldSha256(input.profile.visualLanguage)
+  const visualLanguageSha256 = worldSha256(profile.visualLanguage)
   const mapPrompt = [
-    input.profile.mapPrompt,
+    profile.mapPrompt,
     "Authoritative placements (normalized x,y; north is y=0):",
     ...mapSources.map(
       (feature) =>
@@ -179,7 +180,7 @@ export async function compileWorldVisuals(input: {
     completedAt: null,
     errorCode: null,
   } satisfies NovelXWorldVisual.ImageTask
-  const sceneryTasks = input.profile.scenery.map((item) => {
+  const sceneryTasks = profile.scenery.map((item) => {
     const source = documents.get(item.ownerEntityId)!
     return {
       id: stableId("visual-task", "scenery", item.ownerEntityId, item.subtype, item.title),
@@ -219,7 +220,7 @@ export async function compileWorldVisuals(input: {
     stage: "world_visuals" as const,
     status: "queued" as const,
     worldMaterializationIntegritySha256: materialization.integritySha256,
-    visualLanguage: input.profile.visualLanguage,
+    visualLanguage: profile.visualLanguage,
     visualLanguageSha256,
     atlas,
     tasks: [mapTask, ...sceneryTasks],
@@ -357,6 +358,43 @@ export function updateImageTask(input: {
   const draft = { ...input.manifest, status, tasks, updatedAt: input.now, integritySha256: undefined }
   const { integritySha256: _ignored, ...withoutIntegrity } = draft
   return { ...withoutIntegrity, integritySha256: worldSha256(withoutIntegrity) } satisfies NovelXWorldVisual.Manifest
+}
+
+function normalizeVisualProfile(
+  profile: NovelXWorldVisual.VisualRegistrationProfile,
+): NovelXWorldVisual.VisualRegistrationProfile {
+  const records = new Map(profile.claims.map((claim) => [claim.entityId, claim]))
+  const claims = profile.claims.map((claim) => {
+    if (!claim.parentEntityId) return claim
+    const parent = records.get(claim.parentEntityId)
+    if (!parent || parent.geometry !== "area" || claim.geometry !== "area" || parent.layer !== claim.layer) {
+      return { ...claim, parentEntityId: null }
+    }
+    const seen = new Set([claim.entityId])
+    let cursor: NovelXWorldVisual.SpatialClaimProfile | undefined = parent
+    while (cursor) {
+      if (seen.has(cursor.entityId)) return { ...claim, parentEntityId: null }
+      seen.add(cursor.entityId)
+      cursor = cursor.parentEntityId ? records.get(cursor.parentEntityId) : undefined
+    }
+    return claim
+  })
+  const scenery = [...profile.scenery]
+  for (const claim of claims) {
+    if (claim.layer !== "human" || claim.importance !== "required") continue
+    const present = scenery.some(
+      (item) => item.ownerEntityId === claim.entityId && ["capital", "fleet", "emblem"].includes(item.subtype),
+    )
+    if (present) continue
+    scenery.push({
+      ownerEntityId: claim.entityId,
+      subtype: "emblem",
+      title: `${claim.label}徽记`,
+      rationale: "补齐公开展示所需的最低限度人文视觉入口。",
+      prompt: `为${claim.label}生成一枚符合世界共享画风的代表性徽记。依据：${claim.summary}。不出现现代 UI、边框或水印。`,
+    })
+  }
+  return { ...profile, claims, scenery }
 }
 
 function validateScenery(profile: NovelXWorldVisual.VisualRegistrationProfile) {
