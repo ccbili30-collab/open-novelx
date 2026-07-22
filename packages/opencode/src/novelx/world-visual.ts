@@ -165,6 +165,10 @@ export async function compileWorldVisuals(input: {
     id: stableId("visual-task", "world-map", meshSha256, semanticMaskSha256),
     type: "map" as const,
     subtype: "world-map" as const,
+    mapRole: "base" as const,
+    layer: null,
+    entityId: null,
+    baseTaskId: null,
     ownerEntityId: null,
     status: "queued" as const,
     title: `${blueprint.profile.title}地图`,
@@ -180,12 +184,47 @@ export async function compileWorldVisuals(input: {
     completedAt: null,
     errorCode: null,
   } satisfies NovelXWorldVisual.ImageTask
+  const mapVariantTasks = features
+    .filter((feature) => feature.geometry === "area")
+    .map((feature) => {
+      const sources = [feature, ...mapSources].filter(
+        (candidate, index, candidates) =>
+          candidates.findIndex((other) => other.entityId === candidate.entityId) === index,
+      )
+      return {
+        id: stableId("visual-task", "map-variant", meshSha256, feature.layer, feature.entityId),
+        type: "map" as const,
+        subtype: "region-highlight" as const,
+        mapRole: "variant" as const,
+        layer: feature.layer,
+        entityId: feature.entityId,
+        baseTaskId: mapTask.id,
+        ownerEntityId: feature.entityId,
+        status: "queued" as const,
+        title: `${feature.label}选中状态`,
+        prompt: mapVariantPrompt(feature),
+        rationale: `从同一张世界底图派生${feature.label}的${feature.layer === "geography" ? "自然地理" : "人文疆域"}选中状态；名称、点击范围和档案绑定仍由权威 Atlas 投影。`,
+        sourceEntityIds: sources.map((source) => source.entityId),
+        sourceSha256s: sources.map((source) => source.sourceSha256),
+        targetPath: `${NovelXWorldVisual.MAP_VARIANT_DIRECTORY}/${feature.layer}/${feature.entityId}.png`,
+        mime: null,
+        assetSha256: null,
+        model: null,
+        startedAt: null,
+        completedAt: null,
+        errorCode: null,
+      } satisfies NovelXWorldVisual.ImageTask
+    })
   const sceneryTasks = profile.scenery.map((item) => {
     const source = documents.get(item.ownerEntityId)!
     return {
       id: stableId("visual-task", "scenery", item.ownerEntityId, item.subtype, item.title),
       type: "scenery" as const,
       subtype: item.subtype,
+      mapRole: null,
+      layer: null,
+      entityId: null,
+      baseTaskId: null,
       ownerEntityId: item.ownerEntityId,
       status: "queued" as const,
       title: item.title,
@@ -216,14 +255,14 @@ export async function compileWorldVisuals(input: {
     features,
   }
   const draft = {
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     stage: "world_visuals" as const,
     status: "queued" as const,
     worldMaterializationIntegritySha256: materialization.integritySha256,
     visualLanguage: profile.visualLanguage,
     visualLanguageSha256,
     atlas,
-    tasks: [mapTask, ...sceneryTasks],
+    tasks: [mapTask, ...mapVariantTasks, ...sceneryTasks],
     createdAt: input.now,
     updatedAt: input.now,
   }
@@ -261,12 +300,10 @@ export function verifyWorldVisuals(input: {
   }
   validateAtlasGeometry(input.manifest)
   const tasks = new Set(input.manifest.tasks.map((task) => task.id))
-  if (
-    tasks.size !== input.manifest.tasks.length ||
-    input.manifest.tasks.filter((task) => task.type === "map").length !== 1
-  ) {
-    throw new WorldVisualError("NOVELX_VISUAL_TASK_SET_INVALID", "World visuals require one unique map task.")
+  if (tasks.size !== input.manifest.tasks.length) {
+    throw new WorldVisualError("NOVELX_VISUAL_TASK_SET_INVALID", "World visual task IDs must be unique.")
   }
+  validateMapTasks(input.manifest)
   return input.manifest
 }
 
@@ -286,6 +323,10 @@ export function worldVisualRegistrationSha256(manifest: NovelXWorldVisual.Manife
       id: task.id,
       type: task.type,
       subtype: task.subtype,
+      mapRole: task.mapRole ?? null,
+      layer: task.layer ?? null,
+      entityId: task.entityId ?? null,
+      baseTaskId: task.baseTaskId ?? null,
       ownerEntityId: task.ownerEntityId,
       title: task.title,
       prompt: task.prompt,
@@ -295,6 +336,30 @@ export function worldVisualRegistrationSha256(manifest: NovelXWorldVisual.Manife
       targetPath: task.targetPath,
     })),
   })
+}
+
+function mapVariantPrompt(feature: NovelXWorldVisual.AtlasFeature) {
+  const points = feature.rings.flat()
+  const extent = points.length
+    ? `Target normalized extent: x ${Math.min(...points.map((point) => point.x)).toFixed(2)}-${Math.max(...points.map((point) => point.x)).toFixed(2)}, y ${Math.min(...points.map((point) => point.y)).toFixed(2)}-${Math.max(...points.map((point) => point.y)).toFixed(2)}.`
+    : ""
+  return [
+    "Create one selected-state variant from the supplied shared base map.",
+    `Target ${feature.layer === "geography" ? "geographic region" : "human realm"}: ${feature.label}.`,
+    `Target context: ${feature.summary}`,
+    `Approximate target label position: (${feature.labelPoint.x.toFixed(2)}, ${feature.labelPoint.y.toFixed(2)}).`,
+    extent,
+    "Keep the camera, canvas, coastline, terrain placement, proportions, palette, and every non-target region substantially unchanged.",
+    "Only emphasize the target region with a restrained warm-gold perimeter, soft internal lift, and subtle outward glow suitable for a selected map state.",
+    "Do not add text, legends, grids, UI, signatures, watermarks, or new borders outside the selected region.",
+  ]
+    .join("\n")
+    .slice(0, 2000)
+}
+
+function validateMapTasks(manifest: NovelXWorldVisual.Manifest) {
+  const issue = NovelXWorldVisual.mapVariantSetIssue(manifest)
+  if (issue) throw new WorldVisualError(issue.code, issue.message)
 }
 
 export function updateImageTask(input: {

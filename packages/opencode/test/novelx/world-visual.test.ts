@@ -289,14 +289,28 @@ describe("NovelX world visual materialization", () => {
   test("builds a deterministic authoritative Thiessen mesh and sparse image queue", async () => {
     const first = await compileWorldVisuals({ blueprint, materialization, profile, now: 10 })
     const second = await compileWorldVisuals({ blueprint, materialization, profile, now: 10 })
+    expect(first.manifest.schemaVersion).toBe(3)
     expect(first.manifest.atlas.cells).toHaveLength(72)
     expect(first.manifest.atlas.meshSha256).toBe(second.manifest.atlas.meshSha256)
     expect(first.manifest.atlas.semanticMaskSha256).toBe(second.manifest.atlas.semanticMaskSha256)
     expect(first.maskBytes.subarray(1, 4).toString()).toBe("PNG")
-    expect(first.manifest.tasks.map((task) => [task.type, task.subtype])).toEqual([
-      ["map", "world-map"],
-      ["scenery", "wonder"],
-      ["scenery", "capital"],
+    expect(
+      first.manifest.tasks.map((task) => [task.type, task.subtype, task.mapRole, task.layer, task.entityId]),
+    ).toEqual([
+      ["map", "world-map", "base", null, null],
+      ["map", "region-highlight", "variant", "geography", "natural-basin"],
+      ["map", "region-highlight", "variant", "geography", "natural-mountains"],
+      ["map", "region-highlight", "variant", "human", "human-kingdom"],
+      ["scenery", "wonder", null, null, null],
+      ["scenery", "capital", null, null, null],
+    ])
+    const baseTask = first.manifest.tasks[0]!
+    const variants = first.manifest.tasks.filter((task) => task.mapRole === "variant")
+    expect(variants.every((task) => task.baseTaskId === baseTask.id)).toBe(true)
+    expect(variants.map((task) => task.targetPath)).toEqual([
+      "World/Media/maps/geography/natural-basin.png",
+      "World/Media/maps/geography/natural-mountains.png",
+      "World/Media/maps/human/human-kingdom.png",
     ])
     expect(
       first.manifest.atlas.features.find((feature) => feature.entityId === "natural-basin")!.cellIds.length,
@@ -312,6 +326,19 @@ describe("NovelX world visual materialization", () => {
       ),
     ).toBe(true)
     expect(verifyWorldVisuals({ manifest: first.manifest, materialization })).toEqual(first.manifest)
+    const incompleteDraft = {
+      ...first.manifest,
+      tasks: first.manifest.tasks.filter((task) => task.entityId !== "human-kingdom"),
+      integritySha256: undefined,
+    }
+    const { integritySha256: _discarded, ...incompleteWithoutIntegrity } = incompleteDraft
+    const incomplete = {
+      ...incompleteWithoutIntegrity,
+      integritySha256: worldSha256(incompleteWithoutIntegrity),
+    } satisfies NovelXWorldVisual.Manifest
+    expect(() => verifyWorldVisuals({ manifest: incomplete, materialization })).toThrow(
+      "one selected-state image task for every geography and human area feature",
+    )
   })
 
   test("fills a display task when an important polity has no explicit scenery", async () => {
