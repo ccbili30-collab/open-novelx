@@ -35,6 +35,8 @@ import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
 import { projectNovelXGraph, selectNovelXVisibleGraph } from "./novelx-graph-model"
 import { NovelXGraphView } from "./novelx-graph-view"
+import { NovelXWorldPackageView } from "./novelx-world-package-view"
+import { createNovelXWorldPackage } from "@/novelx/world-package"
 import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowthTree } from "./novelx-world-growth-view"
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
@@ -395,6 +397,77 @@ export function NovelXResourceWorkspace(props: {
       project: structuredGraphAvailability() === "ready" ? projectGraphProjection() : undefined,
     }),
   )
+  const worldPackage = createMemo(() => {
+    const skeleton = growthManifest()
+    const blueprint = worldBlueprint()
+    const visual = worldVisual()
+    const world = worldMaterialization()
+    const publication = worldPublication()
+    const texts = worldPublicationTexts() ?? {}
+    const story = storyMaterialization()
+    const character = characterMaterialization()
+    const mapTask = visual?.tasks.find((task) => task.type === "map" && task.status === "attached")
+    const sourcePaths: Record<string, string> = {}
+    for (const record of world?.documents ?? []) {
+      if (record.status === "committed") sourcePaths[record.entityId] = record.targetPath
+    }
+    for (const record of geographyManifest()?.records ?? []) {
+      if (record.status === "committed") sourcePaths[record.terrainId] = record.targetPath
+    }
+    return createNovelXWorldPackage({
+      title: skeleton?.profile.title ?? blueprint?.profile.title,
+      summary: skeleton?.profile.designSummary ?? blueprint?.profile.designSummary,
+      cover: mapTask ? { status: "attached", source: worldVisualAssets()?.[mapTask.id] } : { status: "missing" },
+      overview: {
+        title: skeleton?.profile.genre.label ?? "世界总览",
+        text: skeleton?.profile.designSummary,
+      },
+      map: visual
+        ? {
+            status: visual.atlas.cells.length ? "ready" : "pending",
+            raster: mapTask ? worldVisualAssets()?.[mapTask.id] : undefined,
+            atlas: visual.atlas,
+            sourcePaths,
+          }
+        : { status: skeleton ? "pending" : "missing", sourcePaths },
+      publications: publication?.records
+        .filter((record) => record.status === "committed")
+        .map((record) => ({
+          id: record.id,
+          title: record.title,
+          kind: record.kind,
+          summary: texts[record.entityId]?.[record.kind],
+          sourcePath: record.targetPath,
+        })) ?? [],
+      story: story
+        ? {
+            status: story.status === "text_completed" ? "ready" : "pending",
+            title: story.novel?.title,
+            summary: story.novel?.summary,
+            chapters: story.documents
+              .filter((record) => record.kind === "novel_chapter")
+              .map((record) => ({
+                id: record.id,
+                title: record.title,
+                summary: record.brief,
+                sourcePath: record.status === "committed" ? record.targetPath : undefined,
+              })),
+          }
+        : { status: "missing" },
+      characters: character?.protagonist
+        ? [
+            {
+              id: character.protagonist.id,
+              name: character.protagonist.name,
+              summary: `${character.protagonist.identity} · ${character.protagonist.desire}`,
+              sourcePath: character.document?.status === "committed" ? character.document.targetPath : undefined,
+              portrait: characterPortraitAsset(),
+            },
+          ]
+        : [],
+      graph: visibleGraph().graph,
+    })
+  })
   createEffect(() => {
     if (active() !== "graph") return
     if (structuredGraphAvailability() !== "ready" || graphProjection().nodes.length) return
@@ -939,6 +1012,8 @@ export function NovelXResourceWorkspace(props: {
                 onOpenSource={openGraphSource}
                 onRefresh={refreshGraph}
               />
+            ) : resource === "package" ? (
+              <NovelXWorldPackageView package={worldPackage} onOpenSource={openGraphSource} />
             ) : resource === "characters" && characterMaterialization() ? (
               <article class="novelx-character-overview">
                 <Show
