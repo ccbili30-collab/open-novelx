@@ -29,9 +29,10 @@ import {
   type NovelXStoryNavigationItem,
 } from "@/context/novelx-story-growth"
 import { isNovelXHiddenProjectPath } from "@/context/novelx-project-files"
+import { createNovelXProjectGraphController } from "@/context/novelx-project-graph"
 import { showToast } from "@/utils/toast"
 import { NovelXDocumentEditor } from "./novelx-document-editor"
-import { projectNovelXGraph } from "./novelx-graph-model"
+import { projectNovelXGraph, selectNovelXVisibleGraph } from "./novelx-graph-model"
 import { NovelXGraphView } from "./novelx-graph-view"
 import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowthTree } from "./novelx-world-growth-view"
 import "./novelx-document-editor.css"
@@ -178,6 +179,7 @@ export function NovelXResourceWorkspace(props: {
   })
   const worldGrowth = createNovelXWorldGrowthController()
   const storyGrowth = createNovelXStoryGrowthController()
+  const projectGraph = createNovelXProjectGraphController()
   const [plannedSelection, setPlannedSelection] = createSignal<Partial<Record<NovelXResource, string>>>({})
   const [terrainQuery, setTerrainQuery] = createSignal("")
 
@@ -357,6 +359,30 @@ export function NovelXResourceWorkspace(props: {
       story: storyMaterialization(),
     }),
   )
+  const structuredGraphAvailability = createMemo<"loading" | "ready" | "error">(() => {
+    const states = [growth.state(), geography.state(), worldGrowth.state(), storyGrowth.state()]
+    if (states.some((state) => state.status === "loading")) return "loading"
+    if (states.some((state) => state.status === "error")) return "error"
+    return "ready"
+  })
+  const projectGraphProjection = createMemo(() => {
+    const state = projectGraph.state()
+    if (state.status === "ready") return state.result.graph
+    if (state.status === "loading" || state.status === "error") return state.previous?.graph
+    return undefined
+  })
+  const visibleGraph = createMemo(() =>
+    selectNovelXVisibleGraph({
+      structured: graphProjection(),
+      project: structuredGraphAvailability() === "ready" ? projectGraphProjection() : undefined,
+    }),
+  )
+  createEffect(() => {
+    if (active() !== "graph") return
+    if (structuredGraphAvailability() !== "ready" || graphProjection().nodes.length) return
+    if (projectGraph.state().status !== "idle") return
+    void projectGraph.reload()
+  })
   const plannedItems = createMemo(() => {
     const resource = active()
     const manifest = growthManifest()
@@ -481,18 +507,24 @@ export function NovelXResourceWorkspace(props: {
 
   const select = (path: string) => {
     const normalized = file.normalize(path)
-    if (normalized === file.normalize(view.activeFile())) return
+    if (normalized === file.normalize(view.activeFile())) return true
     if (!document.canLeave()) {
       showToast({
         variant: "default",
         title: language.t("novelx.document.unsaved.title"),
         description: language.t("novelx.document.unsaved.description"),
       })
-      return
+      return false
     }
     const resource = active()
     if (resource) setPlannedSelection((current) => ({ ...current, [resource]: undefined }))
     view.setActiveFile(normalized)
+    return true
+  }
+
+  const openGraphSource = (path: string) => {
+    if (!select(path)) return
+    view.activateResource("files")
   }
 
   const selectPlanned = (item: NovelXGrowthNavigationItem) => {
@@ -818,17 +850,17 @@ export function NovelXResourceWorkspace(props: {
     <div class="novelx-resource-primary">
       <div class="novelx-resource-primary-body">
         <Show
-          when={document.state()}
+          when={resource === "graph" ? undefined : document.state()}
           fallback={
             resource === "graph" ? (
               <NovelXGraphView
-                graph={graphProjection}
+                graph={() => visibleGraph().graph}
                 storageKey={`novelx:graph-sphere:v1:${sdk().directory}`}
                 readSource={async (path) => {
                   const result = await sdk().client.file.editable({ path })
                   return result.data?.content
                 }}
-                onOpenSource={select}
+                onOpenSource={openGraphSource}
               />
             ) : resource === "story" && storyMaterialization() ? (
               <div class="novelx-story-overview">
@@ -990,7 +1022,7 @@ export function NovelXResourceWorkspace(props: {
                       : resource() === "world" && growthManifest()
                         ? `${growthManifest()!.profile.title} · ${geographyProgress().committed}/${geographyProgress().total} 份地理档案已提交`
                         : resource() === "graph"
-                          ? `${graphProjection().nodes.length} 个节点 · ${graphProjection().edges.length} 条关系`
+                          ? `${visibleGraph().graph.nodes.length} 个节点 · ${visibleGraph().graph.edges.length} 条关系`
                           : resource() === "story" && storyMaterialization()
                             ? `${storyMaterialization()!.novel?.title ?? "故事"} · ${storyProgress().committed}/${storyProgress().total} 份文稿已提交`
                             : language.t(resourceCopy[resource()].summary)}

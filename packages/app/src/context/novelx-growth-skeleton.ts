@@ -94,7 +94,7 @@ export function createNovelXGrowthSkeletonController() {
   return {
     state,
     reload() {
-      void load(sdk())
+      return load(sdk())
     },
   }
 }

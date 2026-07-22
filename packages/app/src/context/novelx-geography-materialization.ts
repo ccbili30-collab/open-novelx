@@ -100,7 +100,7 @@ export function createNovelXGeographyMaterializationController(skeletonIntegrity
   return {
     state,
     reload() {
-      void load(sdk())
+      return load(sdk())
     },
   }
 }

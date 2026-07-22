@@ -110,7 +110,7 @@ export function createNovelXStoryGrowthController() {
     })
     onCleanup(stop)
   })
-  return { state, reload: () => void load(sdk()) }
+  return { state, reload: () => load(sdk()) }
 }
 
 export function novelXStoryNavigationItems(manifest: NovelXStory.Materialization): NovelXStoryNavigationItem[] {

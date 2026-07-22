@@ -277,7 +277,7 @@ export function createNovelXWorldGrowthController() {
   return {
     state,
     reload() {
-      void load(sdk())
+      return load(sdk())
     },
   }
 }

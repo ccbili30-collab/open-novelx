@@ -23,6 +23,20 @@ export type NovelXGraph = {
   edges: NovelXGraphEdge[]
 }
 
+export type NovelXVisibleGraph = {
+  graph: NovelXGraph
+  source: "structured" | "project" | "empty"
+}
+
+export function selectNovelXVisibleGraph(input: {
+  structured: NovelXGraph
+  project?: NovelXGraph
+}): NovelXVisibleGraph {
+  if (input.structured.nodes.length) return { graph: input.structured, source: "structured" }
+  if (input.project?.nodes.length) return { graph: input.project, source: "project" }
+  return { graph: { nodes: [], edges: [] }, source: "empty" }
+}
+
 export type NovelXSphereVector = { x: number; y: number; z: number }
 
 export type NovelXSphereLayout = {
