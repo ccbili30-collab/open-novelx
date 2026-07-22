@@ -30,5 +30,6 @@ export function restrictNovelXGrowthTools<T>(input: {
   tools: Record<string, T>
 }) {
   if (input.agent !== NOVELX_GROWTH_AGENT || !input.completedThisTurn) return input.tools
-  return {} as Record<string, T>
+  const { [NOVELX_GROWTH_TOOL]: _completedWorldFinalizer, ...remaining } = input.tools
+  return remaining
 }

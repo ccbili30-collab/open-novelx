@@ -52,19 +52,28 @@ const isNovelXEditorialDispatch = (parent: string, child: string) =>
   (parent === "novelx-story-editor" && child === "novelx-story-writer") ||
   (parent === "novelx-story-editor" && child === "novelx-visual-editor")
 
-const visualBranchDenies = (parent: string, child: string): PermissionV1.Ruleset => {
+const WORLD_VISUAL_TOOLS = [
+  "novelx_prepare_world_visuals",
+  "novelx_read_world_visual_sources",
+  "novelx_register_world_visuals",
+] as const
+const CHARACTER_VISUAL_TOOLS = ["novelx_prepare_character_portrait", "novelx_register_character_portrait"] as const
+const STORY_VISUAL_TOOLS = ["novelx_prepare_story_covers", "novelx_register_story_covers"] as const
+
+const denyVisualTools = (permissions: readonly string[]): PermissionV1.Ruleset =>
+  permissions.map((permission) => ({ permission, pattern: "*", action: "deny" as const }))
+
+const visualBranchDenies = (parent: string, child: string, prompt: string): PermissionV1.Ruleset => {
   if (child !== "novelx-visual-editor") return []
   if (parent === "novelx-story-editor") {
-    return ["novelx_prepare_world_visuals", "novelx_read_world_visual_sources", "novelx_register_world_visuals"].map(
-      (permission) => ({ permission, pattern: "*", action: "deny" as const }),
-    )
+    return denyVisualTools([...WORLD_VISUAL_TOOLS, ...CHARACTER_VISUAL_TOOLS])
   }
   if (parent === "growth") {
-    return ["novelx_prepare_story_covers", "novelx_register_story_covers"].map((permission) => ({
-      permission,
-      pattern: "*",
-      action: "deny" as const,
-    }))
+    const branch = prompt.trimStart().split(/\s/, 1)[0]
+    if (branch === "WORLD_VISUALS") return denyVisualTools([...CHARACTER_VISUAL_TOOLS, ...STORY_VISUAL_TOOLS])
+    if (branch === "CHARACTER_PORTRAIT") return denyVisualTools([...WORLD_VISUAL_TOOLS, ...STORY_VISUAL_TOOLS])
+    if (branch === "STORY_COVERS") return denyVisualTools([...WORLD_VISUAL_TOOLS, ...CHARACTER_VISUAL_TOOLS])
+    return denyVisualTools([...WORLD_VISUAL_TOOLS, ...CHARACTER_VISUAL_TOOLS, ...STORY_VISUAL_TOOLS])
   }
   return []
 }
@@ -268,7 +277,7 @@ export const TaskTool = Tool.define(
           action: "deny" as const,
         })) ?? []),
       ]
-      const branchDenies = visualBranchDenies(ctx.agent, next.name)
+      const branchDenies = visualBranchDenies(ctx.agent, next.name, params.prompt)
       const sessionPermission = [
         ...childPermission,
         ...childToolDenies.filter(
@@ -342,9 +351,7 @@ export const TaskTool = Tool.define(
           parts,
         })
         if (result.info.role === "assistant" && result.info.error) {
-          return yield* Effect.fail(
-            new Error(`NOVELX_TASK_PROVIDER_FAILURE: ${errorMessage(result.info.error)}`),
-          )
+          return yield* Effect.fail(new Error(`NOVELX_TASK_PROVIDER_FAILURE: ${errorMessage(result.info.error)}`))
         }
         const text = result.parts.findLast((item) => item.type === "text")?.text ?? ""
         if (isNovelXOwnedLeaf(next.name) && !text.trim()) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { novelXGrowthToolCompleted, restrictNovelXGrowthTools } from "@/novelx/growth-loop"
 
 describe("NovelX Growth loop gate", () => {
-  it("removes all tools only after the adaptive world surface completed in the current user turn", () => {
+  it("blocks only duplicate world finalization after the world completed in the current user turn", () => {
     const completed = novelXGrowthToolCompleted(
       [
         {
@@ -21,11 +21,11 @@ describe("NovelX Growth loop gate", () => {
     const tools = restrictNovelXGrowthTools({
       agent: "growth",
       completedThisTurn: completed,
-      tools: { novelx_finish_world: {}, task: {} },
+      tools: { novelx_finish_world: {}, novelx_route_growth: {}, task: {} },
     })
 
     expect(completed).toBe(true)
-    expect(tools).toEqual({})
+    expect(tools).toEqual({ novelx_route_growth: {}, task: {} })
   })
 
   it("allows a failed finish to be corrected in the same user turn", () => {

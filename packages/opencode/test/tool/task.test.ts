@@ -738,6 +738,14 @@ describe("tool.task", () => {
         },
         rootContext,
       )
+      const rootStoryVisualTool = yield* def.execute(
+        {
+          description: "小说封面入队",
+          prompt: "STORY_COVERS sealed-story-integrity",
+          subagent_type: "novelx-visual-editor",
+        },
+        rootContext,
+      )
       const publication = yield* def.execute(
         {
           description: "世界图志与纪行",
@@ -876,11 +884,27 @@ describe("tool.task", () => {
       expect((yield* sessions.get(characterWriter.metadata.sessionId)).parentID).toBe(characterSession.id)
       const worldVisualSession = yield* sessions.get(worldVisualTool.metadata.sessionId)
       expect(worldVisualSession.parentID).toBe(chat.id)
-      expect(worldVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_story_covers")?.action).toBe("deny")
+      expect(
+        worldVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_story_covers")?.action,
+      ).toBe("deny")
+      const rootStoryVisualSession = yield* sessions.get(rootStoryVisualTool.metadata.sessionId)
+      expect(rootStoryVisualSession.parentID).toBe(chat.id)
+      expect(
+        rootStoryVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_story_covers")
+          ?.action,
+      ).not.toBe("deny")
+      expect(
+        rootStoryVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")
+          ?.action,
+      ).toBe("deny")
       const storyVisualSession = yield* sessions.get(storyVisualTool.metadata.sessionId)
       expect(storyVisualSession.parentID).toBe(storySession.id)
-      expect(storyVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")?.action).toBe("deny")
-      expect(storyVisualSession.permission?.findLast((rule) => rule.permission === "novelx_register_world_visuals")?.action).toBe("deny")
+      expect(
+        storyVisualSession.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")?.action,
+      ).toBe("deny")
+      expect(
+        storyVisualSession.permission?.findLast((rule) => rule.permission === "novelx_register_world_visuals")?.action,
+      ).toBe("deny")
       expect(rootToLeaf._tag).toBe("Failure")
       expect(stageToStage._tag).toBe("Failure")
       expect(rootToRemovedCoverEditor._tag).toBe("Failure")
@@ -930,8 +954,12 @@ describe("tool.task", () => {
         },
       )
       const resumed = yield* sessions.get(legacyVisual.id)
-      expect(resumed.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")?.action).toBe("deny")
-      expect(resumed.permission?.findLast((rule) => rule.permission === "novelx_register_world_visuals")?.action).toBe("deny")
+      expect(resumed.permission?.findLast((rule) => rule.permission === "novelx_prepare_world_visuals")?.action).toBe(
+        "deny",
+      )
+      expect(resumed.permission?.findLast((rule) => rule.permission === "novelx_register_world_visuals")?.action).toBe(
+        "deny",
+      )
     }),
   )
 
