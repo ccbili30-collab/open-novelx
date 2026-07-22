@@ -6,6 +6,7 @@ import {
   projectMonogram,
   projectNovelXDraftText,
   projectNovelXTimelineParts,
+  novelXResourceOwnsDocument,
   resolveNovelXResourcePath,
   sanitizeNovelXAssistantText,
   selectProjectSessions,
@@ -23,6 +24,23 @@ describe("resolveNovelXResourcePath", () => {
     expect(resolveNovelXResourcePath("characters", ["Characters"])).toBe("Characters")
     expect(resolveNovelXResourcePath("characters", ["World/characters"])).toBe("World/characters")
     expect(resolveNovelXResourcePath("characters", ["World"])).toBeUndefined()
+  })
+})
+
+describe("novelXResourceOwnsDocument", () => {
+  test("does not let a file from another resource replace the active preview", () => {
+    expect(novelXResourceOwnsDocument("world", "Characters/岚砾.md")).toBe(false)
+    expect(novelXResourceOwnsDocument("story", "Characters/岚砾.md")).toBe(false)
+    expect(novelXResourceOwnsDocument("package", "Characters/岚砾.md")).toBe(false)
+    expect(novelXResourceOwnsDocument("graph", "Characters/岚砾.md")).toBe(false)
+  })
+
+  test("restores a remembered file only inside its owning resource", () => {
+    expect(novelXResourceOwnsDocument("files", "Characters/岚砾.md")).toBe(true)
+    expect(novelXResourceOwnsDocument("characters", "Characters/岚砾.md")).toBe(true)
+    expect(novelXResourceOwnsDocument("characters", "World/characters/旧角色.md")).toBe(true)
+    expect(novelXResourceOwnsDocument("world", "World/北境.md")).toBe(true)
+    expect(novelXResourceOwnsDocument("story", "Stories/小说/第一章.md")).toBe(true)
   })
 })
 

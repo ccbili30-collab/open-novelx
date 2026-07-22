@@ -9,6 +9,7 @@ import {
   parseNovelXWorldBlueprint,
   parseNovelXWorldMaterialization,
   parseNovelXWorldVisuals,
+  projectNovelXWorldPublication,
   resolveNovelXWorldMapFeature,
   resolveNovelXWorldMapRasterTask,
 } from "./novelx-world-growth"
@@ -318,9 +319,9 @@ test("verifies visual evidence and resolves whole features without letting river
   } satisfies NovelXWorldVisual.Manifest
   expect(await parseNovelXWorldVisuals(JSON.stringify(v3), materializationSha256)).toEqual(v3)
   expect(resolveNovelXWorldMapRasterTask(v3, "geography", { state: "idle" })?.id).toBe("map-base")
-  expect(
-    resolveNovelXWorldMapRasterTask(v3, "geography", { state: "highlighted", entityId: "basin" })?.id,
-  ).toBe("map-geography-basin")
+  expect(resolveNovelXWorldMapRasterTask(v3, "geography", { state: "highlighted", entityId: "basin" })?.id).toBe(
+    "map-geography-basin",
+  )
   expect(resolveNovelXWorldMapRasterTask(v3, "human", { state: "focused", entityId: "realm" })?.id).toBe(
     "map-human-realm",
   )
@@ -360,4 +361,36 @@ test("rejects the ambiguous V1 map contract instead of guessing a migration", as
   await expect(parseNovelXWorldVisuals('{"schemaVersion":1}', "c".repeat(64))).rejects.toThrow(
     "地图数据已过期，需要重新生成",
   )
+})
+
+test("keeps the world projection ready when optional publication data belongs to an older visual", async () => {
+  const draft = {
+    schemaVersion: 1 as const,
+    stage: "world_publication" as const,
+    status: "ready" as const,
+    worldMaterializationIntegritySha256: "a".repeat(64),
+    worldVisualIntegritySha256: "b".repeat(64),
+    records: [
+      {
+        id: "publication-test-atlas",
+        entityId: "entity-test",
+        kind: "atlas" as const,
+        title: "测试图志",
+        status: "committed" as const,
+        sourcePath: "World/测试.md",
+        sourceSha256: "d".repeat(64),
+        targetPath: "World/Atlas/entity-test/图志.md",
+        committedSha256: "e".repeat(64),
+        updatedAt: 1,
+      },
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const content = JSON.stringify({ ...draft, integritySha256: sha256(draft) })
+
+  const projection = await projectNovelXWorldPublication(content, "a".repeat(64), "c".repeat(64))
+
+  expect(projection.publication).toBeUndefined()
+  expect(projection.warning).toBe("玩家世界文稿与当前世界事实不匹配。")
 })

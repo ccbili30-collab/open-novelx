@@ -9,6 +9,18 @@ export type ProjectSessionSummary = {
 
 type ResourceWithProjectPath = "files" | "world" | "characters" | "story" | "graph" | "package"
 
+export function novelXResourceOwnsDocument(resource: ResourceWithProjectPath, path: string) {
+  const normalized = path.replaceAll("\\", "/").replace(/^\.\//u, "").toLowerCase()
+  if (!normalized) return false
+  if (resource === "files") return true
+  if (resource === "world") return normalized.startsWith("world/")
+  if (resource === "characters") {
+    return normalized.startsWith("characters/") || normalized.startsWith("world/characters/")
+  }
+  if (resource === "story") return normalized.startsWith("stories/") || normalized.startsWith("story/")
+  return false
+}
+
 export function resolveNovelXResourcePath(resource: ResourceWithProjectPath, existingDirectories: readonly string[]) {
   const normalized = new Set(existingDirectories.map((path) => path.replaceAll("\\", "/").toLowerCase()))
   const firstExisting = (...candidates: string[]) =>

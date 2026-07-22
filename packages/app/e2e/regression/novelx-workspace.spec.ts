@@ -1,5 +1,6 @@
 import { base64Encode } from "@opencode-ai/core/util/encode"
 import { expect, test } from "@playwright/test"
+import { createHash } from "node:crypto"
 import { mockOpenCodeServer } from "../utils/mock-server"
 import { expectSessionTitle } from "../utils/waits"
 import { completedWorldFixtures } from "../fixtures/novelx-world-publication"
@@ -26,7 +27,14 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const worldBlueprint = await worldBlueprintFixture()
   const worldMaterialization = await worldMaterializationFixture(worldBlueprint)
   const completedFixtures = await completedWorldFixtures(worldMaterialization)
+  const { integritySha256: _publicationIntegrity, ...publicationDraft } = completedFixtures.publication
+  const stalePublicationDraft = { ...publicationDraft, worldVisualIntegritySha256: "f".repeat(64) }
+  const stalePublication = {
+    ...stalePublicationDraft,
+    integritySha256: createHash("sha256").update(JSON.stringify(stalePublicationDraft)).digest("hex"),
+  }
   let completedWorld = false
+  let useStalePublication = false
   let editable = "---\r\ntitle: 中土世界\r\n---\r\n# 世界总览\r\n\r\n群山环绕着古老王国。\r\n"
   let saved: { content: string; expectedContent: string; expectedBom: boolean } | undefined
   let conflictNext = false
@@ -100,7 +108,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
                   : undefined
                 : path === ".novelx/publication/world-publication.json"
                   ? completedWorld
-                    ? { type: "text", content: JSON.stringify(completedFixtures.publication), bom: false }
+                    ? {
+                        type: "text",
+                        content: JSON.stringify(useStalePublication ? stalePublication : completedFixtures.publication),
+                        bom: false,
+                      }
                     : undefined
                   : path === "World/Atlas/entity-helios-ring/图志.md"
                     ? { type: "text", content: completedFixtures.atlasText, bom: false }
@@ -276,6 +288,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await page.screenshot({ path: testInfo.outputPath("novelx-world-expanded.png") })
 
   completedWorld = true
+  useStalePublication = true
   events.push({
     directory,
     payload: {
@@ -289,9 +302,14 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   await page.reload()
   await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
+  await expect(resources.getByText("世界生长状态无法读取", { exact: true })).toHaveCount(0)
   await expect(resources.locator(".novelx-world-atlas image")).toHaveCount(1)
   await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute("data-map-task-id", "image-world-map")
   await expect(resources.getByText(/Growth 总主编|阶段主编|执行 Agent|注册事实|事实依据|因果推演/u)).toHaveCount(0)
+
+  useStalePublication = false
+  await page.reload()
+  await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
 
   const mapMain = resources.locator(".novelx-world-atlas-main")
   const geographyRegion = resources.locator(".novelx-world-map-region").first()
@@ -441,6 +459,16 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(editor.getByRole("button", { name: "排版", exact: true })).toHaveCount(0)
   await expect(source).toHaveValue(editable)
   await expect(resources.getByText("真实项目文件", { exact: true })).toBeVisible()
+
+  // Regression: a remembered file belongs to the file surface and must not replace world/package previews.
+  await dock.getByRole("button", { name: "世界", exact: true }).click()
+  await expect(resources.locator('[data-resource="world"] .novelx-world-atlas')).toBeVisible()
+  await expect(resources.locator('[data-resource="world"] .novelx-document-editor')).toHaveCount(0)
+  await dock.getByRole("button", { name: "世界包", exact: true }).click()
+  await expect(resources.locator('[data-resource="package"] .novelx-world-package-view')).toBeVisible()
+  await expect(resources.locator('[data-resource="package"] .novelx-document-editor')).toHaveCount(0)
+  await dock.getByRole("button", { name: "文件", exact: true }).click()
+  await expect(resources.locator('[data-resource="files"] .novelx-document-editor')).toBeVisible()
 
   events.push(toolEvent("running"))
   await expect(editor.getByText("growth 正在编辑这个文件；该操作停止前，此处只读。", { exact: true })).toBeVisible()

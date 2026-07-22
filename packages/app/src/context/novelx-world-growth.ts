@@ -14,6 +14,7 @@ export type NovelXWorldGrowthState =
       visualAssets?: Record<string, string>
       publication?: NovelXWorldPublication.Manifest
       publicationTexts?: Record<string, { atlas?: string; travelogue?: string }>
+      warnings?: readonly string[]
     }
   | { status: "error"; message: string }
 
@@ -83,10 +84,7 @@ export function resolveNovelXWorldMapRasterTask(
   )
 }
 
-export function novelXWorldMapVariantProgress(
-  visual: NovelXWorldVisual.Manifest,
-  layer?: "geography" | "human",
-) {
+export function novelXWorldMapVariantProgress(visual: NovelXWorldVisual.Manifest, layer?: "geography" | "human") {
   const variants = visual.tasks.filter(
     (task) => task.type === "map" && task.mapRole === "variant" && (!layer || task.layer === layer),
   )
@@ -153,6 +151,24 @@ export async function parseNovelXWorldPublication(
     throw new Error("玩家世界文稿与当前世界事实不匹配。")
   }
   return manifest
+}
+
+export async function projectNovelXWorldPublication(
+  content: string,
+  worldMaterializationIntegritySha256: string,
+  worldVisualIntegritySha256: string,
+): Promise<{ publication?: NovelXWorldPublication.Manifest; warning?: string }> {
+  try {
+    return {
+      publication: await parseNovelXWorldPublication(
+        content,
+        worldMaterializationIntegritySha256,
+        worldVisualIntegritySha256,
+      ),
+    }
+  } catch (error) {
+    return { publication: undefined, warning: errorMessage(error) }
+  }
 }
 
 async function sha256(value: unknown) {
@@ -249,14 +265,15 @@ export function createNovelXWorldGrowthController() {
           return undefined
         })
       if (version !== loadVersion) return
-      const publication =
+      const publicationProjection =
         publicationResult?.data && publicationResult.response.status !== 404
-          ? await parseNovelXWorldPublication(
+          ? await projectNovelXWorldPublication(
               publicationResult.data.content,
               materialization.integritySha256,
               visual.integritySha256,
             )
-          : undefined
+          : {}
+      const publication = publicationProjection.publication
       const publicationEntries = publication
         ? await Promise.all(
             publication.records
@@ -285,6 +302,7 @@ export function createNovelXWorldGrowthController() {
         visualAssets: Object.fromEntries(assetEntries.filter((entry): entry is NonNullable<typeof entry> => !!entry)),
         publication,
         publicationTexts,
+        warnings: publicationProjection.warning ? [publicationProjection.warning] : undefined,
       })
     } catch (error) {
       if (version !== loadVersion) return

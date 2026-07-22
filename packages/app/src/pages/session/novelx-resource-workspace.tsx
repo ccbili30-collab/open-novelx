@@ -41,7 +41,7 @@ import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowth
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
-import { projectNovelXDraftText, resolveNovelXResourcePath } from "./novelx-workspace-model"
+import { novelXResourceOwnsDocument, projectNovelXDraftText, resolveNovelXResourcePath } from "./novelx-workspace-model"
 
 const resourceLabel = (resource: NovelXResource) =>
   ({
@@ -430,15 +430,16 @@ export function NovelXResourceWorkspace(props: {
             sourcePaths,
           }
         : { status: skeleton ? "pending" : "missing", sourcePaths },
-      publications: publication?.records
-        .filter((record) => record.status === "committed")
-        .map((record) => ({
-          id: record.id,
-          title: record.title,
-          kind: record.kind,
-          summary: texts[record.entityId]?.[record.kind],
-          sourcePath: record.targetPath,
-        })) ?? [],
+      publications:
+        publication?.records
+          .filter((record) => record.status === "committed")
+          .map((record) => ({
+            id: record.id,
+            title: record.title,
+            kind: record.kind,
+            summary: texts[record.entityId]?.[record.kind],
+            sourcePath: record.targetPath,
+          })) ?? [],
       story: story
         ? {
             status: story.status === "text_completed" ? "ready" : "pending",
@@ -468,6 +469,19 @@ export function NovelXResourceWorkspace(props: {
       graph: visibleGraph().graph,
     })
   })
+  const hasWorldPackageData = createMemo(
+    () =>
+      !!(
+        growthManifest() ||
+        worldBlueprint() ||
+        worldMaterialization() ||
+        worldVisual() ||
+        worldPublication() ||
+        storyMaterialization() ||
+        characterMaterialization() ||
+        visibleGraph().graph.nodes.length
+      ),
+  )
   createEffect(() => {
     if (active() !== "graph") return
     if (structuredGraphAvailability() !== "ready" || graphProjection().nodes.length) return
@@ -700,8 +714,12 @@ export function NovelXResourceWorkspace(props: {
 
   const renderTree = (resource: NovelXResource) => {
     const path = resourcePath(resource)
-    if (resource === "graph" || resource === "package") {
-      if (growthManifest() || worldBlueprint()) return
+    if (resource === "graph") {
+      if (visibleGraph().graph.nodes.length) return
+      return <div class="novelx-resource-empty">{language.t("novelx.resource.noStructuredData")}</div>
+    }
+    if (resource === "package") {
+      if (hasWorldPackageData()) return
       return <div class="novelx-resource-empty">{language.t("novelx.resource.noStructuredData")}</div>
     }
     if (resource === "story" && storyMaterialization()) return
@@ -897,6 +915,8 @@ export function NovelXResourceWorkspace(props: {
       return <div class="novelx-resource-empty">正在读取故事…</div>
     }
     if (resource === "story" && storyMaterialization()) return
+    if (resource === "package" && hasWorldPackageData()) return
+    if (resource === "graph" && visibleGraph().graph.nodes.length) return
     if (growthManifest() || worldBlueprint()) return
     if (resource === "world") {
       return (
@@ -999,7 +1019,7 @@ export function NovelXResourceWorkspace(props: {
     <div class="novelx-resource-primary">
       <div class="novelx-resource-primary-body">
         <Show
-          when={resource === "graph" ? undefined : document.state()}
+          when={novelXResourceOwnsDocument(resource, view.activeFile()) ? document.state() : undefined}
           fallback={
             resource === "graph" ? (
               <NovelXGraphView
