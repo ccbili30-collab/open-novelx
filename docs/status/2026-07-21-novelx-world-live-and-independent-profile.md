@@ -84,7 +84,7 @@ NovelX Profile：
 
 - 故事、角色、图谱检索、世界包导出、个体图、章节/历史书封面和世界包封面不属于本批，未实现或未验收。
 - 当前世界只实现地图与风貌两类视觉；用户接受、重生成和版本比较界面仍未实现。
-- 本批完成的是 NovelX 存储与模型配置边界的独立。OpenCode Runtime 仍按产品决定作为内核；上游内部包名、部分协议名、自动更新元数据和构建产物品牌尚未全部 NovelX 化，不能把本结果描述为代码来源或发行协议层面的“完全脱离 OpenCode”。这些变化会影响公开协议和更新兼容性，需要单独产品决策。
+- 本批完成的是 NovelX 存储与模型配置边界的独立。2026-07-22 已进一步完成 Windows 构建产物、安装器、更新元数据和用户可见品牌的 NovelX 化；OpenCode Runtime 仍按产品决定作为内核，上游内部包名与 `opencode://` 协议字符串继续作为兼容边界保留。详见 [`2026-07-22-novelx-windows-brand-and-installer.md`](./2026-07-22-novelx-windows-brand-and-installer.md)。
 - 独立数据库目前是迁移快照，不是对原 OpenCode 数据的持续同步；后续 NovelX 与 OpenCode 会分别演进。
 - 没有进行图片像素级计算机视觉反向比对。现有证据能证明语义蒙版、账本哈希、区域高亮和标签投影一致，不能证明位图每个细节都严格服从地理分区。
 
@@ -95,4 +95,4 @@ NovelX Profile：
 - Provider 与图片端点仍是外部可信边界，可能发生额度、超时和连接关闭；队列已证明可恢复且不会重复挂载成功任务，但不能宣称所有网络故障都能无人值守恢复。
 - 世界恢复入口：`.novelx\growth\world-blueprint.json`、`.novelx\growth\world-materialization.json`、`.novelx\visuals\world-visuals.json`、`.novelx\publication\world-publication.json`。
 - Profile 恢复入口：`packages/desktop/src/main/novelx-profile.ts`、`packages/desktop/src/main/index.ts`；原 OpenCode 配置和数据库仍保留，可独立回溯。
-- 当前 Git 远端只有上游 OpenCode 仓库，没有验证可写的 NovelX 远端；本批只保证本地 `novelx-ui` 提交，不声称已推送。
+- 2026-07-22 已验证 NovelX 远端 `ccbili30-collab/open-novelx` 可写，Bugfix 分支由后续 Windows 打包批次继续推送；本历史批次本身仍只对应当时的本地 `novelx-ui` 提交。
