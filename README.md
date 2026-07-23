@@ -1,129 +1,85 @@
 <p align="center">
-  <a href="https://opencode.ai">
-    <picture>
-      <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
-    </picture>
+  <a href="https://ccbili30-collab.github.io/open-novelx/">
+    <img src="packages/desktop/icons/prod/icon.png" width="128" alt="NovelX logo">
   </a>
 </p>
-<p align="center">The open source AI coding agent.</p>
+
+<h1 align="center">NovelX</h1>
+
+<p align="center">让世界、角色与故事在同一个工作台里生长。</p>
+
 <p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
+  <a href="https://ccbili30-collab.github.io/open-novelx/"><strong>在线体验完整展示</strong></a>
+  ·
+  <a href="https://github.com/ccbili30-collab/open-novelx"><strong>查看源代码</strong></a>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a> |
-  <a href="README.gr.md">Ελληνικά</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-111111?style=flat-square">
+  <img alt="Desktop" src="https://img.shields.io/badge/desktop-Electron-111111?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-111111?style=flat-square">
 </p>
 
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
-
 ---
 
-### Installation
+NovelX Desktop 是面向小说、世界观与原创角色创作的 Agent-native（智能体原生）桌面工作台。用户从一句想法出发，与主编讨论或启动 Growth（生长）任务；世界事实、地图、角色、故事、图片与关系图谱会成为可继续阅读、编辑和追溯的正式作品，而不是散落在聊天记录中的临时回答。
 
-```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
+## 当前工作台
 
-# Package managers
-npm i -g opencode-ai@latest        # or bun/pnpm/yarn
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS and Linux (recommended, always up to date)
-brew install opencode              # macOS and Linux (official brew formula, updated less)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # Any OS
-nix run nixpkgs#opencode           # or github:anomalyco/opencode for latest dev branch
+| 工作面 | 当前能力                                                         |
+| ------ | ---------------------------------------------------------------- |
+| 世界   | 按题材规划自然与人文骨架，生成正式世界档案、图志与纪行           |
+| 地图   | 泰森区域、自然与人文状态图、区域点击、高亮和正文跳转             |
+| 人物   | 正式角色档案、世界来源约束和角色视觉任务                         |
+| 故事   | 基于世界与主角继续生成小说，当前联合链支持一部三章正文           |
+| 文件   | 展示项目正式文件；Growth 写作期间流式预览、锁定，提交后原地解锁  |
+| 图谱   | 从项目文档投影 3D 关系节点，支持刷新、聚焦和原文跳转             |
+| 世界包 | 在软件内以地图、图志、纪行、人物、小说和图谱组织公开展览         |
+| Study  | 扫描既有资料，在不覆盖原文的前提下整理世界、人物、作品和文献档案 |
+
+图片任务与文字链分离：地图、风貌、角色立绘和故事封面进入后台队列，成功后挂回对应作品；图片等待或失败不会伪装成文字任务失败，也不会用 Fixture（测试夹具）冒充真实结果。
+
+## 完整展示
+
+公开展示页使用自包含作品样板，呈现 NovelX 完整体的视觉方向：
+
+<p align="center">
+  <a href="https://ccbili30-collab.github.io/open-novelx/">
+    <img src="https://img.shields.io/badge/打开_NovelX_展览-进入作品-111111?style=for-the-badge" alt="打开 NovelX 在线展览">
+  </a>
+</p>
+
+## 本地开发
+
+当前桌面版本优先支持 Windows。需要 Bun 1.3.14，并使用 PowerShell：
+
+```powershell
+bun install --ignore-scripts
+bun run dev:desktop
 ```
 
-> [!TIP]
-> Remove versions older than 0.1.x before installing.
+生产构建、Windows 安装器和验收命令见 [`docs/status`](docs/status) 中对应版本的发布记录。
 
-### Desktop App (BETA)
+## 项目结构
 
-OpenCode is also available as a desktop application. Download directly from the [releases page](https://github.com/anomalyco/opencode/releases) or [opencode.ai/download](https://opencode.ai/download).
-
-| Platform              | Download                           |
-| --------------------- | ---------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-mac-arm64.dmg`   |
-| macOS (Intel)         | `opencode-desktop-mac-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe` |
-| Linux                 | `.deb`, `.rpm`, or `.AppImage`     |
-
-```bash
-# macOS (Homebrew)
-brew install --cask opencode-desktop
-# Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
+```text
+packages/app       NovelX 工作台与六个资源工作面
+packages/desktop   Electron 桌面壳与 Windows 安装包
+packages/schema    世界、人物、故事和 Study 的公开数据合同
+docs/architecture  NovelX 产品架构与运行链合同
+docs/status        已实现能力、测试证据与已知边界
 ```
 
-#### Installation Directory
+## 真实性边界
 
-The install script respects the following priority order for the installation path:
+NovelX 的 Agent、Growth、Study 和图片能力都要求真实 Provider（模型服务）；缺少配置时必须失败关闭，不使用本地模板伪造 Live（真实运行）结果。
 
-1. `$OPENCODE_INSTALL_DIR` - Custom installation directory
-2. `$XDG_BIN_DIR` - XDG Base Directory Specification compliant path
-3. `$HOME/bin` - Standard user binary directory (if it exists or can be created)
-4. `$HOME/.opencode/bin` - Default fallback
+当前仓库是 2026-07-23 黑客松联合基线。世界、地图、Study、人物与故事链分别有真实运行证据，但最终联合提交尚未重新从空项目完整消耗一次 Provider 跑通全部链路。Windows 安装包也尚未配置数字签名证书。详细证据与冻结项见 [`docs/status`](docs/status)。
 
-```bash
-# Examples
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
-```
+## 参与项目
 
-### Agents
+提交问题或代码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 私下报告。
 
-OpenCode includes two built-in agents you can switch between with the `Tab` key.
+## 许可证
 
-- **build** - Default, full-access agent for development work
-- **plan** - Read-only agent for analysis and code exploration
-  - Denies file edits by default
-  - Asks permission before running bash commands
-  - Ideal for exploring unfamiliar codebases or planning changes
-
-Also included is a **general** subagent for complex searches and multistep tasks.
-This is used internally and can be invoked using `@general` in messages.
-
-Learn more about [agents](https://opencode.ai/docs/agents).
-
-### Documentation
-
-For more info on how to configure OpenCode, [**head over to our docs**](https://opencode.ai/docs).
-
-### Contributing
-
-If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.
-
-### Building on OpenCode
-
-If you are working on a project that's related to OpenCode and is using "opencode" as part of its name, for example "opencode-dashboard" or "opencode-mobile", please add a note to your README to clarify that it is not built by the OpenCode team and is not affiliated with us in any way.
-
----
-
-**Join our community** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+本仓库依照 [MIT License](LICENSE) 发布。第三方组件及其许可见仓库内相应声明。

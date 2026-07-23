@@ -1,47 +1,26 @@
-# Security
+# NovelX 安全策略
 
-## IMPORTANT
+NovelX 是本地桌面创作工作台。经用户授权后，它可能读取和写入项目文件、调用模型服务、生成图片并运行项目工具。权限提示用于明确操作范围，但不等同于操作系统级安全沙箱。
 
-We do not accept AI generated security reports. We receive a large number of
-these and we absolutely do not have the resources to review them all. If you
-submit one that will be an automatic ban from the project.
+## 报告安全问题
 
-## Threat Model
+请通过本仓库的 [GitHub Security Advisory](https://github.com/ccbili30-collab/open-novelx/security/advisories/new) 私下报告漏洞。不要在公开 Issue 中粘贴 API Key、项目私密内容、访问令牌或可直接利用的漏洞细节。
 
-### Overview
+报告中请包含：
 
-OpenCode is an AI-powered coding assistant that runs locally on your machine. It provides an agent system with access to powerful tools including shell execution, file operations, and web access.
+- 受影响版本或提交哈希；
+- 可复现步骤和影响范围；
+- 是否需要特定 Provider、项目文件或权限；
+- 已发生的文件、网络或外部副作用；
+- 可用于验证修复的最小样例。
 
-### No Sandbox
+## 信任边界
 
-OpenCode does **not** sandbox the agent. The permission system exists as a UX feature to help users stay aware of what actions the agent is taking - it prompts for confirmation before executing commands, writing files, etc. However, it is not designed to provide security isolation.
+- Provider 接收的数据遵循对应服务商的策略。
+- 用户安装的 MCP、Skill 和其他外部工具不自动成为 NovelX 的可信代码。
+- 缺少真实 Provider 配置时，Agent 与图片能力应失败关闭。
+- NovelX 不应在普通界面、日志、导出物或公开作品中暴露凭据、内部 Prompt 或隐藏上下文。
 
-If you need true isolation, run OpenCode inside a Docker container or VM.
+## 当前发布状态
 
-### Server Mode
-
-Server mode is opt-in only. When enabled, set `OPENCODE_SERVER_PASSWORD` to require HTTP Basic Auth. Without this, the server runs unauthenticated (with a warning). It is the end user's responsibility to secure the server - any functionality it provides is not a vulnerability.
-
-### Out of Scope
-
-| Category                        | Rationale                                                               |
-| ------------------------------- | ----------------------------------------------------------------------- |
-| **Server access when opted-in** | If you enable server mode, API access is expected behavior              |
-| **Sandbox escapes**             | The permission system is not a sandbox (see above)                      |
-| **LLM provider data handling**  | Data sent to your configured LLM provider is governed by their policies |
-| **MCP server behavior**         | External MCP servers you configure are outside our trust boundary       |
-| **Malicious config files**      | Users control their own config; modifying it is not an attack vector    |
-
----
-
-# Reporting Security Issues
-
-We appreciate your efforts to responsibly disclose your findings, and will make every effort to acknowledge your contributions.
-
-To report a security issue, please use the GitHub Security Advisory ["Report a Vulnerability"](https://github.com/anomalyco/opencode/security/advisories/new) tab.
-
-The team will send a response indicating the next steps in handling your report. After the initial reply to your report, the security team will keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
-
-## Escalation
-
-If you do not receive an acknowledgement of your report within 6 business days, you may send an email to security@anoma.ly
+现有 Windows 安装包尚未配置数字签名证书。首次运行时 Windows 可能显示信誉或发布者提示；在签名完成前，不应把该提示描述为已经解决。
