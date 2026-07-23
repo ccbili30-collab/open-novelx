@@ -44,6 +44,8 @@ import { NovelXGraphView } from "./novelx-graph-view"
 import { NovelXWorldPackageView } from "./novelx-world-package-view"
 import { createNovelXWorldPackage } from "@/novelx/world-package"
 import { NovelXWorldGrowthInspector, NovelXWorldGrowthPrimary, NovelXWorldGrowthTree } from "./novelx-world-growth-view"
+import { createNovelXGrowthLiveController } from "./novelx-growth-live-controller"
+import { NovelXGrowthLivePanel, type NovelXGrowthLiveLabelKey } from "./novelx-growth-live-panel"
 import "./novelx-document-editor.css"
 import { useParams } from "@solidjs/router"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
@@ -249,6 +251,26 @@ export function NovelXResourceWorkspace(props: {
   const worldGrowthErrorMessage = createMemo(() => {
     const state = worldGrowth.state()
     return state.status === "error" ? state.message : "未知错误"
+  })
+  const liveGrowth = createNovelXGrowthLiveController({
+    currentSessionId: () => params.id,
+    source: () => ({
+      blueprint: worldBlueprint(),
+      materialization: worldMaterialization(),
+      sessions: sync().data.session,
+      statuses: sync().data.session_status,
+      messages: sync().data.message,
+      parts: sync().data.part,
+    }),
+    syncSession: (sessionId) => sync().session.sync(sessionId, { force: true }),
+  })
+  const liveGrowthProjection = createMemo(liveGrowth.projection)
+  const liveGrowthVisible = createMemo(() => {
+    const projection = liveGrowthProjection()
+    return (
+      !!projection.stage &&
+      (projection.stage.state !== "completed" || projection.artifacts.some((artifact) => artifact.locked))
+    )
   })
   const storyMaterialization = createMemo(() => {
     const state = storyGrowth.state()
@@ -714,7 +736,7 @@ export function NovelXResourceWorkspace(props: {
         title: language.t("novelx.document.unsaved.title"),
         description: language.t("novelx.document.unsaved.description"),
       })
-      return
+      return false
     }
     const record = item.kind === "entity" ? worldDocumentRecords().get(item.id) : undefined
     const published =
@@ -729,7 +751,40 @@ export function NovelXResourceWorkspace(props: {
         (worldMaterialization()?.status === "completed" ? "" : record?.status === "committed" ? record.targetPath : ""),
     )
     setPlannedSelection((current) => ({ ...current, world: item.id }))
+    return true
   }
+
+  const openLiveGrowthArtifact = (artifact: ReturnType<typeof liveGrowthProjection>["artifacts"][number]) => {
+    if (artifact.state === "committed") {
+      if (select(artifact.targetPath)) view.activateResource("files")
+      return
+    }
+    const item = worldItems().find((candidate) => candidate.kind === "entity" && candidate.id === artifact.entityId)
+    if (item && selectWorldItem(item)) view.activateResource("world")
+  }
+
+  const liveGrowthLabel = (key: NovelXGrowthLiveLabelKey) =>
+    language.t(
+      (
+        {
+          heading: "novelx.liveGrowth.heading",
+          planned: "novelx.liveGrowth.planned",
+          registering: "novelx.liveGrowth.registering",
+          writing: "novelx.liveGrowth.writing",
+          completed: "novelx.liveGrowth.completed",
+          failed: "novelx.liveGrowth.failed",
+          registered: "novelx.liveGrowth.registered",
+          leased: "novelx.liveGrowth.leased",
+          drafting: "novelx.liveGrowth.drafting",
+          reviewing: "novelx.liveGrowth.reviewing",
+          committed: "novelx.liveGrowth.committed",
+          readonly: "novelx.liveGrowth.readonly",
+          waiting: "novelx.liveGrowth.waiting",
+          resumeFollow: "novelx.liveGrowth.resumeFollow",
+          latest: "novelx.liveGrowth.latest",
+        } as const
+      )[key],
+    )
 
   const selectStoryItem = (item: NovelXStoryNavigationItem) => {
     if (!document.canLeave()) {
@@ -1257,6 +1312,17 @@ export function NovelXResourceWorkspace(props: {
               <div class="novelx-compact-files-heading">
                 <strong>{language.t("novelx.resources.fileContents")}</strong>
               </div>
+              <Show when={liveGrowthVisible()}>
+                <NovelXGrowthLivePanel
+                  projection={liveGrowthProjection}
+                  selectedArtifactKey={liveGrowth.selectedArtifactKey}
+                  followMode={liveGrowth.followMode}
+                  label={liveGrowthLabel}
+                  onSelect={liveGrowth.selectArtifact}
+                  onOpen={openLiveGrowthArtifact}
+                  onResumeFollow={liveGrowth.resumeFollow}
+                />
+              </Show>
               <div class="novelx-compact-files-tree">
                 <Show
                   when={!rootVisibleEmpty()}
