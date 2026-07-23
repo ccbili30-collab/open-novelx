@@ -74,12 +74,8 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     integritySha256: createHash("sha256").update(JSON.stringify(queuedVisualDraft)).digest("hex"),
   }
   const { integritySha256: _publicationIntegrity, ...completedPublicationDraft } = completedFixtures.publication
-  const publicationDraft = { ...completedPublicationDraft, worldVisualIntegritySha256: queuedVisual.integritySha256 }
-  const queuedPublication = {
-    ...publicationDraft,
-    integritySha256: createHash("sha256").update(JSON.stringify(publicationDraft)).digest("hex"),
-  }
-  const stalePublicationDraft = { ...publicationDraft, worldVisualIntegritySha256: "f".repeat(64) }
+  const queuedPublication = completedFixtures.publication
+  const stalePublicationDraft = { ...completedPublicationDraft, worldVisualIntegritySha256: "f".repeat(64) }
   const stalePublication = {
     ...stalePublicationDraft,
     integritySha256: createHash("sha256").update(JSON.stringify(stalePublicationDraft)).digest("hex"),
@@ -183,9 +179,11 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
                     ? { type: "text", content: completedFixtures.atlasText, bom: false }
                     : path === "World/Atlas/entity-helios-ring/纪行.md"
                       ? { type: "text", content: completedFixtures.travelogueText, bom: false }
-                      : path === "README.md"
-                        ? { type: "text", content: editable, bom: true }
-                        : { type: "text", content: `# ${path}\n`, bom: false },
+                      : path === completedFixtures.materialization.documents[0]!.targetPath
+                        ? { type: "text", content: completedFixtures.sourceText, bom: false }
+                        : path === "README.md"
+                          ? { type: "text", content: editable, bom: true }
+                          : { type: "text", content: `# ${path}\n`, bom: false },
     fileWrite: ({ path, body }) => {
       const write = body as { content: string; expectedContent: string; expectedBom: boolean }
       if (conflictNext) {
@@ -326,9 +324,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   events.push(childResumeMessageEvent())
   events.push(childResumePartEvent())
   events.push(childResumeDeltaEvent("# 赫利俄斯同步环\n\n实时增量一"))
-  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toHaveText(
-    "# 赫利俄斯同步环\n\n实时增量一",
-  )
+  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toHaveText("# 赫利俄斯同步环\n\n实时增量一")
   events.push(childResumeDeltaEvent("，实时增量二。"))
   await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toHaveText(
     "# 赫利俄斯同步环\n\n实时增量一，实时增量二。",
@@ -375,9 +371,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   })
   events.push(worldMaterializationWatcherEvent())
   await expect(liveArtifact).toHaveClass(/is-failed/u)
-  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toContainText(
-    "手动查看期间仍继续生长。",
-  )
+  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toContainText("手动查看期间仍继续生长。")
 
   committedLiveDocument = true
   liveWorldMaterialization = sealWorldMaterialization({
@@ -468,6 +462,13 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await page.reload()
   await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
 
+  await resources.locator(".novelx-growth-tree-item").filter({ hasText: "赫利俄斯同步环" }).click()
+  const completedSource = resources.locator(".novelx-world-document-with-visual")
+  await expect(completedSource).toContainText("同步环真正维持的不是一圈壮观灯火")
+  await expect(completedSource).toContainText("这个世界就没有彻底失去彼此")
+  await resources.getByRole("button", { name: "日环档案 · 世界图册", exact: true }).click()
+  await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
+
   const mapMain = resources.locator(".novelx-world-atlas-main")
   const geographyRegion = resources.locator(".novelx-world-map-region").first()
   const geographyLabel = resources.locator(".novelx-world-map-label").first()
@@ -526,7 +527,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await worldPackage.locator(".novelx-package-map-caption").click()
   const packageReader = worldPackage.getByRole("article", { name: "世界包正文阅读" })
   await expect(packageReader).toBeVisible()
-  await expect(packageReader).toContainText("World/")
+  await expect(packageReader).toContainText("这个世界就没有彻底失去彼此")
   await packageReader.getByRole("button", { name: "返回世界包" }).click()
   await expect(packageReader).toHaveCount(0)
   await expect(packageRegion).toHaveClass(/is-selected/u)
@@ -570,11 +571,13 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await page.mouse.click(graphNodeBox!.x + graphNodeBox!.width / 2, graphNodeBox!.y + graphNodeBox!.height / 2)
   const graphCard = graph.locator(".novelx-neural-graph-card")
   await expect(graphCard).toBeVisible()
-  await expect(graphCard).toContainText("World/")
+  await expect(graphCard).toContainText("赫利俄斯同步环是一组围绕恒星轮换位置的采能、通信与维护设施")
   await expect(graphCard).toHaveCSS("opacity", "1")
   await page.screenshot({ path: testInfo.outputPath("novelx-neural-graph.png") })
   await graphCard.click()
-  await expect(resources.locator(".novelx-document-editor")).toBeVisible()
+  const graphSource = resources.locator(".novelx-document-editor")
+  await expect(graphSource).toBeVisible()
+  await expect(graphSource).toContainText("这个世界就没有彻底失去彼此")
 
   // Regression: a remembered file must never cover the graph surface after switching back.
   await dock.locator(".novelx-resource-dock-button").nth(3).click()

@@ -140,6 +140,32 @@ const ManifestStruct = Schema.Struct({
 
 type ManifestStructType = Schema.Schema.Type<typeof ManifestStruct>
 
+export function registrationFingerprintInput(manifest: ManifestStructType) {
+  return {
+    schemaVersion: manifest.schemaVersion,
+    stage: manifest.stage,
+    worldMaterializationIntegritySha256: manifest.worldMaterializationIntegritySha256,
+    visualLanguageSha256: manifest.visualLanguageSha256,
+    atlas: manifest.atlas,
+    tasks: manifest.tasks.map((task) => ({
+      id: task.id,
+      type: task.type,
+      subtype: task.subtype,
+      mapRole: task.mapRole ?? null,
+      layer: task.layer ?? null,
+      entityId: task.entityId ?? null,
+      baseTaskId: task.baseTaskId ?? null,
+      ownerEntityId: task.ownerEntityId,
+      title: task.title,
+      prompt: task.prompt,
+      rationale: task.rationale,
+      sourceEntityIds: task.sourceEntityIds,
+      sourceSha256s: task.sourceSha256s,
+      targetPath: task.targetPath,
+    })),
+  }
+}
+
 export function mapVariantSetIssue(manifest: ManifestStructType): { code: string; message: string } | undefined {
   const mapTasks = manifest.tasks.filter((task) => task.type === "map")
   if (manifest.schemaVersion === 2) {

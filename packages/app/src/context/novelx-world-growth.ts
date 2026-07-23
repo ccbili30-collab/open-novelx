@@ -139,14 +139,16 @@ export async function parseNovelXWorldVisuals(content: string, worldMaterializat
 export async function parseNovelXWorldPublication(
   content: string,
   worldMaterializationIntegritySha256: string,
-  worldVisualIntegritySha256: string,
+  worldVisual: NovelXWorldVisual.Manifest,
 ) {
   const manifest = Schema.decodeUnknownSync(NovelXWorldPublication.Manifest)(JSON.parse(content))
   const { integritySha256, ...draft } = manifest
   if ((await sha256(draft)) !== integritySha256) throw new Error("玩家世界文稿完整性校验失败。")
+  const registrationSha256 = await sha256(NovelXWorldVisual.registrationFingerprintInput(worldVisual))
   if (
     manifest.worldMaterializationIntegritySha256 !== worldMaterializationIntegritySha256 ||
-    manifest.worldVisualIntegritySha256 !== worldVisualIntegritySha256
+    (manifest.worldVisualIntegritySha256 !== registrationSha256 &&
+      manifest.worldVisualIntegritySha256 !== worldVisual.integritySha256)
   ) {
     throw new Error("玩家世界文稿与当前世界事实不匹配。")
   }
@@ -156,15 +158,11 @@ export async function parseNovelXWorldPublication(
 export async function projectNovelXWorldPublication(
   content: string,
   worldMaterializationIntegritySha256: string,
-  worldVisualIntegritySha256: string,
+  worldVisual: NovelXWorldVisual.Manifest,
 ): Promise<{ publication?: NovelXWorldPublication.Manifest; warning?: string }> {
   try {
     return {
-      publication: await parseNovelXWorldPublication(
-        content,
-        worldMaterializationIntegritySha256,
-        worldVisualIntegritySha256,
-      ),
+      publication: await parseNovelXWorldPublication(content, worldMaterializationIntegritySha256, worldVisual),
     }
   } catch (error) {
     return { publication: undefined, warning: errorMessage(error) }
@@ -267,11 +265,7 @@ export function createNovelXWorldGrowthController() {
       if (version !== loadVersion) return
       const publicationProjection =
         publicationResult?.data && publicationResult.response.status !== 404
-          ? await projectNovelXWorldPublication(
-              publicationResult.data.content,
-              materialization.integritySha256,
-              visual.integritySha256,
-            )
+          ? await projectNovelXWorldPublication(publicationResult.data.content, materialization.integritySha256, visual)
           : {}
       const publication = publicationProjection.publication
       const publicationEntries = publication

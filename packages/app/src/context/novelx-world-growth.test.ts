@@ -16,6 +16,35 @@ import {
 
 const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")
 
+const publicationVisual = (integritySha256: string) =>
+  ({
+    schemaVersion: 2 as const,
+    stage: "world_visuals" as const,
+    status: "ready" as const,
+    worldMaterializationIntegritySha256: "a".repeat(64),
+    visualLanguageSha256: "b".repeat(64),
+    atlas: { id: "atlas-stable-registration" },
+    tasks: [
+      {
+        id: "map-task",
+        type: "map" as const,
+        subtype: "world-map" as const,
+        ownerEntityId: null,
+        title: "世界地图",
+        prompt: "绘制完整世界地图。",
+        rationale: "提供统一世界视觉底图。",
+        sourceEntityIds: ["entity-test"],
+        sourceSha256s: ["c".repeat(64)],
+        targetPath: "World/Media/world-map.png",
+        status: "attached" as const,
+        model: "showcase/image",
+        mime: "image/png" as const,
+        assetSha256: "d".repeat(64),
+      },
+    ],
+    integritySha256,
+  }) as unknown as NovelXWorldVisual.Manifest
+
 const profile: NovelXWorld.BlueprintProfile = {
   title: "日环档案",
   genre: { family: "science fiction", label: "轨道殖民", scale: "单恒星系" },
@@ -363,6 +392,75 @@ test("rejects the ambiguous V1 map contract instead of guessing a migration", as
   )
 })
 
+test("keeps completed publication readable after image progress changes visual manifest integrity", async () => {
+  const materializationSha256 = "a".repeat(64)
+  const visual = publicationVisual("e".repeat(64))
+  const publicationDraft = {
+    schemaVersion: 1 as const,
+    stage: "world_publication" as const,
+    status: "ready" as const,
+    worldMaterializationIntegritySha256: materializationSha256,
+    worldVisualIntegritySha256: sha256(NovelXWorldVisual.registrationFingerprintInput(visual)),
+    records: [
+      {
+        id: "publication-test-atlas",
+        entityId: "entity-test",
+        kind: "atlas" as const,
+        title: "测试图志",
+        status: "committed" as const,
+        sourcePath: "World/测试.md",
+        sourceSha256: "f".repeat(64),
+        targetPath: "World/Atlas/entity-test/图志.md",
+        committedSha256: "1".repeat(64),
+        updatedAt: 1,
+      },
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const content = JSON.stringify({ ...publicationDraft, integritySha256: sha256(publicationDraft) })
+
+  const projection = await projectNovelXWorldPublication(content, materializationSha256, visual)
+
+  expect(projection.publication?.records[0]?.targetPath).toBe("World/Atlas/entity-test/图志.md")
+  expect(projection.warning).toBeUndefined()
+})
+
+test("keeps exact legacy visual-integrity publications readable", async () => {
+  const visual = publicationVisual("c".repeat(64))
+  const draft = {
+    schemaVersion: 1 as const,
+    stage: "world_publication" as const,
+    status: "ready" as const,
+    worldMaterializationIntegritySha256: "a".repeat(64),
+    worldVisualIntegritySha256: visual.integritySha256,
+    records: [
+      {
+        id: "legacy-atlas",
+        entityId: "entity-test",
+        kind: "atlas" as const,
+        title: "旧版图志",
+        status: "committed" as const,
+        sourcePath: "World/测试.md",
+        sourceSha256: "d".repeat(64),
+        targetPath: "World/Atlas/entity-test/图志.md",
+        committedSha256: "e".repeat(64),
+        updatedAt: 1,
+      },
+    ],
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  const projection = await projectNovelXWorldPublication(
+    JSON.stringify({ ...draft, integritySha256: sha256(draft) }),
+    "a".repeat(64),
+    visual,
+  )
+
+  expect(projection.publication?.records[0]?.title).toBe("旧版图志")
+  expect(projection.warning).toBeUndefined()
+})
+
 test("keeps the world projection ready when optional publication data belongs to an older visual", async () => {
   const draft = {
     schemaVersion: 1 as const,
@@ -389,7 +487,7 @@ test("keeps the world projection ready when optional publication data belongs to
   }
   const content = JSON.stringify({ ...draft, integritySha256: sha256(draft) })
 
-  const projection = await projectNovelXWorldPublication(content, "a".repeat(64), "c".repeat(64))
+  const projection = await projectNovelXWorldPublication(content, "a".repeat(64), publicationVisual("c".repeat(64)))
 
   expect(projection.publication).toBeUndefined()
   expect(projection.warning).toBe("玩家世界文稿与当前世界事实不匹配。")

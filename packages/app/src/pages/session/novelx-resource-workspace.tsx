@@ -771,10 +771,7 @@ export function NovelXResourceWorkspace(props: {
               candidate.entityId === item.id && candidate.kind === "atlas" && candidate.status === "committed",
           )
         : undefined
-    view.setActiveFile(
-      published?.targetPath ??
-        (worldMaterialization()?.status === "completed" ? "" : record?.status === "committed" ? record.targetPath : ""),
-    )
+    view.setActiveFile(record?.status === "committed" ? record.targetPath : (published?.targetPath ?? ""))
     if (item.kind === "entity") liveGrowth.selectArtifact(`world:${item.id}`)
     else liveGrowth.pauseFollow()
     setPlannedSelection((current) => ({ ...current, world: item.id }))

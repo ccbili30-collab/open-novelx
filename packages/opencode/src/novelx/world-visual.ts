@@ -313,29 +313,7 @@ export function verifyWorldVisuals(input: {
  * source-anchored atlas and travelogue prose stale.
  */
 export function worldVisualRegistrationSha256(manifest: NovelXWorldVisual.Manifest) {
-  return worldSha256({
-    schemaVersion: manifest.schemaVersion,
-    stage: manifest.stage,
-    worldMaterializationIntegritySha256: manifest.worldMaterializationIntegritySha256,
-    visualLanguageSha256: manifest.visualLanguageSha256,
-    atlas: manifest.atlas,
-    tasks: manifest.tasks.map((task) => ({
-      id: task.id,
-      type: task.type,
-      subtype: task.subtype,
-      mapRole: task.mapRole ?? null,
-      layer: task.layer ?? null,
-      entityId: task.entityId ?? null,
-      baseTaskId: task.baseTaskId ?? null,
-      ownerEntityId: task.ownerEntityId,
-      title: task.title,
-      prompt: task.prompt,
-      rationale: task.rationale,
-      sourceEntityIds: task.sourceEntityIds,
-      sourceSha256s: task.sourceSha256s,
-      targetPath: task.targetPath,
-    })),
-  })
+  return worldSha256(NovelXWorldVisual.registrationFingerprintInput(manifest))
 }
 
 export function worldMapVariantPrompt(feature: NovelXWorldVisual.AtlasFeature) {

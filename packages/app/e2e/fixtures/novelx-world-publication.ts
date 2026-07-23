@@ -1,4 +1,4 @@
-import type { NovelXWorld } from "@opencode-ai/schema"
+import { NovelXWorldVisual, type NovelXWorld } from "@opencode-ai/schema"
 
 export async function completedWorldFixtures(materialization: NovelXWorld.WorldMaterialization) {
   const completedMaterialization = await completedWorldMaterializationFixture(materialization)
@@ -8,6 +8,7 @@ export async function completedWorldFixtures(materialization: NovelXWorld.WorldM
     materialization: completedMaterialization,
     visual,
     publication,
+    sourceText: sourceDocumentText(),
     atlasText: atlasPublicationText(),
     travelogueText: traveloguePublicationText(),
   }
@@ -248,7 +249,7 @@ async function worldPublicationFixture(
     stage: "world_publication" as const,
     status: "ready" as const,
     worldMaterializationIntegritySha256: materialization.integritySha256,
-    worldVisualIntegritySha256: visual.integritySha256,
+    worldVisualIntegritySha256: await testSha256(NovelXWorldVisual.registrationFingerprintInput(visual)),
     records: [
       {
         id: "publication-helios-atlas",
@@ -288,6 +289,26 @@ function atlasPublicationText() {
     "环带在晨昏线外侧收拢成一条冷亮弧线。它不是完整的圆环，而是一组依靠共振窗口轮换位置的采能、通信与维护轨道。近星侧材料承受强辐射和热疲劳，背星侧则成为人员换班与货物转运的短暂安全区。",
     "",
     "从远处看，同步环像是恒星边缘一道经年不熄的刻痕；靠近之后，连续光带才分解为相隔遥远的镜阵、散热翼和驿站灯火。",
+  ].join("\n")
+}
+
+function sourceDocumentText() {
+  return [
+    "# 赫利俄斯同步环",
+    "",
+    "赫利俄斯同步环是一组围绕恒星轮换位置的采能、通信与维护设施。它并非连续实体，而是由镜阵、散热翼、转运站和人员驿站共同组成的轨道网络。",
+    "",
+    "## 运行边界",
+    "",
+    "近星侧材料长期承受辐射和热疲劳，维护窗口由轨道共振与粒子风共同决定。任何节点都不能脱离散热、补给和通信延迟独立运行。",
+    "",
+    "## 居民生活",
+    "",
+    "维护人员以轮班表而不是自然昼夜安排睡眠。每次跨站转移都要核对剩余推进剂、遮蔽时间和下一处可用气闸，普通人的生活因此被精确到分钟的窗口切分。",
+    "",
+    "## 档案末页",
+    "",
+    "同步环真正维持的不是一圈壮观灯火，而是让相隔遥远的人仍能共享能源、时间和求救信号。只要最后一座校时站仍在广播，这个世界就没有彻底失去彼此。",
   ].join("\n")
 }
 
