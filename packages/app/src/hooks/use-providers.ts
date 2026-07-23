@@ -5,17 +5,9 @@ import { Iterable, pipe } from "effect"
 import type { Accessor } from "solid-js"
 import { selectProviderCatalog } from "./provider-catalog"
 
-export const popularProviders = [
-  "opencode",
-  "opencode-go",
-  "anthropic",
-  "github-copilot",
-  "openai",
-  "google",
-  "openrouter",
-  "vercel",
-]
+export const popularProviders = ["anthropic", "github-copilot", "openai", "google", "openrouter", "vercel"]
 const popularProviderSet = new Set(popularProviders)
+const hiddenProviderSet = new Set(["opencode", "opencode-go"])
 
 export function useProviders(directory?: Accessor<string | undefined>) {
   const serverSync = useServerSync()
@@ -37,12 +29,13 @@ export function useProviders(directory?: Accessor<string | undefined>) {
       global: serverSync().data.provider,
     })
   }
+  const all = () => new Map([...providers().all].filter(([id]) => !hiddenProviderSet.has(id)))
   return {
-    all: () => providers().all,
+    all,
     default: () => providers().default,
     popular: () =>
       pipe(
-        providers().all,
+        all(),
         Iterable.map(([, p]) => p),
         Iterable.filter((p) => popularProviderSet.has(p.id)),
         (v) => Array.from(v),
@@ -50,7 +43,7 @@ export function useProviders(directory?: Accessor<string | undefined>) {
     connected: () => {
       const connected = new Set(providers().connected)
       return pipe(
-        providers().all,
+        all(),
         Iterable.map(([, p]) => p),
         Iterable.filter((p) => connected.has(p.id)),
         (v) => Array.from(v),
@@ -58,14 +51,7 @@ export function useProviders(directory?: Accessor<string | undefined>) {
     },
     paid: () => {
       const connected = new Set(providers().connected)
-      return [
-        ...Iterable.filter(
-          providers().all,
-          ([id]) =>
-            connected.has(id) &&
-            (id !== "opencode" || Object.values(providers().all.get(id)?.models ?? {}).some((m) => m.cost?.input)),
-        ),
-      ]
+      return [...Iterable.filter(all(), ([id]) => connected.has(id))]
     },
   }
 }

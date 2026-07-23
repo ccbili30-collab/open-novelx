@@ -4,10 +4,9 @@
   "version": "1.18.3",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://opencode.ai",
+  "homepage": "https://ccbili30-collab.github.io/open-novelx/",
   "author": {
-    "name": "OpenCode",
-    "email": "hello@opencode.ai"
+    "name": "NovelX Contributors"
   },
   "scripts": {
     "typecheck": "tsgo -b",

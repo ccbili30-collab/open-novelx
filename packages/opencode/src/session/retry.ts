@@ -7,8 +7,8 @@ import { isRecord } from "@/util/record"
 
 export type Err = ReturnType<NamedError["toObject"]>
 
-export const GO_UPSELL_MESSAGE = "Free usage exceeded, subscribe to Go"
-export const GO_UPSELL_URL = "https://opencode.ai/go"
+export const GO_UPSELL_MESSAGE = "Provider free usage limit reached"
+export const GO_UPSELL_URL = "https://github.com/ccbili30-collab/open-novelx"
 export type RetryReason = "free_tier_limit" | "account_rate_limit" | (string & {})
 
 export type Retryable = {
@@ -32,7 +32,10 @@ const NOVELX_GROWTH_STREAM_INTERRUPTION_MESSAGES = new Set([
 ])
 
 function retryableNovelXGrowthTransportMessage(message: string) {
-  const normalized = message.trim().replace(/[.!]+$/u, "").toLowerCase()
+  const normalized = message
+    .trim()
+    .replace(/[.!]+$/u, "")
+    .toLowerCase()
   return NOVELX_GROWTH_STREAM_INTERRUPTION_MESSAGES.has(normalized)
 }
 
@@ -93,15 +96,14 @@ export function retryable(error: Err, provider: string, options?: { scope?: Retr
           reason: "free_tier_limit",
           provider,
           title: "Free limit reached",
-          message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
-          label: "subscribe",
+          message: "Check the current provider quota or select another configured model.",
+          label: "provider help",
           link: GO_UPSELL_URL,
         },
       }
     }
     if (error.data.responseBody?.includes("GoUsageLimitError")) {
       const body = parseJSON(error.data.responseBody)
-      const workspace = str(body?.metadata?.workspace)
       const limitName = str(body?.metadata?.limitName)
       const retryAfter = num(error.data.responseHeaders?.["retry-after"])
       const resetIn = iife(() => {
@@ -119,16 +121,14 @@ export function retryable(error: Err, provider: string, options?: { scope?: Retr
 
       const message = `${limitName ? `${limitName} usage limit` : "Usage limit"} reached. It will reset in ${resetIn}. To continue using this model now, enable usage from your available balance`
 
-      const link = `https://opencode.ai/workspace/${workspace}/go`
       return {
-        message: `${message} - ${link}`,
+        message,
         action: {
           reason: "account_rate_limit",
           provider,
-          title: "Go limit reached",
+          title: "Provider limit reached",
           message,
-          label: "open settings",
-          link,
+          label: "review provider settings",
         },
       }
     }

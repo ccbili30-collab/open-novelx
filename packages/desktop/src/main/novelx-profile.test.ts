@@ -17,12 +17,12 @@ describe("NovelX desktop profile", () => {
     expect(profile.databaseFileName).toBe("novelx.db")
   })
 
-  test("overrides inherited OpenCode roots before the embedded runtime loads", () => {
+  test("overrides inherited NovelX roots before the embedded runtime loads", () => {
     const profile = resolveNovelXProfilePaths({ roamingAppData: "R:\\Roaming", localAppData: "L:\\Local" })
     const env: NodeJS.ProcessEnv = {
-      XDG_CONFIG_HOME: "C:\\OpenCode\\config",
-      XDG_DATA_HOME: "C:\\OpenCode\\data",
-      OPENCODE_CONFIG: "C:\\OpenCode\\opencode.json",
+      XDG_CONFIG_HOME: "C:\\NovelX\\config",
+      XDG_DATA_HOME: "C:\\NovelX\\data",
+      OPENCODE_CONFIG: "C:\\NovelX\\opencode.json",
     }
 
     applyNovelXProfile(profile, env)

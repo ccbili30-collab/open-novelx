@@ -1,0 +1,21 @@
+diff --git a/dist/poe-auth-plugin.js b/dist/poe-auth-plugin.js
+--- a/dist/poe-auth-plugin.js
++++ b/dist/poe-auth-plugin.js
+@@ -13,7 +13,7 @@ async function authorize() {
+         clientId: CLIENT_ID,
+         landingPage: {
+             title: "Connected to Poe",
+-            body: "You can close this tab and return to OpenCode."
++            body: "You can close this tab and return to NovelX."
+         },
+         openBrowser: async (url) => {
+             await open(url);
+@@ -46,7 +46,7 @@ export async function PoeAuthPlugin(_input) {
+                     return {};
+                 }
+                 if (auth.expires < Date.now()) {
+-                    throw new Error("Poe API key expired. Run `opencode providers login` again.");
++                    throw new Error("Poe API key expired. Reconnect the Poe provider from NovelX.");
+                 }
+                 return { apiKey: auth.access };
+             },

@@ -41,7 +41,7 @@ describe("NovelX Growth status projection", () => {
     })
   })
 
-  test("does not label ordinary OpenCode subagents as Growth", () => {
+  test("does not label ordinary NovelX subagents as Growth", () => {
     expect(
       activeGrowth({
         currentID: "root",

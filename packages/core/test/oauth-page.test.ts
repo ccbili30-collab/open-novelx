@@ -2,6 +2,14 @@ import { describe, expect, test } from "bun:test"
 import { OauthCallbackPage } from "../src/oauth/page"
 
 describe("OauthCallbackPage", () => {
+  test("uses NovelX branding without exposing the upstream product name", () => {
+    const html = OauthCallbackPage.success({ provider: "Example Provider", autoClose: false })
+
+    expect(html).toContain("NovelX is now connected to Example Provider.")
+    expect(html).toContain('aria-label="NovelX"')
+    expect(html).not.toContain("OpenCode")
+  })
+
   test("escapes bootstrap options embedded in the inline script", () => {
     const html = OauthCallbackPage.bootstrap({
       provider: `xAI</script><script>alert("provider")</script>`,

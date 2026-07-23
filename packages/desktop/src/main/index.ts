@@ -144,10 +144,7 @@ const main = Effect.gen(function* () {
   if (novelxProfile) applyNovelXProfile(novelxProfile)
   app.setName(app.isPackaged ? APP_NAMES[CHANNEL] : "NovelX Dev")
   app.setAppUserModelId(appId)
-  app.setPath(
-    "userData",
-    onboardingTestRoot ? join(onboardingTestRoot, "desktop") : novelxProfile!.desktop,
-  )
+  app.setPath("userData", onboardingTestRoot ? join(onboardingTestRoot, "desktop") : novelxProfile!.desktop)
   app.setPath("sessionData", onboardingTestRoot ? join(onboardingTestRoot, "session") : novelxProfile!.session)
   if (novelxProfile) app.setAppLogsPath(novelxProfile.logs)
   initializeOldLayoutEligibility(app.getPath("userData"))
@@ -259,8 +256,8 @@ const main = Effect.gen(function* () {
 
   yield* Effect.promise(() => app.whenReady())
 
-  // NovelX owns an independent desktop profile. Importing the upstream OpenCode
-  // Tauri stores here would silently restore OpenCode windows, projects, and
+  // NovelX owns an independent desktop profile. Importing legacy runtime
+  // stores here would silently restore unrelated windows, projects, and
   // model choices into the fresh NovelX profile.
   yield* Effect.promise(() => cleanupStoreFiles(app.getPath("userData"))).pipe(
     Effect.tap((result) =>

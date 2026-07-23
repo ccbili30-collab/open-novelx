@@ -18,7 +18,7 @@ const english: TabsInfoCopy = {
   title: "Introducing Tabs",
   subtitle: "Organize your work and active sessions with tabs",
   date: "July 14",
-  intro: "OpenCode Desktop is now built around tabs.",
+  intro: "NovelX Desktop is now built around tabs.",
   start:
     "Start a new session in a tab, or open an existing session from any of your projects. Open a new tab when you're starting something new, and close it when you're done.",
   organize:
@@ -35,7 +35,7 @@ const simplifiedChinese: TabsInfoCopy = {
   title: "标签页功能介绍",
   subtitle: "使用标签页整理工作与当前会话",
   date: "7 月 14 日",
-  intro: "OpenCode 桌面版现在以标签页为核心。",
+  intro: "NovelX 桌面版现在以标签页为核心。",
   start: "在标签页中新建会话，或从任意项目打开已有会话。开始新任务时打开新标签页，完成后将其关闭。",
   organize: "保留少量标签页可以更轻松地整理当前会话。如果准备长期保留某个标签页，可以为它改一个容易记住的名称。",
   home: "新的主屏幕汇集了所有会话和项目。选择会话后，它会在标签页中打开。",

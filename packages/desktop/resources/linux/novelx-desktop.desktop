@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=NovelX
+Exec=/opt/NovelX/ai.novelx.desktop %U
+Terminal=false
+Type=Application
+Icon=ai.novelx.desktop
+StartupWMClass=ai.novelx.desktop
+NoDisplay=true
+Comment=Agent-native worldbuilding and fiction creation workbench
+Categories=Development;

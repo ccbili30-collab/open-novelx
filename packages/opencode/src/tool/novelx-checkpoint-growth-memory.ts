@@ -35,7 +35,7 @@ export const NovelXCheckpointGrowthMemoryTool = Tool.define<
     const compaction = yield* SessionCompaction.Service
     return {
       description:
-        "Persist a sealed stage handoff in the deterministic Growth ledger and create a real OpenCode compaction marker for the next Context Epoch.",
+        "Persist a sealed stage handoff in the deterministic Growth ledger and create a real runtime compaction marker for the next Context Epoch.",
       parameters: Parameters,
       execute: (params, ctx) =>
         withWorldMutation(
@@ -77,13 +77,13 @@ export const NovelXCheckpointGrowthMemoryTool = Tool.define<
             }
             const compactionMessageId = MessageID.make(
               existingCheckpoint?.compactionMessageId ??
-              recoveredMarker?.info.id ??
-              (yield* compaction.create({
-                sessionID: ctx.sessionID,
-                agent: "growth",
-                model: { providerID: assistant.info.providerID, modelID: assistant.info.modelID },
-                auto: true,
-              })),
+                recoveredMarker?.info.id ??
+                (yield* compaction.create({
+                  sessionID: ctx.sessionID,
+                  agent: "growth",
+                  model: { providerID: assistant.info.providerID, modelID: assistant.info.modelID },
+                  auto: true,
+                })),
             )
             if (!existingCheckpoint && !recoveredMarker) {
               yield* sessions.updatePart({
@@ -114,7 +114,7 @@ export const NovelXCheckpointGrowthMemoryTool = Tool.define<
               },
               output: [
                 `阶段 ${params.stageId} 已写入第 ${checkpointed.checkpoint.contextEpoch} 个权威记忆检查点。`,
-                `OpenCode compaction message: ${compactionMessageId}`,
+                `Runtime compaction message: ${compactionMessageId}`,
                 "新的 Context Epoch 必须从蓝图、运行账本、封存交接和原文索引恢复；模型摘要不是世界事实。",
               ].join("\n"),
             }

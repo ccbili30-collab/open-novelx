@@ -4,6 +4,6 @@ import { DEFAULT_LOCALE, t } from "./index"
 describe("desktop renderer language default", () => {
   test("starts in Simplified Chinese before persisted settings load", () => {
     expect(DEFAULT_LOCALE).toBe("zh")
-    expect(t("app.name.desktop")).toBe("OpenCode 桌面版")
+    expect(t("app.name.desktop")).toBe("NovelX 桌面版")
   })
 })
