@@ -4,6 +4,7 @@ import { NovelXCharacterVisual } from "@opencode-ai/schema/novelx-character-visu
 import {
   characterPortraitProviderPrompt,
   compileCharacterVisual,
+  retryCharacterPortraitTask,
   updateCharacterPortraitTask,
   verifyCharacterVisual,
 } from "../../src/novelx/character-visual"
@@ -96,6 +97,8 @@ describe("NovelX canonical character portrait", () => {
     expect(() => updateCharacterPortraitTask({ manifest: failed, status: "generating", now: 200 })).toThrow(
       "NOVELX_CHARACTER_PORTRAIT_TRANSITION_INVALID",
     )
+    const retried = retryCharacterPortraitTask(failed, 210)
+    expect(retried).toMatchObject({ status: "queued", task: { status: "queued", attempts: 0, errorCode: null } })
+    expect(verifyCharacterVisual(retried, character)).toEqual(retried)
   })
 })
-

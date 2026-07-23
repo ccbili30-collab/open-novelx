@@ -12,9 +12,14 @@ import { StoryVisualError, storyCoverProviderPrompt, updateStoryImageTask } from
 import { requestImage, validateImage } from "./world-image-queue"
 import { loadStoryCoverRuntime, persistStoryCovers } from "@/tool/novelx-story-cover-runtime"
 import { publishWorldFile } from "@/tool/novelx-world-runtime"
+import { growthImageQueuePaused } from "./image-queue-control-state"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
 export const STORY_COVER_MODEL = ModelV2.ID.make("gpt-image-2")
+
+export function storyCoverJobId(directory: string) {
+  return `novelx-story-covers-${createHash("sha256").update(directory.toLocaleLowerCase("en-US")).digest("hex").slice(0, 24)}`
+}
 
 export function launchStoryCoverQueue(input: {
   directory: string
@@ -23,9 +28,8 @@ export function launchStoryCoverQueue(input: {
   provider: Provider.Interface
   background: BackgroundJob.Interface
 }) {
-  const jobId = `novelx-story-covers-${createHash("sha256").update(input.directory.toLocaleLowerCase("en-US")).digest("hex").slice(0, 24)}`
   return input.background.start({
-    id: jobId,
+    id: storyCoverJobId(input.directory),
     type: "novelx-story-cover-queue",
     title: "故事封面图片队列",
     metadata: { directory: input.directory },
@@ -44,9 +48,11 @@ export function runStoryCoverQueue(options: { directory: string }) {
     const events = yield* EventV2Bridge.Service
     const provider = yield* Provider.Service
     const initial = yield* loadStoryCoverRuntime(fs)
-    if (initial.story.world.directory !== options.directory) throw new StoryVisualError("NOVELX_IMAGE_DIRECTORY_MISMATCH", "Cover worker project mismatch.")
+    if (initial.story.world.directory !== options.directory)
+      throw new StoryVisualError("NOVELX_IMAGE_DIRECTORY_MISMATCH", "Cover worker project mismatch.")
     for (const initialTask of initial.manifest.tasks) {
       while (true) {
+        if (yield* growthImageQueuePaused(fs, options.directory)) return
         const runtime = yield* loadStoryCoverRuntime(fs)
         const task = runtime.manifest.tasks.find((candidate) => candidate.id === initialTask.id)
         if (!task || task.status === "attached" || (task.status === "failed" && task.attempts >= 3)) break
@@ -78,18 +84,27 @@ export function runStoryCoverQueue(options: { directory: string }) {
           if (!baseURL || !apiKey) {
             throw new StoryVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image Provider is missing.")
           }
-          const bytes = yield* requestImage(`${baseURL}/images/generations`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json; charset=utf-8" },
-            body: JSON.stringify({
-              model: STORY_COVER_MODEL,
-              prompt: storyCoverProviderPrompt(generating, task),
-              size: task.aspect === "portrait" ? "1024x1536" : "1536x1024",
-              quality: "low",
-              response_format: "b64_json",
-            }),
-          }, 600_000)
-          const validating = updateStoryImageTask({ manifest: generating, taskId: task.id, status: "validating", now: Date.now() })
+          const bytes = yield* requestImage(
+            `${baseURL}/images/generations`,
+            {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json; charset=utf-8" },
+              body: JSON.stringify({
+                model: STORY_COVER_MODEL,
+                prompt: storyCoverProviderPrompt(generating, task),
+                size: task.aspect === "portrait" ? "1024x1536" : "1536x1024",
+                quality: "low",
+                response_format: "b64_json",
+              }),
+            },
+            600_000,
+          )
+          const validating = updateStoryImageTask({
+            manifest: generating,
+            taskId: task.id,
+            status: "validating",
+            now: Date.now(),
+          })
           yield* persistStoryCovers(fs, events, runtime, validating)
           const image = yield* validateImage(bytes)
           const target = path.join(options.directory, ...task.targetPath.split("/"))

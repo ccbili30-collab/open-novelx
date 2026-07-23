@@ -29,6 +29,22 @@ const CapabilitiesResponse = Schema.Struct({
   backgroundSubagents: Schema.Boolean,
 }).annotate({ identifier: "ExperimentalCapabilities" })
 
+const NovelXImageQueueJob = Schema.Struct({
+  kind: Schema.Literals(["world", "character", "story"]),
+  available: Schema.Boolean,
+  status: Schema.Literals(["idle", "running", "completed", "error", "cancelled"]),
+  error: Schema.optionalKey(Schema.String),
+})
+
+const NovelXImageQueueState = Schema.Struct({
+  paused: Schema.Boolean,
+  jobs: Schema.Array(NovelXImageQueueJob),
+}).annotate({ identifier: "NovelXImageQueueState" })
+
+export const NovelXImageQueueControlPayload = Schema.Struct({
+  action: Schema.Literals(["resume", "pause", "retry_failed"]),
+})
+
 const ConsoleOrgOption = Schema.Struct({
   accountID: Schema.String,
   accountEmail: Schema.String,
@@ -98,6 +114,7 @@ export const ExperimentalPaths = {
   worktreeReset: "/experimental/worktree/reset",
   session: "/experimental/session",
   sessionBackground: "/experimental/session/:sessionID/background",
+  novelxImageQueue: "/experimental/novelx/image-queue",
   resource: "/experimental/resource",
 } as const
 
@@ -243,6 +260,29 @@ export const ExperimentalApi = HttpApi.make("experimental")
             summary: "Background subagents",
             description:
               "Detach any synchronous subagents currently blocking the session and continue them in the background.",
+          }),
+        ),
+        HttpApiEndpoint.get("novelxImageQueue", ExperimentalPaths.novelxImageQueue, {
+          query: WorkspaceRoutingQuery,
+          success: described(NovelXImageQueueState, "NovelX Growth image queue state"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.novelxImageQueue.get",
+            summary: "Get NovelX Growth image queue state",
+            description: "Read worker and durable pause state for the current NovelX Growth project.",
+          }),
+        ),
+        HttpApiEndpoint.post("novelxImageQueueControl", ExperimentalPaths.novelxImageQueue, {
+          query: WorkspaceRoutingQuery,
+          payload: NovelXImageQueueControlPayload,
+          success: described(NovelXImageQueueState, "Updated NovelX Growth image queue state"),
+          error: HttpApiError.InternalServerError,
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "experimental.novelxImageQueue.control",
+            summary: "Control the NovelX Growth image queue",
+            description: "Pause, resume, or retry failed world, character, and story image workers.",
           }),
         ),
         HttpApiEndpoint.get("resource", ExperimentalPaths.resource, {

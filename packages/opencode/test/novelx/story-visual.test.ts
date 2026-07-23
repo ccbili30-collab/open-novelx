@@ -3,6 +3,7 @@ import { Schema } from "effect"
 import * as NovelXStoryVisual from "@opencode-ai/schema/novelx-story-visual"
 import {
   compileStoryVisual,
+  retryFailedStoryImageTasks,
   storyCoverProviderPrompt,
   updateStoryImageTask,
   verifyStoryVisual,
@@ -71,7 +72,13 @@ describe("NovelX story covers", () => {
       now: 800,
     })
     const [first, second, third] = manifest.tasks
-    manifest = updateStoryImageTask({ manifest, taskId: first!.id, status: "generating", now: 810, model: "test/image" })
+    manifest = updateStoryImageTask({
+      manifest,
+      taskId: first!.id,
+      status: "generating",
+      now: 810,
+      model: "test/image",
+    })
     manifest = updateStoryImageTask({ manifest, taskId: first!.id, status: "validating", now: 820 })
     manifest = updateStoryImageTask({
       manifest,
@@ -104,6 +111,14 @@ describe("NovelX story covers", () => {
 
     expect(manifest.status).toBe("partial")
     expect(manifest.tasks.find((task) => task.id === second!.id)?.attempts).toBe(3)
+    const retried = retryFailedStoryImageTasks(manifest, 910)
+    expect(retried.tasks.find((task) => task.id === second!.id)).toMatchObject({
+      status: "queued",
+      attempts: 0,
+      errorCode: null,
+    })
+    expect(retried.tasks.filter((task) => task.status === "attached")).toHaveLength(2)
+    expect(verifyStoryVisual(retried, story)).toEqual(retried)
   })
 
   test("worker state transitions never rewrite the tool branch final prompt", () => {

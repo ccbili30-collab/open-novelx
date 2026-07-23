@@ -1,6 +1,15 @@
 import { Account } from "@/account/account"
 import { Agent } from "@/agent/agent"
 import { BackgroundJob } from "@/background/job"
+import { FSUtil } from "@opencode-ai/core/fs-util"
+import { EventV2Bridge } from "@/event-v2-bridge"
+import { Provider } from "@/provider/provider"
+import {
+  growthImageQueueState,
+  launchGrowthImageQueues,
+  retryFailedGrowthImageTasks,
+  setGrowthImageQueuePaused,
+} from "@/novelx/image-queue-control"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -15,7 +24,13 @@ import { Effect, Option } from "effect"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { HttpApiBuilder, HttpApiError } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
-import { ConsoleSwitchPayload, SessionListQuery, ToolListQuery, WorktreeApiError } from "../groups/experimental"
+import {
+  ConsoleSwitchPayload,
+  NovelXImageQueueControlPayload,
+  SessionListQuery,
+  ToolListQuery,
+  WorktreeApiError,
+} from "../groups/experimental"
 
 function mapWorktreeError<A, R>(self: Effect.Effect<A, Worktree.Error, R>) {
   return self.pipe(
@@ -34,6 +49,9 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const worktreeSvc = yield* Worktree.Service
     const sessions = yield* Session.Service
     const background = yield* BackgroundJob.Service
+    const fs = yield* FSUtil.Service
+    const events = yield* EventV2Bridge.Service
+    const provider = yield* Provider.Service
     const flags = yield* RuntimeFlags.Service
 
     const capabilities = Effect.fn("ExperimentalHttpApi.capabilities")(function* () {
@@ -171,6 +189,31 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       return promoted.some((job) => job !== undefined)
     })
 
+    const novelxImageQueue = Effect.fn("ExperimentalHttpApi.novelxImageQueue")(function* () {
+      const directory = yield* InstanceState.directory
+      return yield* growthImageQueueState({ directory, fs, background }).pipe(
+        Effect.mapError(() => new HttpApiError.InternalServerError({})),
+      )
+    })
+
+    const novelxImageQueueControl = Effect.fn("ExperimentalHttpApi.novelxImageQueueControl")(function* (ctx: {
+      payload: typeof NovelXImageQueueControlPayload.Type
+    }) {
+      const directory = yield* InstanceState.directory
+      const action = Effect.gen(function* () {
+        if (ctx.payload.action === "pause") {
+          yield* setGrowthImageQueuePaused(fs, directory, true)
+          return yield* growthImageQueueState({ directory, fs, background })
+        }
+        yield* setGrowthImageQueuePaused(fs, directory, false)
+        if (ctx.payload.action === "retry_failed") {
+          yield* retryFailedGrowthImageTasks({ directory, fs, events })
+        }
+        return yield* launchGrowthImageQueues({ directory, fs, events, provider, background })
+      })
+      return yield* action.pipe(Effect.mapError(() => new HttpApiError.InternalServerError({})))
+    })
+
     const resource = Effect.fn("ExperimentalHttpApi.resource")(function* () {
       return yield* mcp.resources()
     })
@@ -188,6 +231,8 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
       .handle("worktreeReset", worktreeReset)
       .handle("session", session)
       .handle("sessionBackground", sessionBackground)
+      .handle("novelxImageQueue", novelxImageQueue)
+      .handle("novelxImageQueueControl", novelxImageQueueControl)
       .handle("resource", resource)
   }),
 )

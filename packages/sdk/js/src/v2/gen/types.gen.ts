@@ -2242,6 +2242,16 @@ export type GlobalSession = {
   project: ProjectSummary | null
 }
 
+export type NovelXImageQueueState = {
+  paused: boolean
+  jobs: Array<{
+    kind: "world" | "character" | "story"
+    available: boolean
+    status: "idle" | "running" | "completed" | "error" | "cancelled"
+    error?: string
+  }>
+}
+
 export type McpResource = {
   name: string
   uri: string
@@ -7884,6 +7894,76 @@ export type ExperimentalSessionBackgroundResponses = {
 
 export type ExperimentalSessionBackgroundResponse =
   ExperimentalSessionBackgroundResponses[keyof ExperimentalSessionBackgroundResponses]
+
+export type ExperimentalNovelxImageQueueGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/novelx/image-queue"
+}
+
+export type ExperimentalNovelxImageQueueGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * InternalServerError
+   */
+  500: EffectHttpApiErrorInternalServerError
+}
+
+export type ExperimentalNovelxImageQueueGetError =
+  ExperimentalNovelxImageQueueGetErrors[keyof ExperimentalNovelxImageQueueGetErrors]
+
+export type ExperimentalNovelxImageQueueGetResponses = {
+  /**
+   * NovelX Growth image queue state
+   */
+  200: NovelXImageQueueState
+}
+
+export type ExperimentalNovelxImageQueueGetResponse =
+  ExperimentalNovelxImageQueueGetResponses[keyof ExperimentalNovelxImageQueueGetResponses]
+
+export type ExperimentalNovelxImageQueueControlData = {
+  body?: {
+    action: "resume" | "pause" | "retry_failed"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/experimental/novelx/image-queue"
+}
+
+export type ExperimentalNovelxImageQueueControlErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * InternalServerError
+   */
+  500: EffectHttpApiErrorInternalServerError
+}
+
+export type ExperimentalNovelxImageQueueControlError =
+  ExperimentalNovelxImageQueueControlErrors[keyof ExperimentalNovelxImageQueueControlErrors]
+
+export type ExperimentalNovelxImageQueueControlResponses = {
+  /**
+   * Updated NovelX Growth image queue state
+   */
+  200: NovelXImageQueueState
+}
+
+export type ExperimentalNovelxImageQueueControlResponse =
+  ExperimentalNovelxImageQueueControlResponses[keyof ExperimentalNovelxImageQueueControlResponses]
 
 export type ExperimentalResourceListData = {
   body?: never

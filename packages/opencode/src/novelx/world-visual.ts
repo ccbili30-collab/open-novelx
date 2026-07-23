@@ -426,6 +426,29 @@ export function updateImageTask(input: {
   return { ...withoutIntegrity, integritySha256: worldSha256(withoutIntegrity) } satisfies NovelXWorldVisual.Manifest
 }
 
+export function retryFailedImageTasks(manifest: NovelXWorldVisual.Manifest, now: number): NovelXWorldVisual.Manifest {
+  let changed = false
+  const tasks = manifest.tasks.map((task) => {
+    if (task.status !== "failed") return task
+    changed = true
+    return {
+      ...task,
+      status: "queued" as const,
+      model: null,
+      mime: null,
+      assetSha256: null,
+      startedAt: null,
+      completedAt: null,
+      errorCode: null,
+    }
+  })
+  if (!changed) return manifest
+  const attached = tasks.filter((task) => task.status === "attached").length
+  const status: NovelXWorldVisual.Manifest["status"] = attached === tasks.length ? "ready" : "queued"
+  const { integritySha256: _ignored, ...withoutIntegrity } = { ...manifest, tasks, status, updatedAt: now }
+  return { ...withoutIntegrity, integritySha256: worldSha256(withoutIntegrity) }
+}
+
 function normalizeVisualProfile(
   profile: NovelXWorldVisual.VisualRegistrationProfile,
 ): NovelXWorldVisual.VisualRegistrationProfile {

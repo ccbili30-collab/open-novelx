@@ -29,6 +29,12 @@ import {
   type NovelXStoryNavigationItem,
 } from "@/context/novelx-story-growth"
 import { createNovelXCharacterGrowthController } from "@/context/novelx-character-growth"
+import {
+  createNovelXImageQueueController,
+  projectNovelXImageTasks,
+  type NovelXImageTaskKind,
+  type NovelXImageTaskStatus,
+} from "@/context/novelx-image-queue"
 import { isNovelXHiddenProjectPath } from "@/context/novelx-project-files"
 import { createNovelXProjectGraphController } from "@/context/novelx-project-graph"
 import { showToast } from "@/utils/toast"
@@ -160,6 +166,12 @@ const terrainRelationLabel = (kind: NovelXGrowth.TerrainRelationKind) =>
     opens_to: "通向",
   })[kind]
 
+const imageTaskKindLabel = (kind: NovelXImageTaskKind) =>
+  ({ map: "地图", scenery: "风貌", portrait: "立绘", cover: "封面" })[kind]
+
+const imageTaskStatusLabel = (status: NovelXImageTaskStatus) =>
+  ({ queued: "等待生成", generating: "正在生成", validating: "正在校验", failed: "生成失败" })[status]
+
 export function NovelXResourceWorkspace(props: {
   modified: () => string[]
   kinds: () => Map<string, "add" | "del" | "mix">
@@ -186,6 +198,7 @@ export function NovelXResourceWorkspace(props: {
   const projectGraph = createNovelXProjectGraphController()
   const [plannedSelection, setPlannedSelection] = createSignal<Partial<Record<NovelXResource, string>>>({})
   const [terrainQuery, setTerrainQuery] = createSignal("")
+  const [imageQueueOpen, setImageQueueOpen] = createSignal(false)
 
   const isNovelXInternal = (path: string) => isNovelXHiddenProjectPath(file.normalize(path))
   const rootVisibleEmpty = createMemo(
@@ -290,6 +303,44 @@ export function NovelXResourceWorkspace(props: {
   const characterGrowthErrorMessage = createMemo(() => {
     const state = characterGrowth.state()
     return state.status === "error" ? state.message : "未知错误"
+  })
+  const imageTasks = createMemo(() =>
+    projectNovelXImageTasks({
+      world: worldVisual(),
+      portrait: characterPortrait(),
+      covers: storyCovers(),
+    }),
+  )
+  const imageQueue = createNovelXImageQueueController({
+    tasks: imageTasks,
+    reload: () => Promise.all([worldGrowth.reload(), storyGrowth.reload(), Promise.resolve(characterGrowth.reload())]),
+  })
+  const imageQueueFailed = createMemo(() => imageTasks().filter((task) => task.status === "failed").length)
+  const imageQueueRunning = createMemo(() => {
+    const state = imageQueue.state()
+    return state.status === "ready" && state.jobs.some((job) => job.status === "running")
+  })
+  const imageQueuePaused = createMemo(() => {
+    const state = imageQueue.state()
+    return state.status === "ready" && state.paused
+  })
+  const imageQueueError = createMemo(() => {
+    const state = imageQueue.state()
+    return state.status === "error" ? state.message : undefined
+  })
+  const imageQueueStatus = createMemo(() => {
+    const state = imageQueue.state()
+    if (state.status === "loading") return "正在连接图片队列"
+    if (state.status === "error") return "图片队列连接失败"
+    if (state.paused) return "图片队列已暂停"
+    if (
+      imageQueueRunning() ||
+      imageTasks().some((task) => task.status === "generating" || task.status === "validating")
+    ) {
+      return "图片正在后台生成"
+    }
+    if (imageQueueFailed()) return `${imageQueueFailed()} 个任务失败`
+    return "等待图片 Worker"
   })
   createEffect(() => {
     if (active() !== "files") return
@@ -1425,17 +1476,105 @@ export function NovelXResourceWorkspace(props: {
       <nav class="novelx-resource-dock" aria-label={language.t("novelx.resourceDock.label")}>
         <For each={NOVELX_RESOURCES}>
           {(resource) => (
-            <button
-              type="button"
-              class="novelx-resource-dock-button"
-              classList={{ "is-active": active() === resource }}
-              aria-label={language.t(resourceLabel(resource))}
-              aria-pressed={active() === resource}
-              title={language.t(resourceLabel(resource))}
-              onClick={() => view.activateResource(resource)}
-            >
-              <NovelXResourceIcon resource={resource} size={24} />
-            </button>
+            <div class="novelx-resource-dock-slot">
+              <button
+                type="button"
+                class="novelx-resource-dock-button"
+                classList={{ "is-active": active() === resource }}
+                aria-label={language.t(resourceLabel(resource))}
+                aria-pressed={active() === resource}
+                title={language.t(resourceLabel(resource))}
+                onClick={() => view.activateResource(resource)}
+              >
+                <NovelXResourceIcon resource={resource} size={24} />
+              </button>
+              <Show when={resource === "files" && imageTasks().length > 0}>
+                <button
+                  type="button"
+                  class="novelx-image-queue-track"
+                  classList={{
+                    "is-running": imageQueueRunning(),
+                    "is-paused": imageQueuePaused(),
+                  }}
+                  aria-label={`${imageQueueStatus()}，${imageTasks().length} 个未完成任务`}
+                  aria-expanded={imageQueueOpen()}
+                  title={`${imageQueueStatus()} · ${imageTasks().length} 个未完成任务`}
+                  onClick={() => setImageQueueOpen((open) => !open)}
+                >
+                  <span class="novelx-image-queue-line" />
+                  <For each={imageTasks()}>
+                    {(task, index) => (
+                      <span
+                        class={`novelx-image-queue-node is-${task.status}`}
+                        style={`--novelx-image-node-position: ${
+                          imageTasks().length === 1 ? 50 : 8 + (index() / (imageTasks().length - 1)) * 84
+                        }%`}
+                      />
+                    )}
+                  </For>
+                  <span class="novelx-image-queue-count">{imageTasks().length}</span>
+                </button>
+                <Show when={imageQueueOpen()}>
+                  <section class="novelx-image-queue-panel" aria-label="图片生成队列">
+                    <header>
+                      <div>
+                        <strong>图片生成</strong>
+                        <span>{imageQueueStatus()}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="novelx-symbol-button"
+                        aria-label="关闭图片队列"
+                        onClick={() => setImageQueueOpen(false)}
+                      >
+                        <Icon name="close-small" size="small" />
+                      </button>
+                    </header>
+                    <div class="novelx-image-queue-actions">
+                      <Show
+                        when={imageQueue.state().status === "ready" && !imageQueuePaused() && imageQueueRunning()}
+                        fallback={
+                          <button type="button" disabled={imageQueue.busy()} onClick={() => void imageQueue.resume()}>
+                            <Icon name="arrow-right" size="small" />
+                            继续生成
+                          </button>
+                        }
+                      >
+                        <button type="button" disabled={imageQueue.busy()} onClick={() => void imageQueue.pause()}>
+                          <Icon name="stop" size="small" />
+                          完成本张后暂停
+                        </button>
+                      </Show>
+                      <Show when={imageQueueFailed() > 0}>
+                        <button
+                          type="button"
+                          disabled={imageQueue.busy()}
+                          onClick={() => void imageQueue.retryFailed()}
+                        >
+                          重试失败项
+                        </button>
+                      </Show>
+                    </div>
+                    <Show when={imageQueueError()}>{(error) => <p class="novelx-image-queue-error">{error()}</p>}</Show>
+                    <div class="novelx-image-queue-list">
+                      <For each={imageTasks()}>
+                        {(task) => (
+                          <div class={`novelx-image-queue-item is-${task.status}`}>
+                            <i />
+                            <div>
+                              <strong>{task.title}</strong>
+                              <span>
+                                {imageTaskKindLabel(task.kind)} · {imageTaskStatusLabel(task.status)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </section>
+                </Show>
+              </Show>
+            </div>
           )}
         </For>
       </nav>

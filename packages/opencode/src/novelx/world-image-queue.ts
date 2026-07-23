@@ -17,6 +17,7 @@ import { loadWorldRuntime, publishWorldFile, withWorldMutation } from "@/tool/no
 import { updateImageTask, verifyWorldVisuals, WorldVisualError } from "./world-visual"
 import { resolveWorldMapEditPlan } from "./world-map-variant"
 import { buildDyWorldMapRequest, DY_WORLD_MAP_MODEL } from "./world-map-image-provider"
+import { growthImageQueuePaused } from "./image-queue-control-state"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
 export const WORLD_IMAGE_MODEL = ModelV2.ID.make("gpt-image-2")
@@ -57,8 +58,11 @@ export function runWorldImageQueue(options: { directory: string }) {
       throw new WorldVisualError("NOVELX_IMAGE_DIRECTORY_MISMATCH", "Image worker started for another project.")
     }
     const initial = yield* loadManifest(fs, runtime.directory, runtime.materialization)
-    const pending = initial.tasks.filter((task) => task.status !== "attached")
+    const pending = initial.tasks.filter(
+      (task) => task.status === "queued" || task.status === "generating" || task.status === "validating",
+    )
     for (const queued of pending) {
+      if (yield* growthImageQueuePaused(fs, runtime.directory)) return
       yield* Effect.gen(function* () {
         const current = yield* loadManifest(fs, runtime.directory, runtime.materialization)
         const task = current.tasks.find((item) => item.id === queued.id)
@@ -349,7 +353,7 @@ export function validateImage(bytes: Buffer) {
   })
 }
 
-function loadManifest(
+export function loadManifest(
   fs: FSUtil.Interface,
   directory: string,
   materialization: Parameters<typeof verifyWorldVisuals>[0]["materialization"],
@@ -364,7 +368,7 @@ function loadManifest(
   })
 }
 
-function persistManifest(
+export function persistManifest(
   fs: FSUtil.Interface,
   events: EventV2.Interface,
   directory: string,

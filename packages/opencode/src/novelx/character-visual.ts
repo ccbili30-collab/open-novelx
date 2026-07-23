@@ -147,6 +147,26 @@ export function updateCharacterPortraitTask(input: {
   })
 }
 
+export function retryCharacterPortraitTask(
+  manifest: NovelXCharacterVisual.Manifest,
+  now: number,
+): NovelXCharacterVisual.Manifest {
+  const current = verifyManifestIntegrity(manifest)
+  if (current.task.status !== "failed" || current.task.attempts < 3) return manifest
+  const task = {
+    ...current.task,
+    status: "queued" as const,
+    attempts: 0,
+    model: null,
+    startedAt: null,
+    completedAt: null,
+    mime: null,
+    assetSha256: null,
+    errorCode: null,
+  }
+  return withIntegrity({ ...withoutIntegrity(current), task, status: "queued", updatedAt: now })
+}
+
 export function verifyCharacterVisual(
   manifest: NovelXCharacterVisual.Manifest,
   character: NovelXCharacter.Materialization,
@@ -241,4 +261,3 @@ function detail(value: string, field: string) {
 function fail(code: string, message: string): never {
   throw new CharacterVisualError(code, message)
 }
-

@@ -38,6 +38,10 @@ import type {
   ExperimentalConsoleSwitchOrgResponses,
   ExperimentalControlPlaneMoveSessionErrors,
   ExperimentalControlPlaneMoveSessionResponses,
+  ExperimentalNovelxImageQueueControlErrors,
+  ExperimentalNovelxImageQueueControlResponses,
+  ExperimentalNovelxImageQueueGetErrors,
+  ExperimentalNovelxImageQueueGetResponses,
   ExperimentalProjectCopyGenerateNameErrors,
   ExperimentalProjectCopyGenerateNameResponses,
   ExperimentalResourceListErrors,
@@ -891,6 +895,83 @@ export class Session extends HeyApiClient {
   }
 }
 
+export class NovelxImageQueue extends HeyApiClient {
+  /**
+   * Get NovelX Growth image queue state
+   *
+   * Read worker and durable pause state for the current NovelX Growth project.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ExperimentalNovelxImageQueueGetResponses,
+      ExperimentalNovelxImageQueueGetErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/novelx/image-queue",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Control the NovelX Growth image queue
+   *
+   * Pause, resume, or retry failed world, character, and story image workers.
+   */
+  public control<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      action?: "resume" | "pause" | "retry_failed"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "body", key: "action" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentalNovelxImageQueueControlResponses,
+      ExperimentalNovelxImageQueueControlErrors,
+      ThrowOnError
+    >({
+      url: "/experimental/novelx/image-queue",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Resource extends HeyApiClient {
   /**
    * Get MCP resources
@@ -1264,6 +1345,11 @@ export class Experimental extends HeyApiClient {
   private _session?: Session
   get session(): Session {
     return (this._session ??= new Session({ client: this.client }))
+  }
+
+  private _novelxImageQueue?: NovelxImageQueue
+  get novelxImageQueue(): NovelxImageQueue {
+    return (this._novelxImageQueue ??= new NovelxImageQueue({ client: this.client }))
   }
 
   private _resource?: Resource

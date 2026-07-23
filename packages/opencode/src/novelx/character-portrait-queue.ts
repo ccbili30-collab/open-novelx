@@ -12,6 +12,7 @@ import { CharacterVisualError, characterPortraitProviderPrompt, updateCharacterP
 import { requestImage, validateImage } from "./world-image-queue"
 import { loadCharacterVisualRuntime, persistCharacterVisual } from "@/tool/novelx-character-visual-runtime"
 import { publishWorldFile } from "@/tool/novelx-world-runtime"
+import { growthImageQueuePaused } from "./image-queue-control-state"
 
 const IMAGE_PROVIDER = ProviderV2.ID.make("openai-compatible")
 export const CHARACTER_PORTRAIT_MODEL = ModelV2.ID.make("gpt-image-2")
@@ -52,6 +53,7 @@ export function runCharacterPortraitQueue(options: { directory: string }) {
       throw new CharacterVisualError("NOVELX_IMAGE_DIRECTORY_MISMATCH", "Portrait worker project mismatch.")
     }
     while (true) {
+      if (yield* growthImageQueuePaused(fs, options.directory)) return
       const runtime = yield* loadCharacterVisualRuntime(fs)
       const task = runtime.manifest.task
       if (task.status === "attached" || (task.status === "failed" && task.attempts >= 3)) return
@@ -75,8 +77,7 @@ export function runCharacterPortraitQueue(options: { directory: string }) {
       const attempt = Effect.gen(function* () {
         const info = yield* provider.getProvider(IMAGE_PROVIDER)
         yield* provider.getModel(IMAGE_PROVIDER, CHARACTER_PORTRAIT_MODEL)
-        const baseURL =
-          typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
+        const baseURL = typeof info.options.baseURL === "string" ? info.options.baseURL.replace(/\/$/u, "") : undefined
         const apiKey = typeof info.options.apiKey === "string" ? info.options.apiKey : info.key
         if (!baseURL || !apiKey) {
           throw new CharacterVisualError("NOVELX_IMAGE_PROVIDER_UNCONFIGURED", "Image Provider is missing.")

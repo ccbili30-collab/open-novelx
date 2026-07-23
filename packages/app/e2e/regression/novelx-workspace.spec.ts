@@ -29,7 +29,38 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   const worldBlueprint = await worldBlueprintFixture()
   const worldMaterialization = await worldMaterializationFixture(worldBlueprint)
   const completedFixtures = await completedWorldFixtures(worldMaterialization)
-  const { integritySha256: _publicationIntegrity, ...publicationDraft } = completedFixtures.publication
+  const queuedScenery = completedFixtures.visual.tasks.find((task) => task.type === "scenery")
+  if (!queuedScenery) throw new Error("queued scenery fixture required")
+  const { integritySha256: _visualIntegrity, ...visualDraft } = completedFixtures.visual
+  const queuedVisualDraft = {
+    ...visualDraft,
+    status: "generating" as const,
+    tasks: visualDraft.tasks.map((task) =>
+      task.id === queuedScenery.id
+        ? {
+            ...task,
+            status: "queued" as const,
+            model: null,
+            mime: null,
+            assetSha256: null,
+            startedAt: null,
+            completedAt: null,
+            errorCode: null,
+          }
+        : task,
+    ),
+    updatedAt: visualDraft.updatedAt + 1,
+  }
+  const queuedVisual = {
+    ...queuedVisualDraft,
+    integritySha256: createHash("sha256").update(JSON.stringify(queuedVisualDraft)).digest("hex"),
+  }
+  const { integritySha256: _publicationIntegrity, ...completedPublicationDraft } = completedFixtures.publication
+  const publicationDraft = { ...completedPublicationDraft, worldVisualIntegritySha256: queuedVisual.integritySha256 }
+  const queuedPublication = {
+    ...publicationDraft,
+    integritySha256: createHash("sha256").update(JSON.stringify(publicationDraft)).digest("hex"),
+  }
   const stalePublicationDraft = { ...publicationDraft, worldVisualIntegritySha256: "f".repeat(64) }
   const stalePublication = {
     ...stalePublicationDraft,
@@ -113,13 +144,13 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
               ? { type: "text", content: JSON.stringify(geographyMaterialization), bom: false }
               : path === ".novelx/visuals/world-visuals.json"
                 ? completedWorld
-                  ? { type: "text", content: JSON.stringify(completedFixtures.visual), bom: false }
+                  ? { type: "text", content: JSON.stringify(queuedVisual), bom: false }
                   : undefined
                 : path === ".novelx/publication/world-publication.json"
                   ? completedWorld
                     ? {
                         type: "text",
-                        content: JSON.stringify(useStalePublication ? stalePublication : completedFixtures.publication),
+                        content: JSON.stringify(useStalePublication ? stalePublication : queuedPublication),
                         bom: false,
                       }
                     : undefined
@@ -327,6 +358,15 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   await page.reload()
   await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
+  const imageQueueTrack = dock.getByRole("button", { name: /图片.*1 个未完成任务/u })
+  await expect(imageQueueTrack).toBeVisible()
+  await imageQueueTrack.click()
+  const imageQueuePanel = page.getByRole("region", { name: "图片生成队列" })
+  await expect(imageQueuePanel).toBeVisible()
+  await expect(imageQueuePanel.getByText(queuedScenery.title, { exact: true })).toBeVisible()
+  await expect(imageQueuePanel.getByText("风貌 · 等待生成", { exact: true })).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath("novelx-image-queue.png") })
+  await imageQueuePanel.getByRole("button", { name: "关闭图片队列" }).click()
   await expect(resources.getByText("世界生长状态无法读取", { exact: true })).toHaveCount(0)
   await expect(resources.locator(".novelx-world-atlas image")).toHaveCount(1)
   await expect(resources.locator(".novelx-world-atlas image")).toHaveAttribute("data-map-task-id", "image-world-map")

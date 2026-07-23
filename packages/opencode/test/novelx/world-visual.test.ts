@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { NovelXWorld, NovelXWorldVisual } from "@opencode-ai/schema"
 import { compileWorldBlueprint, worldSha256 } from "../../src/novelx/world-blueprint"
-import { compileWorldVisuals, updateImageTask, verifyWorldVisuals } from "../../src/novelx/world-visual"
+import {
+  compileWorldVisuals,
+  retryFailedImageTasks,
+  updateImageTask,
+  verifyWorldVisuals,
+} from "../../src/novelx/world-visual"
 
 const blueprint = compileWorldBlueprint({
   profile: {
@@ -398,6 +403,9 @@ describe("NovelX world visual materialization", () => {
       now: 12,
       errorCode: "NOVELX_IMAGE_PROVIDER_TIMEOUT",
     })
+    const requeued = retryFailedImageTasks(failed, 12)
+    expect(requeued.tasks[0]).toMatchObject({ status: "queued", errorCode: null, model: null })
+    expect(verifyWorldVisuals({ manifest: requeued, materialization })).toEqual(requeued)
     const retrying = updateImageTask({
       manifest: failed,
       taskId: task.id,

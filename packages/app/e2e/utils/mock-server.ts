@@ -73,6 +73,15 @@ export async function mockOpenCodeServer(page: Page, config: MockServerConfig) {
         cursor: {},
       })
     if (path === "/experimental/capabilities") return json(route, { backgroundSubagents: false })
+    if (path === "/experimental/novelx/image-queue")
+      return json(route, {
+        paused: false,
+        jobs: (["world", "character", "story"] as const).map((kind) => ({
+          kind,
+          available: false,
+          status: "idle",
+        })),
+      })
     if (path === "/permission")
       return json(route, typeof config.permissions === "function" ? config.permissions() : (config.permissions ?? []))
     if (path === "/question")

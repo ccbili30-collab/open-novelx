@@ -54,7 +54,10 @@ export function compileStoryVisual(input: {
     profiles.set(cover.ownerId, cover)
   }
   if (profiles.size !== requirements.length || requirements.some((requirement) => !profiles.has(requirement.ownerId))) {
-    fail("NOVELX_STORY_COVER_REQUIRED", "A novel cover, every history-book cover and the novel theme cover are mandatory.")
+    fail(
+      "NOVELX_STORY_COVER_REQUIRED",
+      "A novel cover, every history-book cover and the novel theme cover are mandatory.",
+    )
   }
   const documents = new Map(input.story.documents.map((document) => [document.id, document]))
   const tasks: NovelXStoryVisual.CoverTask[] = requirements.map((requirement, index) => {
@@ -136,7 +139,12 @@ export function updateStoryImageTask(input: {
     if (task.status !== "generating") fail("NOVELX_STORY_COVER_TRANSITION_INVALID", `${task.id} is not generating.`)
     next = { ...task, status: "validating" }
   } else if (input.status === "attached") {
-    if (task.status !== "validating" || !input.mime || !input.assetSha256 || !/^[a-f0-9]{64}$/u.test(input.assetSha256)) {
+    if (
+      task.status !== "validating" ||
+      !input.mime ||
+      !input.assetSha256 ||
+      !/^[a-f0-9]{64}$/u.test(input.assetSha256)
+    ) {
       fail("NOVELX_STORY_COVER_ATTACHMENT_INVALID", `${task.id} requires a validated image MIME type and SHA-256.`)
     }
     next = {
@@ -159,13 +167,45 @@ export function updateStoryImageTask(input: {
   return withIntegrity({ ...withoutIntegrity(current), tasks, status: projectedStatus(tasks), updatedAt: input.now })
 }
 
+export function retryFailedStoryImageTasks(
+  manifest: NovelXStoryVisual.Manifest,
+  now: number,
+): NovelXStoryVisual.Manifest {
+  const current = verifyManifestIntegrity(manifest)
+  let changed = false
+  const tasks = current.tasks.map((task) => {
+    if (task.status !== "failed" || task.attempts < 3) return task
+    changed = true
+    return {
+      ...task,
+      status: "queued" as const,
+      attempts: 0,
+      model: null,
+      startedAt: null,
+      completedAt: null,
+      mime: null,
+      assetSha256: null,
+      errorCode: null,
+    }
+  })
+  if (!changed) return manifest
+  return withIntegrity({ ...withoutIntegrity(current), tasks, status: projectedStatus(tasks), updatedAt: now })
+}
+
 export function verifyStoryVisual(manifest: NovelXStoryVisual.Manifest, story: NovelXStory.Materialization) {
   verifyManifestIntegrity(manifest)
-  if (!story.novel || story.status !== "text_completed" || manifest.storyMaterializationIntegritySha256 !== story.integritySha256) {
+  if (
+    !story.novel ||
+    story.status !== "text_completed" ||
+    manifest.storyMaterializationIntegritySha256 !== story.integritySha256
+  ) {
     fail("NOVELX_STORY_COVER_STORY_MISMATCH", "Cover manifest does not belong to the current completed story.")
   }
   const expectedOwners = [story.novel.id, ...story.historyBooks.map((book) => book.id), story.novel.theme.id]
-  if (manifest.tasks.length !== expectedOwners.length || manifest.tasks.some((task, index) => task.ownerId !== expectedOwners[index])) {
+  if (
+    manifest.tasks.length !== expectedOwners.length ||
+    manifest.tasks.some((task, index) => task.ownerId !== expectedOwners[index])
+  ) {
     fail("NOVELX_STORY_COVER_REQUIRED", "Cover manifest does not contain the exact mandatory owner set in order.")
   }
   const documents = new Map(story.documents.map((document) => [document.id, document]))
@@ -185,20 +225,19 @@ export function verifyStoryVisual(manifest: NovelXStoryVisual.Manifest, story: N
       fail("NOVELX_STORY_COVER_TASK_INVALID", `Cover task ${task.id} has an invalid retry state.`)
     }
   }
-  if (manifest.status !== projectedStatus(manifest.tasks)) fail("NOVELX_STORY_COVER_STATUS_INVALID", "Cover manifest status projection is stale.")
+  if (manifest.status !== projectedStatus(manifest.tasks))
+    fail("NOVELX_STORY_COVER_STATUS_INVALID", "Cover manifest status projection is stale.")
   return manifest
 }
 
-export function storyCoverProviderPrompt(
-  manifest: NovelXStoryVisual.Manifest,
-  task: NovelXStoryVisual.CoverTask,
-) {
+export function storyCoverProviderPrompt(manifest: NovelXStoryVisual.Manifest, task: NovelXStoryVisual.CoverTask) {
   return `${manifest.visualLanguage}\n\n${task.prompt}`
 }
 
 function verifyManifestIntegrity(manifest: NovelXStoryVisual.Manifest) {
   const { integritySha256, ...draft } = manifest
-  if (worldSha256(draft) !== integritySha256) fail("NOVELX_STORY_COVER_INTEGRITY_INVALID", "Cover manifest integrity check failed.")
+  if (worldSha256(draft) !== integritySha256)
+    fail("NOVELX_STORY_COVER_INTEGRITY_INVALID", "Cover manifest integrity check failed.")
   if (worldSha256(manifest.visualLanguage) !== manifest.visualLanguageSha256) {
     fail("NOVELX_STORY_COVER_VISUAL_LANGUAGE_INVALID", "Cover visual-language digest is stale.")
   }
@@ -221,7 +260,9 @@ function withoutIntegrity(current: NovelXStoryVisual.Manifest) {
   return draft
 }
 
-function withIntegrity<T extends Omit<NovelXStoryVisual.Manifest, "integritySha256">>(draft: T): NovelXStoryVisual.Manifest {
+function withIntegrity<T extends Omit<NovelXStoryVisual.Manifest, "integritySha256">>(
+  draft: T,
+): NovelXStoryVisual.Manifest {
   return { ...draft, integritySha256: worldSha256(draft) }
 }
 
@@ -238,7 +279,11 @@ function detail(value: string, field: string) {
 }
 
 function safeSegment(value: string) {
-  const normalized = value.replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-").replace(/[. ]+$/u, "").trim().slice(0, 80)
+  const normalized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/gu, "-")
+    .replace(/[. ]+$/u, "")
+    .trim()
+    .slice(0, 80)
   if (!normalized) fail("NOVELX_STORY_COVER_PATH_INVALID", "A cover path segment is empty.")
   return normalized
 }
