@@ -26,6 +26,14 @@
 - App、App E2E、OpenCode、SDK、Desktop 类型检查：通过。
 - NovelX 工作台 Playwright E2E：1 pass，包含固定轨道、任务节点和队列面板截图。
 - App 生产构建：通过。
+- Windows 正式构建、NSIS 打包、覆盖安装和启动：通过；发布必须按 `build` 后 `package:win` 的顺序执行，单独运行 `package:win` 会复用已有 Electron 输出。
+- 安装版真实窗口已验证项目改名同步：`nobe` 的持久化名称显示为“挖的的”，项目方块和名称使用同一投影。
+- 使用真实 Provider 打开中世纪 Growth 项目后，轨道读取到 12 个未完成任务；世界、角色、故事三个 Worker 各领取 1 个任务并进入 `generating`。这只证明真实队列启动，不证明图片已经返回或挂载成功。
+
+## 已知风险
+
+- 本批结束时 12 个真实图片任务仍在后台处理，最终成功、失败与挂载结果尚未验收。
+- 当前 GitHub 仓库没有可供 Electron Updater 识别的正式 latest release，安装版启动日志会记录更新检查 406；这不阻塞本地应用和图片队列。
 
 ## 恢复入口
 
