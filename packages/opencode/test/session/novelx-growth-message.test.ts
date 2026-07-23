@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { novelXGrowthMessageParts } from "@/session/novelx-growth-message"
+import { novelXDyMessageParts, novelXGrowthMessageParts } from "@/session/novelx-growth-message"
 
 describe("NovelX Growth command presentation", () => {
   test("shows only the short slash command while keeping the expanded template model-visible", () => {
@@ -20,5 +20,17 @@ describe("NovelX Growth command presentation", () => {
     expect(
       novelXGrowthMessageParts({ arguments: "", templateParts: [{ type: "text", text: "internal" }] })[0],
     ).toMatchObject({ text: "/growth", ignored: true })
+  })
+})
+
+describe("NovelX Douyin command presentation", () => {
+  test("shows only the short /dy command while keeping parser instructions model-visible", () => {
+    const parts = novelXDyMessageParts({
+      arguments: "https://v.douyin.com/example/",
+      templateParts: [{ type: "text", text: "private parser instructions" }],
+    })
+
+    expect(parts[0]).toEqual({ type: "text", text: "/dy https://v.douyin.com/example/", ignored: true })
+    expect(parts[1]).toEqual({ type: "text", text: "private parser instructions", synthetic: true })
   })
 })

@@ -121,6 +121,15 @@ describe("tool.registry", () => {
     }),
   )
 
+  it.instance("exposes the built-in Douyin transcript tool", () =>
+    Effect.gen(function* () {
+      const registry = yield* ToolRegistry.Service
+      const ids = yield* registry.ids()
+
+      expect(ids).toContain("novelx_parse_douyin")
+    }),
+  )
+
   it.instance("exposes the NovelX adaptive world Growth toolchain", () =>
     Effect.gen(function* () {
       const registry = yield* ToolRegistry.Service

@@ -50,6 +50,7 @@ export const Default = {
   REVIEW: "review",
   GROWTH: "growth",
   STUDY: "study",
+  DY: "dy",
 } as const
 
 export interface Interface {
@@ -106,9 +107,17 @@ const layer = Layer.effect(
         template: PROMPT_NOVELX_STUDY,
         hints: hints(PROMPT_NOVELX_STUDY),
       }
+      const dy = yield* skill.require(Default.DY).pipe(Effect.orDie)
+      commands[Default.DY] = {
+        name: Default.DY,
+        description: dy.description,
+        source: "skill",
+        template: dy.content,
+        hints: hints(dy.content),
+      }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
-        if (name === Default.GROWTH || name === Default.STUDY) continue
+        if (name === Default.GROWTH || name === Default.STUDY || name === Default.DY) continue
         commands[name] = {
           name,
           agent: command.agent,
@@ -168,7 +177,7 @@ const layer = Layer.effect(
               "Relative paths in this skill (e.g., scripts/, references/) are relative to this base directory.",
             ].join("\n")
           },
-          hints: [],
+          hints: hints(item.content),
         }
       }
 

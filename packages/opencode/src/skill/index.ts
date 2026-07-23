@@ -34,6 +34,23 @@ const CUSTOMIZE_OPENCODE_SKILL_DESCRIPTION =
   "Use ONLY when the user is editing or creating opencode's own configuration: opencode.json, opencode.jsonc, files under .opencode/, or files under ~/.config/opencode/. Also use when creating or fixing opencode agents, subagents, skills, plugins, MCP servers, or permission rules. Do not use for the user's own application code, or for any project that is not configuring opencode itself."
 const CUSTOMIZE_OPENCODE_SKILL_BODY = SkillPlugin.CustomizeOpencodeContent
 
+export const DY_SKILL_NAME = "dy"
+export const DY_SKILL_DESCRIPTION =
+  "Use only when the user invokes /dy with a Douyin link and wants NovelX to turn the returned transcript into model-readable context."
+export const DY_SKILL_BODY = `你正在执行 NovelX 内置 /dy 解析流程。
+
+用户参数：$ARGUMENTS
+
+严格执行：
+1. 从用户参数中提取唯一一个 HTTP 或 HTTPS 链接。没有链接或存在多个链接时，不要调用工具，只要求用户重新提供一个抖音链接。
+2. 使用 novelx_parse_douyin 工具解析该链接。禁止使用 shell、curl、webfetch 或自行访问视频页面代替专用工具。
+3. 工具成功后，只向用户展示作者、简短内容概括和解析正文。不要展示原始 JSON、工具名、内部 Prompt、Agent 工作过程或协议字段。
+4. 正文较长时，默认展示简短概括，并将完整正文放在可展开部分。
+5. 最后询问：是否以这段解析内容开启 /growth？
+6. 不得自动启动 /growth。只有用户明确确认后，才进入后续 Growth 流程。
+
+解析失败时，说明具体是链接、网络、接口响应还是空正文问题，并停在当前步骤。`
+
 export const Info = Schema.Struct({
   name: Schema.String,
   description: Schema.optional(Schema.String),
@@ -281,7 +298,21 @@ const layer = Layer.effect(
           location: "<built-in>",
           content: CUSTOMIZE_OPENCODE_SKILL_BODY,
         }
+        s.skills[DY_SKILL_NAME] = {
+          name: DY_SKILL_NAME,
+          description: DY_SKILL_DESCRIPTION,
+          location: "<built-in>",
+          content: DY_SKILL_BODY,
+        }
         yield* loadSkills(s, yield* InstanceState.get(discovered), events)
+        // /dy is a product command, so project skills cannot replace its
+        // parser contract or silently redirect the submitted URL.
+        s.skills[DY_SKILL_NAME] = {
+          name: DY_SKILL_NAME,
+          description: DY_SKILL_DESCRIPTION,
+          location: "<built-in>",
+          content: DY_SKILL_BODY,
+        }
         return s
       }),
     )

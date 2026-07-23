@@ -103,6 +103,7 @@ import { NovelXPrepareStudyIntegrationTool } from "./novelx-prepare-study-integr
 import { NovelXRegisterStudyDocumentsTool } from "./novelx-register-study-documents"
 import { NovelXCommitStudyDocumentTool } from "./novelx-commit-study-document"
 import { NovelXFinishStudyTool } from "./novelx-finish-study"
+import { NovelXParseDouyinTool } from "./novelx-parse-douyin"
 import { SessionCompaction } from "@/session/compaction"
 
 export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
@@ -208,6 +209,7 @@ const layer = Layer.effect(
     const registerStudyDocuments = yield* NovelXRegisterStudyDocumentsTool
     const commitStudyDocument = yield* NovelXCommitStudyDocumentTool
     const finishStudy = yield* NovelXFinishStudyTool
+    const parseDouyin = yield* NovelXParseDouyinTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -364,6 +366,7 @@ const layer = Layer.effect(
           registerStudyDocuments: Tool.init(registerStudyDocuments),
           commitStudyDocument: Tool.init(commitStudyDocument),
           finishStudy: Tool.init(finishStudy),
+          parseDouyin: Tool.init(parseDouyin),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -435,6 +438,7 @@ const layer = Layer.effect(
             tool.registerStudyDocuments,
             tool.commitStudyDocument,
             tool.finishStudy,
+            tool.parseDouyin,
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
