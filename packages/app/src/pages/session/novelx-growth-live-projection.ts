@@ -29,6 +29,7 @@ type LiveBlueprint = {
 }
 
 type LiveMaterialization = {
+  growthSessionId?: string
   status: "running" | "waiting_user" | "completed" | "failed"
   stages: readonly {
     stageId: string
