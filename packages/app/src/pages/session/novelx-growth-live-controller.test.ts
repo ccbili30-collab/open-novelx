@@ -144,6 +144,114 @@ test("manual selection pauses following until the user resumes it", () => {
   mounted.dispose()
 })
 
+test("a manual World selection can pause following without selecting another artifact", () => {
+  const mounted = createRoot((dispose) => {
+    const [current, setCurrent] = createSignal(twoWriters(200))
+    const controller = createNovelXGrowthLiveController({
+      currentSessionId: () => "ses_root",
+      source: current,
+      syncSession: () => undefined,
+    })
+    return { controller, setCurrent, dispose }
+  })
+
+  mounted.controller.projection()
+  expect(mounted.controller.selectedArtifactKey()).toBe("world:river")
+  mounted.controller.pauseFollow()
+  mounted.setCurrent(twoWriters(300))
+  mounted.controller.projection()
+
+  expect(mounted.controller.followMode()).toBe("manual")
+  expect(mounted.controller.selectedArtifactKey()).toBeUndefined()
+  mounted.dispose()
+})
+
+test("reveals a newly committed nested file once in parent order", async () => {
+  const actions: string[] = []
+  const mounted = createRoot((dispose) => {
+    const [current, setCurrent] = createSignal(source("正文"))
+    const controller = createNovelXGrowthLiveController({
+      currentSessionId: () => "ses_root",
+      source: current,
+      syncSession: () => undefined,
+      fileSurfaceVisible: () => true,
+      refreshDirectory: async (path) => {
+        actions.push(`refresh:${path || "."}`)
+      },
+      expandDirectory: (path) => {
+        actions.push(`expand:${path || "."}`)
+      },
+    })
+    return { controller, setCurrent, dispose }
+  })
+
+  mounted.controller.projection()
+  mounted.setCurrent({
+    ...source("正文"),
+    materialization: {
+      ...source("正文").materialization!,
+      documents: source("正文").materialization!.documents.map((document) => ({
+        ...document,
+        status: "committed" as const,
+        updatedAt: 40,
+      })),
+    },
+  })
+  mounted.controller.projection()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  expect(actions).toEqual([
+    "refresh:.",
+    "expand:.",
+    "refresh:World",
+    "expand:World",
+    "refresh:World/自然地理",
+    "expand:World/自然地理",
+  ])
+
+  mounted.controller.projection()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(actions).toHaveLength(6)
+  mounted.dispose()
+})
+
+test("refreshes committed parents without expanding when the compact file surface is hidden", async () => {
+  const refreshes: string[] = []
+  const expanded: string[] = []
+  const mounted = createRoot((dispose) => {
+    const [current, setCurrent] = createSignal(source("正文"))
+    const controller = createNovelXGrowthLiveController({
+      currentSessionId: () => "ses_root",
+      source: current,
+      syncSession: () => undefined,
+      fileSurfaceVisible: () => false,
+      refreshDirectory: async (path) => {
+        refreshes.push(path)
+      },
+      expandDirectory: (path) => expanded.push(path),
+    })
+    return { controller, setCurrent, dispose }
+  })
+
+  mounted.controller.projection()
+  mounted.setCurrent({
+    ...source("正文"),
+    materialization: {
+      ...source("正文").materialization!,
+      documents: source("正文").materialization!.documents.map((document) => ({
+        ...document,
+        status: "committed" as const,
+      })),
+    },
+  })
+  mounted.controller.projection()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  expect(refreshes).toEqual(["", "World", "World/自然地理"])
+  expect(expanded).toEqual([])
+  mounted.dispose()
+})
+
 test("ignores ordinary sessions outside the authoritative Growth root", () => {
   const synchronized: string[] = []
   const current = source("不应读取")

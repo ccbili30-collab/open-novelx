@@ -26,6 +26,9 @@ type WorldProps = {
   selectedChildText: () => string
   selectedChildSessionId?: string
   status: (entityId: string) => NovelXWorld.WorldDocumentStatus
+  followMode?: "auto" | "manual"
+  resumeFollowLabel?: string
+  onResumeFollow?: () => void
   onSelectEntity?: (entityId: string) => void
 }
 
@@ -448,26 +451,35 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
     total: props.blueprint.stages.reduce((sum, stage) => sum + stage.itemCount, 0),
   })
   return (
-    <Show
-      when={props.selectedStage}
-      keyed
-      fallback={
-        props.materialization?.status === "completed" || props.visual ? (
-          <NovelXWorldAtlas {...props} />
-        ) : (
-          <div class="novelx-terrain-atlas is-empty" aria-label={`${props.blueprint.profile.title}世界总览`}>
-            <div class="novelx-terrain-empty-map-mark" aria-hidden="true">
-              <NovelXResourceIcon resource="world" size={30} />
+    <>
+      <Show when={props.followMode === "manual" && props.onResumeFollow}>
+        <div class="novelx-world-follow-bar">
+          <span>当前正在查看手动选择的内容</span>
+          <button type="button" onClick={props.onResumeFollow}>
+            {props.resumeFollowLabel ?? "跟随正在生长"}
+          </button>
+        </div>
+      </Show>
+      <Show
+        when={props.selectedStage}
+        keyed
+        fallback={
+          props.materialization?.status === "completed" || props.visual ? (
+            <NovelXWorldAtlas {...props} />
+          ) : (
+            <div class="novelx-terrain-atlas is-empty" aria-label={`${props.blueprint.profile.title}世界总览`}>
+              <div class="novelx-terrain-empty-map-mark" aria-hidden="true">
+                <NovelXResourceIcon resource="world" size={30} />
+              </div>
+              <strong>世界正在生长</strong>
+              <span>{props.blueprint.profile.designSummary}</span>
+              <small>
+                {progress().committed}/{progress().total} 份世界档案已提交 · 地图等待世界封存
+              </small>
             </div>
-            <strong>世界正在生长</strong>
-            <span>{props.blueprint.profile.designSummary}</span>
-            <small>
-              {progress().committed}/{progress().total} 份世界档案已提交 · 地图等待世界封存
-            </small>
-          </div>
-        )
-      }
-    >
+          )
+        }
+      >
       {(stage) => {
         const record = () => props.materialization?.stages.find((item) => item.stageId === stage.id)
         const dependencies = () =>
@@ -527,16 +539,10 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
                       <dd>{dependencies().length ? dependencies().join("、") : "无，作为世界事实地基"}</dd>
                       <dt>已注册</dt>
                       <dd>{record()?.entities.length ?? 0} 项</dd>
-                      <dt>阶段主编</dt>
-                      <dd>{record()?.editorSessionId ?? "尚未分配"}</dd>
-                      <dt>来源原文</dt>
+                      <dt>注册状态</dt>
+                      <dd>{record()?.editorSessionId ? "正在规划本层内容" : "等待开始"}</dd>
+                      <dt>前序资料</dt>
                       <dd>{record()?.sourceReads.length ?? 0} 份已核验</dd>
-                      <dt>记忆检查点</dt>
-                      <dd>
-                        {props.materialization?.memoryCheckpoints.find((item) => item.stageId === stage.id)
-                          ? "已压缩并可恢复"
-                          : "尚未建立"}
-                      </dd>
                     </dl>
                     <section>
                       <strong>推演重点</strong>
@@ -588,7 +594,7 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
                     fallback={
                       <div class="novelx-geography-draft-waiting" role="status">
                         <strong>
-                          {status() === "registered" ? "等待主编分配" : "正在等待世界档案 Agent 返回内容"}
+                          {status() === "registered" ? "等待分配" : "正在等待世界档案正文"}
                         </strong>
                         <p>{entity.summary}</p>
                         <span>正式文件尚未提交，当前内容不可编辑。</span>
@@ -597,7 +603,7 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
                   >
                     <div class="novelx-geography-stream">
                       <div class="novelx-geography-stream-heading">
-                        <span>novelx-world-writer</span>
+                        <span>正文流式输出</span>
                         <small>流式草稿 · 只读</small>
                       </div>
                       <pre>{props.selectedChildText()}</pre>
@@ -609,7 +615,8 @@ export function NovelXWorldGrowthPrimary(props: WorldProps) {
           </Show>
         )
       }}
-    </Show>
+      </Show>
+    </>
   )
 }
 
@@ -684,17 +691,12 @@ export function NovelXWorldGrowthInspector(props: WorldProps) {
                     <dd>{stageRecord()?.status ?? "planned"}</dd>
                     <dt>档案章节</dt>
                     <dd>{stage.documentSections.join("、")}</dd>
-                    <dt>阶段主编</dt>
-                    <dd>{stageRecord()?.editorSessionId ?? "尚未分配"}</dd>
-                    <dt>来源读取</dt>
+                    <dt>注册状态</dt>
+                    <dd>{stageRecord()?.editorSessionId ? "正在规划本层内容" : "等待开始"}</dd>
+                    <dt>前序资料</dt>
                     <dd>{stageRecord()?.sourceReads.length ?? 0} 份原文</dd>
                     <dt>阶段交接</dt>
                     <dd>{stageRecord()?.handoff ? "已封存" : "尚未封存"}</dd>
-                    <dt>Context Epoch</dt>
-                    <dd>
-                      {props.materialization?.memoryCheckpoints.find((item) => item.stageId === stage.id)
-                        ?.contextEpoch ?? "尚未压缩"}
-                    </dd>
                   </dl>
                 </section>
               </div>
@@ -722,8 +724,8 @@ export function NovelXWorldGrowthInspector(props: WorldProps) {
                       <dd>{stage.label}</dd>
                       <dt>状态</dt>
                       <dd>{novelXWorldStatusLabel(props.status(entity.id))}</dd>
-                      <dt>执行 Agent</dt>
-                      <dd>{props.selectedChildSessionId ? "novelx-world-writer" : "尚未分配"}</dd>
+                      <dt>正文状态</dt>
+                      <dd>{props.selectedChildSessionId ? "正在写作" : "等待分配"}</dd>
                       <dt>文件锁</dt>
                       <dd>{props.selectedDocument?.status === "committed" ? "已释放" : "只读 / 尚未提交"}</dd>
                     </dl>
@@ -756,7 +758,6 @@ export function NovelXWorldGrowthInspector(props: WorldProps) {
                                 {allEntities().find((item) => item.id === binding.entityId)?.name ?? binding.entityId}
                               </b>
                               <span>{binding.impact}</span>
-                              <small>来源 {binding.sourceSha256.slice(0, 12)}…</small>
                             </li>
                           )}
                         </For>

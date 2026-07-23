@@ -23,11 +23,29 @@ const server = `http://${process.env.PLAYWRIGHT_SERVER_HOST ?? "127.0.0.1"}:${pr
 test.use({ viewport: { width: 1672, height: 941 }, deviceScaleFactor: 1 })
 
 test("真实会话保留导航、置顶、资源文件与覆盖式项目面板", async ({ page }, testInfo) => {
-  test.setTimeout(90_000)
+  test.setTimeout(120_000)
   const growthManifest = await growthManifestFixture()
   const geographyMaterialization = await geographyMaterializationFixture(growthManifest)
   const worldBlueprint = await worldBlueprintFixture()
   const worldMaterialization = await worldMaterializationFixture(worldBlueprint)
+  const { integritySha256: _worldIntegrity, ...worldMaterializationDraft } = worldMaterialization
+  const sealWorldMaterialization = (draft: typeof worldMaterializationDraft) => ({
+    ...draft,
+    integritySha256: createHash("sha256").update(JSON.stringify(draft)).digest("hex"),
+  })
+  const preparedWorldMaterialization = sealWorldMaterialization({
+    ...worldMaterializationDraft,
+    updatedAt: worldMaterializationDraft.updatedAt - 100,
+    stages: worldMaterializationDraft.stages.map((stage) => ({
+      ...stage,
+      status: "prepared" as const,
+      registeredAt: null,
+      entities: [],
+    })),
+    documents: [],
+  })
+  let liveWorldMaterialization = preparedWorldMaterialization
+  let committedLiveDocument = false
   const completedFixtures = await completedWorldFixtures(worldMaterialization)
   const queuedScenery = completedFixtures.visual.tasks.find((task) => task.type === "scenery")
   if (!queuedScenery) throw new Error("queued scenery fixture required")
@@ -113,8 +131,15 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
     ],
     vcsDiff: [],
     fileList: (path) => {
-      if (!path) return [node("World\\", "directory"), node("README.md", "file")]
-      if (path === "World") return [node("World/geography", "directory"), node("World/world.md", "file")]
+      if (!path) return [node("World", "directory"), node("README.md", "file")]
+      if (path === "World")
+        return [
+          node("World/geography", "directory"),
+          node("World/world.md", "file"),
+          ...(committedLiveDocument ? [node("World/01-恒星与轨道环境", "directory")] : []),
+        ]
+      if (path === "World/01-恒星与轨道环境" && committedLiveDocument)
+        return [node("World/01-恒星与轨道环境/赫利俄斯同步环.md", "file")]
       if (path === "World/geography") return [node("World/geography/misty-mountains.md", "file")]
       return []
     },
@@ -137,7 +162,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
           : path === ".novelx/growth/world-materialization.json"
             ? {
                 type: "text",
-                content: JSON.stringify(completedWorld ? completedFixtures.materialization : worldMaterialization),
+                content: JSON.stringify(completedWorld ? completedFixtures.materialization : liveWorldMaterialization),
                 bom: false,
               }
             : path === ".novelx/growth/geography-materialization.json"
@@ -183,7 +208,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
           : sessionID === stageEditorID
             ? stageEditorMessages()
             : sessionID === "ses_child"
-              ? worldChildMessages()
+              ? worldChildMessages().slice(0, 1)
               : [],
     }),
     onMessages: ({ sessionID, phase }) => {
@@ -283,32 +308,98 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   const resources = page.locator("#file-tree-panel")
   const dock = page.getByRole("navigation", { name: "项目资源" })
-  await dock.getByRole("button", { name: "世界", exact: true }).click()
-  await expect(resources.getByText("日环档案 · 0/1 份世界档案已提交", { exact: true })).toBeVisible()
-  await expect(resources.locator(".novelx-terrain-atlas")).toBeVisible()
-  await expect(resources.getByText("世界正在生长", { exact: true })).toBeVisible()
-  await expect(resources.getByRole("button", { name: "Growth 总主编", exact: true })).toBeVisible()
-  await expect(resources.getByRole("button", { name: "阶段主编", exact: true })).toBeVisible()
-  await resources.getByRole("button", { name: "赫利俄斯同步环", exact: true }).click()
+  const liveGrowthPanel = resources.getByRole("region", { name: "生长中" })
+  await expect(liveGrowthPanel.getByText("恒星与轨道环境 · 主编注册中", { exact: true })).toBeVisible()
+  await expect(liveGrowthPanel.locator(".novelx-live-growth-row")).toHaveCount(0)
+
+  liveWorldMaterialization = worldMaterialization
+  events.push(worldMaterializationWatcherEvent())
+  const liveArtifact = liveGrowthPanel.locator('[data-artifact-key="world:entity-helios-ring"]')
+  await expect(liveArtifact).toBeVisible()
+  await expect(liveArtifact).toHaveAttribute("data-locked", "true")
+  await expect(liveArtifact).toContainText("正在写作")
+  events.push(writerSessionEvent())
   await expect
     .poll(() => messageRequests.filter((item) => item.sessionID === "ses_child" && item.phase === "end").length)
     .toBeGreaterThan(0)
-  expect(pageErrors).toEqual([])
-  await expect(resources.getByText("流式草稿 · 只读", { exact: true })).toBeVisible()
-  await expect(resources.locator(".novelx-geography-stream pre")).toContainText(
-    "强辐射与散热上限共同限制同步环的连续输出。",
-  )
-  await expect(resources.getByText("Context Pack", { exact: true })).toHaveCount(0)
+
   events.push(childResumeMessageEvent())
   events.push(childResumePartEvent())
   events.push(childResumeDeltaEvent("# 赫利俄斯同步环\n\n实时增量一"))
-  await expect(resources.locator(".novelx-geography-stream pre")).toHaveText("# 赫利俄斯同步环\n\n实时增量一")
-  await expect(resources.locator('.novelx-geography-draft[data-document-locked="true"]')).toBeVisible()
-  await expect(page).toHaveURL(new RegExp(`/session/${currentID}$`))
+  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toHaveText(
+    "# 赫利俄斯同步环\n\n实时增量一",
+  )
   events.push(childResumeDeltaEvent("，实时增量二。"))
+  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toHaveText(
+    "# 赫利俄斯同步环\n\n实时增量一，实时增量二。",
+  )
+  await expect(resources.getByText(/Context Pack|private chain of thought|Exact source-bound|\.novelx/u)).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath("novelx-growth-live-compact-wide.png") })
+
+  await dock.getByRole("button", { name: "世界", exact: true }).click()
+  await expect(resources.getByText("日环档案 · 0/1 份世界档案已提交", { exact: true })).toBeVisible()
+  await expect(resources.locator(".novelx-growth-tree-item.is-selected")).toContainText("赫利俄斯同步环")
+  expect(pageErrors).toEqual([])
+  await expect(resources.getByText("流式草稿 · 只读", { exact: true })).toBeVisible()
   await expect(resources.locator(".novelx-geography-stream pre")).toHaveText(
     "# 赫利俄斯同步环\n\n实时增量一，实时增量二。",
   )
+  await expect(resources.getByText("Context Pack", { exact: true })).toHaveCount(0)
+  await expect(resources.locator('.novelx-geography-draft[data-document-locked="true"]')).toBeVisible()
+  await expect(page).toHaveURL(new RegExp(`/session/${currentID}$`))
+
+  const stageRow = resources.locator(".novelx-growth-tree-item").filter({ hasText: "恒星与轨道环境" }).first()
+  await stageRow.click()
+  await expect(stageRow).toHaveAttribute("aria-pressed", "true")
+  events.push(childResumeDeltaEvent("\n\n手动查看期间仍继续生长。"))
+  await expect(stageRow).toHaveAttribute("aria-pressed", "true")
+  await resources.getByRole("button", { name: "跟随正在生长", exact: true }).click()
+  await expect(resources.locator(".novelx-growth-tree-item.is-selected")).toContainText("赫利俄斯同步环")
+  await expect(resources.locator(".novelx-geography-stream pre")).toContainText("手动查看期间仍继续生长。")
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await expect(resources.locator(".novelx-geography-stream pre")).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath("novelx-growth-live-world-narrow.png") })
+  await page.setViewportSize({ width: 1672, height: 941 })
+
+  await dock.getByRole("button", { name: "世界", exact: true }).click()
+  liveWorldMaterialization = sealWorldMaterialization({
+    ...worldMaterializationDraft,
+    updatedAt: worldMaterializationDraft.updatedAt + 100,
+    documents: worldMaterializationDraft.documents.map((record) => ({
+      ...record,
+      status: "failed" as const,
+      taskSessionId: "ses_child",
+      updatedAt: record.updatedAt + 100,
+      errorCode: "writer_cancelled",
+    })),
+  })
+  events.push(worldMaterializationWatcherEvent())
+  await expect(liveArtifact).toHaveClass(/is-failed/u)
+  await expect(liveGrowthPanel.locator(".novelx-live-growth-preview pre")).toContainText(
+    "手动查看期间仍继续生长。",
+  )
+
+  committedLiveDocument = true
+  liveWorldMaterialization = sealWorldMaterialization({
+    ...worldMaterializationDraft,
+    updatedAt: worldMaterializationDraft.updatedAt + 200,
+    documents: worldMaterializationDraft.documents.map((record) => ({
+      ...record,
+      status: "committed" as const,
+      lease: null,
+      taskSessionId: "ses_child",
+      committedSha256: "b".repeat(64),
+      updatedAt: record.updatedAt + 200,
+      errorCode: null,
+    })),
+  })
+  events.push(worldMaterializationWatcherEvent())
+  await expect(liveArtifact).toHaveAttribute("data-locked", "false")
+  await expect(liveArtifact).toContainText("已提交")
+  await expect(resources.getByRole("button", { name: "赫利俄斯同步环.md", exact: true })).toBeVisible()
+
+  await dock.getByRole("button", { name: "世界", exact: true }).click()
+  await resources.getByRole("button", { name: "赫利俄斯同步环", exact: true }).click()
   await expect(resources.locator(".novelx-resource-inspector-heading")).toContainText("赫利俄斯同步环")
   await expect(
     resources.getByText("围绕恒星运行的采能、通信与维护轨道集合，为整个系统提供能源和统一时标。", { exact: true }),
@@ -355,6 +446,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
   await expect(resources.getByText("1 项", { exact: true })).toBeVisible()
   await expect(resources.getByText("Growth 总主编", { exact: true })).toHaveCount(0)
   await expect(resources.getByText("阶段主编", { exact: true })).toHaveCount(0)
+  await resources.getByRole("button", { name: "日环档案 · 世界图册", exact: true }).click()
 
   await page.reload()
   await expect(resources.locator(".novelx-world-atlas")).toBeVisible()
@@ -491,7 +583,7 @@ test("真实会话保留导航、置顶、资源文件与覆盖式项目面板",
 
   await dock.getByRole("button", { name: "文件", exact: true }).click()
   await expect(resources.locator('[data-resource="files"]')).toBeVisible()
-  await resources.getByRole("button", { name: "World\\", exact: true }).click()
+  await resources.getByRole("button", { name: "World", exact: true }).click()
   await expect(resources.locator(".novelx-document-editor")).toBeVisible()
   await resources.getByRole("button", { name: "README.md", exact: true }).click()
   const editor = resources.locator(".novelx-document-editor")
@@ -725,6 +817,7 @@ function stageEditorMessages() {
           tool: "task",
           state: {
             status: "running",
+            title: "世界：赫利俄斯同步环",
             input: {
               description: "世界：赫利俄斯同步环",
               prompt: "Exact source-bound Context Pack",
@@ -814,6 +907,22 @@ function childResumeMessageEvent() {
   }
 }
 
+function writerSessionEvent() {
+  return {
+    directory,
+    payload: {
+      type: "session.updated",
+      properties: {
+        info: {
+          ...session("ses_child", "世界：赫利俄斯同步环", 5),
+          parentID: stageEditorID,
+          agent: "novelx-world-writer",
+        },
+      },
+    },
+  }
+}
+
 function childResumePartEvent() {
   return {
     directory,
@@ -844,6 +953,16 @@ function childResumeDeltaEvent(delta: string) {
         field: "text",
         delta,
       },
+    },
+  }
+}
+
+function worldMaterializationWatcherEvent() {
+  return {
+    directory,
+    payload: {
+      type: "file.watcher.updated",
+      properties: { file: ".novelx/growth/world-materialization.json", event: "change" },
     },
   }
 }

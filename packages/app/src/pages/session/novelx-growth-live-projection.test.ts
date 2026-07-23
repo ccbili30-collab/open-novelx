@@ -138,6 +138,95 @@ describe("projectNovelXLiveGrowth", () => {
     expect(projection.primaryArtifactKey).toBe("world:river")
   })
 
+  test("uses an authoritative task Session ID before the child Session list has loaded", () => {
+    const projection = projectNovelXLiveGrowth({
+      blueprint: { stages: [{ id: "natural", label: "自然地理" }] },
+      materialization: {
+        status: "running",
+        stages: [
+          {
+            stageId: "natural",
+            status: "registered",
+            editorSessionId: "ses_editor",
+            entities: [{ id: "river", name: "灰潮河" }],
+          },
+        ],
+        documents: [
+          {
+            entityId: "river",
+            stageId: "natural",
+            targetPath: "World/自然地理/灰潮河.md",
+            status: "leased",
+            taskSessionId: null,
+            updatedAt: 20,
+          },
+        ],
+      },
+      sessions: [],
+      statuses: {},
+      messages: { ses_editor: [{ id: "msg_editor", role: "assistant" }] },
+      parts: {
+        msg_editor: [
+          {
+            type: "tool",
+            tool: "task",
+            state: {
+              status: "running",
+              input: { subagent_type: "novelx-world-writer" },
+              title: "世界：灰潮河",
+              metadata: { sessionId: "ses_writer" },
+            },
+          },
+        ],
+      },
+    })
+
+    expect(projection.artifacts[0]?.writerSessionId).toBe("ses_writer")
+    expect(projection.primaryArtifactKey).toBe("world:river")
+  })
+
+  test("rejects an authoritative Session ID when the loaded Session has a conflicting Agent identity", () => {
+    const projection = projectNovelXLiveGrowth({
+      blueprint: { stages: [{ id: "natural", label: "自然地理" }] },
+      materialization: {
+        status: "running",
+        stages: [
+          {
+            stageId: "natural",
+            status: "registered",
+            editorSessionId: "ses_editor",
+            entities: [{ id: "river", name: "灰潮河" }],
+          },
+        ],
+        documents: [
+          {
+            entityId: "river",
+            stageId: "natural",
+            targetPath: "World/自然地理/灰潮河.md",
+            status: "leased",
+            taskSessionId: "ses_writer",
+            updatedAt: 20,
+          },
+        ],
+      },
+      sessions: [
+        {
+          id: "ses_writer",
+          agent: "explore",
+          title: "普通探索",
+          time: { created: 10, updated: 30 },
+        },
+      ],
+      statuses: {},
+      messages: { ses_writer: [{ id: "msg_writer", role: "assistant" }] },
+      parts: { msg_writer: [{ type: "text", text: "不得串入世界正文。" }] },
+    })
+
+    expect(projection.artifacts[0]?.writerSessionId).toBeUndefined()
+    expect(projection.artifacts[0]?.text).toBe("")
+    expect(projection.primaryArtifactKey).toBeUndefined()
+  })
+
   test("projects accumulated Writer text through the public draft sanitizer", () => {
     const projection = projectNovelXLiveGrowth({
       blueprint: { stages: [{ id: "natural", label: "自然地理" }] },

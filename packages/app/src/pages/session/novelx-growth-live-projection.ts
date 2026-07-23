@@ -105,7 +105,8 @@ export function projectNovelXLiveGrowth(input: NovelXLiveGrowthInput): NovelXLiv
       const task = writerTask(input, stage, entity.name)
       const writerSessionId = document.taskSessionId ?? task?.sessionId
       const writer = writerSessionId ? sessions.get(writerSessionId) : undefined
-      const mappedWriterSessionId = writer?.agent === "novelx-world-writer" ? writer.id : undefined
+      const mappedWriterSessionId =
+        writerSessionId && (!writer?.agent || writer.agent === "novelx-world-writer") ? writerSessionId : undefined
       return [
         {
           key: `world:${entity.id}`,

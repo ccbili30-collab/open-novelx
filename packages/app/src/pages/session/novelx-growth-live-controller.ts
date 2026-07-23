@@ -10,10 +10,16 @@ export function createNovelXGrowthLiveController(input: {
   currentSessionId: Accessor<string | undefined>
   source: Accessor<NovelXLiveGrowthInput>
   syncSession: (sessionId: string) => void | Promise<unknown>
+  fileSurfaceVisible?: Accessor<boolean>
+  refreshDirectory?: (path: string) => void | Promise<unknown>
+  expandDirectory?: (path: string) => void
 }) {
   const [followMode, setFollowMode] = createSignal<"auto" | "manual">("auto")
   const [selectedArtifactKey, setSelectedArtifactKey] = createSignal<string>()
   const synchronized = new Set<string>()
+  const artifactStates = new Map<string, NovelXLiveGrowthProjection["artifacts"][number]["state"]>()
+  const revealing = new Set<string>()
+  let observedMaterialization = false
 
   const project = (): NovelXLiveGrowthProjection => {
     const source = input.source()
@@ -35,9 +41,29 @@ export function createNovelXGrowthLiveController(input: {
     Promise.resolve(input.syncSession(sessionId)).catch(() => synchronized.delete(sessionId))
   }
 
+  const revealCommitted = (current: NovelXLiveGrowthProjection) => {
+    if (!current.stage && !current.artifacts.length) return
+    if (!observedMaterialization) {
+      observedMaterialization = true
+      for (const artifact of current.artifacts) artifactStates.set(artifact.key, artifact.state)
+      return
+    }
+    for (const artifact of current.artifacts) {
+      const previous = artifactStates.get(artifact.key)
+      artifactStates.set(artifact.key, artifact.state)
+      if (artifact.state !== "committed" || previous === "committed") continue
+      if (!input.refreshDirectory || revealing.has(artifact.targetPath)) continue
+      revealing.add(artifact.targetPath)
+      void revealCommittedPath(artifact.targetPath, input)
+        .catch(() => artifactStates.set(artifact.key, previous ?? "registered"))
+        .finally(() => revealing.delete(artifact.targetPath))
+    }
+  }
+
   const projection = () => {
     const current = project()
     synchronize(current)
+    revealCommitted(current)
     if (followMode() === "auto") setSelectedArtifactKey(current.primaryArtifactKey)
     return current
   }
@@ -52,9 +78,29 @@ export function createNovelXGrowthLiveController(input: {
       setFollowMode("manual")
       setSelectedArtifactKey(key)
     },
+    pauseFollow() {
+      setFollowMode("manual")
+      setSelectedArtifactKey(undefined)
+    },
     resumeFollow() {
       setFollowMode("auto")
       setSelectedArtifactKey(project().primaryArtifactKey)
     },
+  }
+}
+
+async function revealCommittedPath(
+  targetPath: string,
+  input: {
+    fileSurfaceVisible?: Accessor<boolean>
+    refreshDirectory?: (path: string) => void | Promise<unknown>
+    expandDirectory?: (path: string) => void
+  },
+) {
+  const segments = targetPath.replaceAll("\\", "/").split("/").filter(Boolean).slice(0, -1)
+  const parents = ["", ...segments.map((_, index) => segments.slice(0, index + 1).join("/"))]
+  for (const parent of parents) {
+    await input.refreshDirectory?.(parent)
+    if (input.fileSurfaceVisible?.()) input.expandDirectory?.(parent)
   }
 }

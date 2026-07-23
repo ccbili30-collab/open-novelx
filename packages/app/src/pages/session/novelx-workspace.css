@@ -1046,6 +1046,38 @@
   overflow: auto;
 }
 
+.novelx-world-follow-bar {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dfd8d0;
+  padding: 7px 18px;
+  color: #6f655d;
+  background: rgb(250 247 243 / 96%);
+  font-size: 11px;
+  backdrop-filter: blur(10px);
+}
+
+.novelx-world-follow-bar button {
+  flex: none;
+  border: 0;
+  padding: 4px 0;
+  color: #74523a;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.novelx-world-follow-bar button:hover {
+  color: #3f3026;
+}
+
 .novelx-resource-blank,
 .novelx-resource-selection {
   position: relative;

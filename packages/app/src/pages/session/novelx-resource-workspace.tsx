@@ -263,6 +263,9 @@ export function NovelXResourceWorkspace(props: {
       parts: sync().data.part,
     }),
     syncSession: (sessionId) => sync().session.sync(sessionId, { force: true }),
+    fileSurfaceVisible: () => !active() && !view.rightCollapsed(),
+    refreshDirectory: file.tree.refresh,
+    expandDirectory: file.tree.expand,
   })
   const liveGrowthProjection = createMemo(liveGrowth.projection)
   const liveGrowthVisible = createMemo(() => {
@@ -397,11 +400,21 @@ export function NovelXResourceWorkspace(props: {
   }))
   const worldItems = createMemo(() => {
     const blueprint = worldBlueprint()
-    return blueprint ? novelXWorldNavigationItems(blueprint, worldMaterialization()) : []
+    if (!blueprint) return []
+    return novelXWorldNavigationItems(blueprint, worldMaterialization()).flatMap((item) => {
+      if (item.kind === "editor") return []
+      if (item.kind !== "root" || worldMaterialization()?.status === "completed") return [item]
+      return [{ ...item, label: blueprint.profile.title }]
+    })
   })
   const selectedWorldItem = createMemo(() => {
     if (active() !== "world") return
-    const selected = plannedSelection().world
+    const automatic =
+      liveGrowth.followMode() === "auto"
+        ? liveGrowthProjection().artifacts.find((artifact) => artifact.key === liveGrowth.selectedArtifactKey())
+            ?.entityId
+        : undefined
+    const selected = plannedSelection().world ?? automatic
     return worldItems().find((item) => item.id === selected)
   })
   const selectedWorldStage = createMemo(() => {
@@ -661,20 +674,31 @@ export function NovelXResourceWorkspace(props: {
     if (!task || task.type !== "tool" || !("metadata" in task.state)) return
     return typeof task.state.metadata?.sessionId === "string" ? task.state.metadata.sessionId : undefined
   })
-  const [selectedChildText, setSelectedChildText] = createSignal("")
+  const [selectedSessionText, setSelectedSessionText] = createSignal("")
   createEffect(() => {
     const sessionID = selectedChildSessionId()
     if (!sessionID) {
-      setSelectedChildText("")
+      setSelectedSessionText("")
       return
     }
     const text = projectNovelXDraftText(sync().data.message[sessionID] ?? [], sync().data.part)
-    setSelectedChildText(text)
+    setSelectedSessionText(text)
+  })
+
+  const selectedLiveArtifact = createMemo(() => {
+    const entity = selectedWorldEntity()
+    return entity ? liveGrowthProjection().artifacts.find((candidate) => candidate.entityId === entity.id) : undefined
+  })
+  const selectedChildText = createMemo(() => {
+    const artifact = selectedLiveArtifact()
+    if (artifact?.writerSessionId) return artifact.text
+    return selectedSessionText()
   })
 
   createEffect(() => {
     const sessionID = selectedChildSessionId()
-    if (sessionID) void sync().session.sync(sessionID, { force: true })
+    if (!sessionID || selectedLiveArtifact()?.writerSessionId === sessionID) return
+    void sync().session.sync(sessionID, { force: true })
   })
   const selectedTerrainRelations = createMemo(() => {
     const manifest = growthManifest()
@@ -705,6 +729,7 @@ export function NovelXResourceWorkspace(props: {
       return false
     }
     const resource = active()
+    if (resource === "world") liveGrowth.pauseFollow()
     if (resource) setPlannedSelection((current) => ({ ...current, [resource]: undefined }))
     view.setActiveFile(normalized)
     return true
@@ -750,8 +775,24 @@ export function NovelXResourceWorkspace(props: {
       published?.targetPath ??
         (worldMaterialization()?.status === "completed" ? "" : record?.status === "committed" ? record.targetPath : ""),
     )
+    if (item.kind === "entity") liveGrowth.selectArtifact(`world:${item.id}`)
+    else liveGrowth.pauseFollow()
     setPlannedSelection((current) => ({ ...current, world: item.id }))
     return true
+  }
+
+  const resumeLiveGrowthFollow = () => {
+    if (!document.canLeave()) {
+      showToast({
+        variant: "default",
+        title: language.t("novelx.document.unsaved.title"),
+        description: language.t("novelx.document.unsaved.description"),
+      })
+      return
+    }
+    view.setActiveFile("")
+    setPlannedSelection((current) => ({ ...current, world: undefined }))
+    liveGrowth.resumeFollow()
   }
 
   const openLiveGrowthArtifact = (artifact: ReturnType<typeof liveGrowthProjection>["artifacts"][number]) => {
@@ -924,7 +965,7 @@ export function NovelXResourceWorkspace(props: {
           materialization={worldMaterialization()}
           items={worldItems()}
           query={terrainQuery()}
-          selectedId={plannedSelection().world}
+          selectedId={selectedWorldItem()?.id}
           selectedStage={selectedWorldStage()}
           selectedEntity={selectedWorldEntity()}
           selectedDocument={selectedWorldDocument()}
@@ -1237,6 +1278,9 @@ export function NovelXResourceWorkspace(props: {
                 selectedChildText={selectedChildText}
                 selectedChildSessionId={selectedChildSessionId()}
                 status={projectedWorldStatus}
+                followMode={liveGrowth.followMode()}
+                resumeFollowLabel={liveGrowthLabel("resumeFollow")}
+                onResumeFollow={resumeLiveGrowthFollow}
                 onSelectEntity={(entityId) => {
                   const item = worldItems().find(
                     (candidate) => candidate.kind === "entity" && candidate.id === entityId,
@@ -1320,7 +1364,7 @@ export function NovelXResourceWorkspace(props: {
                   label={liveGrowthLabel}
                   onSelect={liveGrowth.selectArtifact}
                   onOpen={openLiveGrowthArtifact}
-                  onResumeFollow={liveGrowth.resumeFollow}
+                  onResumeFollow={resumeLiveGrowthFollow}
                 />
               </Show>
               <div class="novelx-compact-files-tree">
